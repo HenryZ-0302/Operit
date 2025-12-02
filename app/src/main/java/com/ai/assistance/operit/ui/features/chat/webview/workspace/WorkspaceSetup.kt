@@ -80,6 +80,18 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                             
                             Spacer(modifier = Modifier.height(8.dp))
                             
+                            // Office 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Description,
+                                title = "办公文档",
+                                description = "用于文档编辑、文件处理和通用办公任务",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "office")
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                            
                             // Web 项目卡片
                             ProjectTypeCard(
                                 icon = Icons.Default.Language,
@@ -147,6 +159,18 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                                 description = "适用于 Go 开发，提供 go mod 和 build 命令",
                                 onClick = {
                                     val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "go")
+                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    showProjectTypeDialog = false
+                                }
+                            )
+                            
+                            // Android 项目卡片
+                            ProjectTypeCard(
+                                icon = Icons.Default.Android,
+                                title = "Android 项目",
+                                description = "Android 应用开发，使用 Gradle 构建系统",
+                                onClick = {
+                                    val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "android")
                                     onBindWorkspace(workspaceDir.absolutePath)
                                     showProjectTypeDialog = false
                                 }

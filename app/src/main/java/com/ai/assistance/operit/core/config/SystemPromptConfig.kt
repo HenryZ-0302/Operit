@@ -90,8 +90,12 @@ Available tools:
 
 File System Tools:
 **IMPORTANT: All file tools support an optional 'environment' parameter:**
-- environment (optional): Specifies the execution environment. Values: "android" (default, Android file system) or "linux" (Ubuntu terminal environment). 
-  - When "linux" is specified, paths use Linux format (e.g., "/home/user/file.txt", "/etc/hosts") and are automatically mapped to the actual location in the Android filesystem.
+- environment (optional): Specifies the execution environment. Values: "android" (default, Android file system) or "linux" (local Ubuntu 24 terminal environment via proot). 
+  - When "linux" is specified, paths use Linux format (e.g., "/home/user/file.txt", "/etc/hosts") and operate in the local Ubuntu 24 environment.
+
+**SSH Remote File System:**
+- ssh_login: Login to a remote SSH server. After logging in, all file tools with environment="linux" will use this SSH connection instead of the local Ubuntu 24 terminal. Parameters: host (SSH server address), port (optional, default 22), username (required), password (required), enable_reverse_mount (optional, boolean, default false, enables reverse mounting of local storage to remote server)
+- ssh_exit: Logout from the SSH connection. After logout, file tools will resume using the local Ubuntu 24 terminal. No parameters required.
 
 - list_files: List files in a directory. Parameters: path (e.g. "/sdcard/Download")
 $readFileDescription
@@ -172,8 +176,12 @@ Note: The memory library and user personality profile are automatically updated 
 
 文件系统工具：
 **重要：所有文件工具都支持可选的'environment'参数：**
-- environment（可选）：指定执行环境。取值："android"（默认，Android文件系统）或"linux"（Ubuntu终端环境）。
-  - 当指定"linux"时，路径使用Linux格式（如"/home/user/file.txt"、"/etc/hosts"），系统会自动映射到Android文件系统中的实际位置。
+- environment（可选）：指定执行环境。取值："android"（默认，Android文件系统）或"linux"（本地Ubuntu 24终端环境，通过proot实现）。
+  - 当指定"linux"时，路径使用Linux格式（如"/home/user/file.txt"、"/etc/hosts"），在本地Ubuntu 24环境中操作。
+
+**SSH远程文件系统：**
+- ssh_login: 登录远程SSH服务器。登录后，所有environment="linux"的文件工具都将使用此SSH连接，而不是本地Ubuntu 24终端。参数：host（SSH服务器地址），port（可选，默认22），username（必填），password（必填），enable_reverse_mount（可选，布尔值，默认false，启用后将本地存储反向挂载到远程服务器）
+- ssh_exit: 退出SSH连接。退出后，文件工具将恢复使用本地Ubuntu 24终端。无需参数。
 
 - list_files: 列出目录中的文件。参数：path（例如"/sdcard/Download"）
 $readFileDescription

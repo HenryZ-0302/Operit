@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** 委托类，负责管理聊天历史相关功能 */
 class ChatHistoryDelegate(
@@ -273,7 +274,6 @@ class ChatHistoryDelegate(
                 inheritGroupFromChatId = currentChatId,
                 characterCardName = effectiveCharacterCardName
             )
-            _currentChatId.value = newChat.id
             
             // --- 新增：检查并添加开场白（只在使用活跃角色卡时添加） ---
             if (characterCardName == null && activeCard.openingStatement.isNotBlank()) {
@@ -285,15 +285,23 @@ class ChatHistoryDelegate(
                     provider = "", // 开场白不是AI生成，使用空值
                     modelName = "" // 开场白不是AI生成，使用空值
                 )
-                // 将开场白添加到新聊天的消息列表中
-                val messagesWithOpening = listOf(openingMessage)
-                _chatHistory.value = messagesWithOpening
                 // 保存带开场白的消息到数据库
                 chatHistoryManager.addMessage(newChat.id, openingMessage)
-            } else {
-                _chatHistory.value = newChat.messages
             }
             // --- 结束 ---
+            
+            // 等待数据库Flow更新，确保新对话在列表中（最多等待500ms）
+            withTimeoutOrNull(500) {
+                _chatHistories.first { histories ->
+                    histories.any { it.id == newChat.id }
+                }
+            }
+            
+            // 现在通过标准流程切换到新对话，让collector处理消息加载
+            // 这样可以避免竞态条件
+            chatHistoryManager.setCurrentChatId(newChat.id)
+            // _currentChatId.value will be updated by the collector
+            // loadChatMessages will also be called by the collector
 
             onTokenStatisticsLoaded(0, 0, 0)
         }
@@ -309,7 +317,10 @@ class ChatHistoryDelegate(
             // _currentChatId.value will be updated by the collector, no need to set it here.
             // loadChatMessages(chatId) is also called by the collector.
 
-            delay(200)
+            // 等待切换完成后再滚动到底部
+            withTimeoutOrNull(500) {
+                _currentChatId.first { it == chatId }
+            }
             onScrollToBottom()
         }
     }

@@ -45,6 +45,7 @@ import com.ai.assistance.operit.api.chat.enhance.FileBindingService
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.terminal.TerminalManager
 import com.ai.assistance.operit.terminal.provider.filesystem.FileSystemProvider
+import com.ai.assistance.operit.terminal.utils.SSHFileConnectionManager
 import com.ai.assistance.operit.core.tools.defaultTool.PathValidator
 import com.ai.assistance.operit.services.OnnxEmbeddingService
 
@@ -70,9 +71,30 @@ open class StandardFileSystemTools(protected val context: Context) {
         ApiPreferences.getInstance(context)
     }
 
-    // Linux文件系统提供者，从TerminalManager获取
-    protected val linuxFileSystem: FileSystemProvider by lazy {
-        TerminalManager.getInstance(context).getFileSystemProvider()
+    // SSH文件管理器（单例，懒加载）
+    private val sshFileManager by lazy {
+        SSHFileConnectionManager.getInstance(context)
+    }
+
+    // TerminalManager（单例，懒加载）
+    private val terminalManager by lazy {
+        TerminalManager.getInstance(context)
+    }
+
+    // Linux文件系统提供者，优先使用SSH连接，否则从TerminalManager获取
+    protected fun getLinuxFileSystem(): FileSystemProvider {
+        // 先尝试获取SSH连接的文件系统
+        val sshProvider = sshFileManager.getFileSystemProvider()
+        
+        // 如果SSH已登录，使用SSH文件系统
+        if (sshProvider != null) {
+            Log.d(TAG, "Using SSH file system provider")
+            return sshProvider
+        }
+        
+        // 否则使用本地Terminal的文件系统
+        Log.d(TAG, "Using local terminal file system provider")
+        return terminalManager.getFileSystemProvider()
     }
 
     // Linux文件系统工具实例
@@ -1089,23 +1111,6 @@ open class StandardFileSystemTools(protected val context: Context) {
             )
         }
 
-        // Don't allow deleting system directories
-        val restrictedPaths = listOf("/system", "/data", "/proc", "/dev")
-        if (restrictedPaths.any { path.startsWith(it) }) {
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result =
-                FileOperationData(
-                    operation = "delete",
-                    path = path,
-                    successful = false,
-                    details =
-                    "Deleting system directories is not allowed"
-                ),
-                error = "Deleting system directories is not allowed"
-            )
-        }
 
         return try {
             val file = File(path)
@@ -1297,22 +1302,6 @@ open class StandardFileSystemTools(protected val context: Context) {
             )
         }
 
-        // Don't allow moving system directories
-        val restrictedPaths = listOf("/system", "/data", "/proc", "/dev")
-        if (restrictedPaths.any { sourcePath.startsWith(it) }) {
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result =
-                FileOperationData(
-                    operation = "move",
-                    path = sourcePath,
-                    successful = false,
-                    details = "Moving system directories is not allowed"
-                ),
-                error = "Moving system directories is not allowed"
-            )
-        }
 
         return try {
             val sourceFile = File(sourcePath)
@@ -1486,7 +1475,7 @@ open class StandardFileSystemTools(protected val context: Context) {
 
             // 1. 检查源文件是否存在
             val sourceExists = if (isLinuxEnvironment(sourceEnvironment)) {
-                linuxFileSystem.exists(sourcePath)
+                getLinuxFileSystem().exists(sourcePath)
             } else {
                 File(sourcePath).exists()
             }
@@ -1507,7 +1496,7 @@ open class StandardFileSystemTools(protected val context: Context) {
 
             // 2. 检查是否是目录
             val isDirectory = if (isLinuxEnvironment(sourceEnvironment)) {
-                linuxFileSystem.isDirectory(sourcePath)
+                getLinuxFileSystem().isDirectory(sourcePath)
             } else {
                 File(sourcePath).isDirectory
             }
@@ -1539,7 +1528,7 @@ open class StandardFileSystemTools(protected val context: Context) {
 
             // 3. 获取文件大小
             val fileSize = if (isLinuxEnvironment(sourceEnvironment)) {
-                linuxFileSystem.getFileSize(sourcePath)
+                getLinuxFileSystem().getFileSize(sourcePath)
             } else {
                 File(sourcePath).length()
             }
@@ -1550,7 +1539,7 @@ open class StandardFileSystemTools(protected val context: Context) {
 
             if (isLinuxEnvironment(sourceEnvironment)) {
                 // 从 Linux 读取并写入
-                val content = linuxFileSystem.readFile(sourcePath) ?: return ToolResult(
+                val content = getLinuxFileSystem().readFile(sourcePath) ?: return ToolResult(
                     toolName = toolName,
                     success = false,
                     result = FileOperationData(
@@ -1564,7 +1553,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                 val bytes = content.toByteArray(Charsets.UTF_8)
 
                 if (isLinuxEnvironment(destEnvironment)) {
-                    val result = linuxFileSystem.writeFileBytes(finalDestPath, bytes)
+                    val result = getLinuxFileSystem().writeFileBytes(finalDestPath, bytes)
                     if (!result.success) {
                         return ToolResult(
                             toolName = toolName,
@@ -1603,7 +1592,7 @@ open class StandardFileSystemTools(protected val context: Context) {
 
                     if (isLinuxEnvironment(destEnvironment)) {
                         val bytes = (outputStream as java.io.ByteArrayOutputStream).toByteArray()
-                        val result = linuxFileSystem.writeFileBytes(finalDestPath, bytes)
+                        val result = getLinuxFileSystem().writeFileBytes(finalDestPath, bytes)
                         if (!result.success) {
                             return ToolResult(
                                 toolName = toolName,
@@ -1671,7 +1660,7 @@ open class StandardFileSystemTools(protected val context: Context) {
 
             // 1. 创建目标目录
             if (isLinuxEnvironment(destEnvironment)) {
-                val result = linuxFileSystem.createDirectory(finalDestPath, createParents = true)
+                val result = getLinuxFileSystem().createDirectory(finalDestPath, createParents = true)
                 if (!result.success) {
                     return ToolResult(
                         toolName = toolName,
@@ -1694,7 +1683,7 @@ open class StandardFileSystemTools(protected val context: Context) {
 
             // 2. 列出源目录内容
             val entries = if (isLinuxEnvironment(sourceEnvironment)) {
-                linuxFileSystem.listDirectory(sourcePath)?.map { fileInfo ->
+                getLinuxFileSystem().listDirectory(sourcePath)?.map { fileInfo ->
                     Pair(fileInfo.name, fileInfo.isDirectory)
                 } ?: emptyList()
             } else {

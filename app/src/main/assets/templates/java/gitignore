@@ -3,12 +3,12 @@
 target/
 out/
 build/
+bin/
 
 # Log files
 *.log
 
-# Package Files
-*.jar
+# Package Files (excluding gradle wrapper jar)
 *.war
 *.nar
 *.ear
@@ -23,9 +23,8 @@ mvnw.cmd
 
 # Gradle
 .gradle/
-gradle/
-gradlew
-gradlew.bat
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 
 # IDE
 .idea/

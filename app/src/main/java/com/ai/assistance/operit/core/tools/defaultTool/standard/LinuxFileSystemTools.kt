@@ -22,6 +22,9 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         private const val TAG = "LinuxFileSystemTools"
     }
 
+    // 动态获取文件系统（支持SSH切换）
+    private val fs get() = getLinuxFileSystem()
+
     /** 列出Linux目录中的文件 */
     override suspend fun listFiles(tool: AITool): ToolResult {
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
@@ -37,7 +40,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            if (!linuxFileSystem.exists(path)) {
+            if (!fs.exists(path)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -46,7 +49,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            if (!linuxFileSystem.isDirectory(path)) {
+            if (!fs.isDirectory(path)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -55,7 +58,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            val fileInfoList = linuxFileSystem.listDirectory(path)
+            val fileInfoList = fs.listDirectory(path)
             if (fileInfoList == null) {
                 return ToolResult(
                     toolName = tool.name,
@@ -110,7 +113,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         try {
-            if (!linuxFileSystem.exists(path)) {
+            if (!fs.exists(path)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -119,7 +122,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            if (!linuxFileSystem.isFile(path)) {
+            if (!fs.isFile(path)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -143,7 +146,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
 
             // 检查文件是否是文本文件（如果启用了 text_only）
             if (textOnly) {
-                val sample = linuxFileSystem.readFileSample(path, 512)
+                val sample = fs.readFileSample(path, 512)
                 if (sample == null || !FileUtils.isTextLike(sample)) {
                     return ToolResult(
                         toolName = tool.name,
@@ -154,7 +157,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 }
             }
 
-            val content = linuxFileSystem.readFile(path)
+            val content = fs.readFile(path)
             if (content == null) {
                 return ToolResult(
                     toolName = tool.name,
@@ -164,7 +167,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            val fileSize = linuxFileSystem.getFileSize(path)
+            val fileSize = fs.getFileSize(path)
             return ToolResult(
                 toolName = tool.name,
                 success = true,
@@ -201,7 +204,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            val exists = linuxFileSystem.exists(path)
+            val exists = fs.exists(path)
 
             if (!exists) {
                 return ToolResult(
@@ -212,8 +215,8 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            val isDirectory = linuxFileSystem.isDirectory(path)
-            val size = linuxFileSystem.getFileSize(path)
+            val isDirectory = fs.isDirectory(path)
+            val size = fs.getFileSize(path)
 
             return ToolResult(
                 toolName = tool.name,
@@ -257,7 +260,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         try {
-            if (!linuxFileSystem.exists(path)) {
+            if (!fs.exists(path)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -266,7 +269,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            if (!linuxFileSystem.isFile(path)) {
+            if (!fs.isFile(path)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -284,12 +287,12 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             }
 
             // 检查文件大小
-            val fileSize = linuxFileSystem.getFileSize(path)
+            val fileSize = fs.getFileSize(path)
             val maxFileSizeBytes = apiPreferences.getMaxFileSizeBytes()
 
             if (fileSize > maxFileSizeBytes) {
                 // 文件过大，读取限制大小
-                val content = linuxFileSystem.readFileWithLimit(path, maxFileSizeBytes.toInt())
+                val content = fs.readFileWithLimit(path, maxFileSizeBytes.toInt())
                 if (content == null) {
                     return ToolResult(
                         toolName = tool.name,
@@ -342,7 +345,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            if (!linuxFileSystem.exists(path)) {
+            if (!fs.exists(path)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -351,7 +354,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            if (!linuxFileSystem.isFile(path)) {
+            if (!fs.isFile(path)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -361,14 +364,14 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             }
 
             // 获取总行数
-            val totalLines = linuxFileSystem.getLineCount(path)
+            val totalLines = fs.getLineCount(path)
 
             // 计算实际的行号范围（行号从1开始）
             val startLine = maxOf(1, startLineParam).coerceIn(1, maxOf(1, totalLines))
             val endLine = (endLineParam ?: (startLine + 99)).coerceIn(startLine, maxOf(1, totalLines))
 
             val partContent = if (totalLines > 0) {
-                linuxFileSystem.readFileLines(path, startLine, endLine) ?: ""
+                fs.readFileLines(path, startLine, endLine) ?: ""
             } else {
                 ""
             }
@@ -422,7 +425,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            val result = linuxFileSystem.writeFile(path, content, append)
+            val result = fs.writeFile(path, content, append)
 
             if (!result.success) {
                 return ToolResult(
@@ -505,7 +508,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         return try {
             // 解码base64内容
             val bytes = android.util.Base64.decode(base64Content, android.util.Base64.DEFAULT)
-            val result = linuxFileSystem.writeFileBytes(path, bytes)
+            val result = fs.writeFileBytes(path, bytes)
 
             if (!result.success) {
                 return ToolResult(
@@ -571,7 +574,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            if (!linuxFileSystem.exists(path)) {
+            if (!fs.exists(path)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -585,7 +588,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            val result = linuxFileSystem.delete(path, recursive)
+            val result = fs.delete(path, recursive)
 
             if (!result.success) {
                 return ToolResult(
@@ -652,7 +655,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            if (!linuxFileSystem.exists(sourcePath)) {
+            if (!fs.exists(sourcePath)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -666,7 +669,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            val result = linuxFileSystem.move(sourcePath, destPath)
+            val result = fs.move(sourcePath, destPath)
 
             if (!result.success) {
                 return ToolResult(
@@ -734,7 +737,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            val result = linuxFileSystem.copy(sourcePath, destPath, recursive)
+            val result = fs.copy(sourcePath, destPath, recursive)
 
             if (!result.success) {
                 return ToolResult(
@@ -800,7 +803,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            val result = linuxFileSystem.createDirectory(path, createParents)
+            val result = fs.createDirectory(path, createParents)
 
             if (!result.success) {
                 return ToolResult(
@@ -870,7 +873,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            if (!linuxFileSystem.exists(basePath)) {
+            if (!fs.exists(basePath)) {
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -879,7 +882,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 )
             }
 
-            val files = linuxFileSystem.findFiles(
+            val files = fs.findFiles(
                 basePath = basePath,
                 pattern = pattern,
                 maxDepth = -1,
@@ -924,7 +927,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         return try {
-            val fileInfo = linuxFileSystem.getFileInfo(path)
+            val fileInfo = fs.getFileInfo(path)
             if (fileInfo == null) {
                 return ToolResult(
                     toolName = tool.name,
@@ -1033,7 +1036,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         }
 
         // 检查是文件还是目录
-        val isFile = linuxFileSystem.isFile(path)
+        val isFile = fs.isFile(path)
         
         if (isFile) {
             // 文件模式：使用父类的实现（通过读取文件内容）

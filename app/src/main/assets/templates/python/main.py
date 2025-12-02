@@ -12,7 +12,7 @@ def main():
     print("这是一个 Python 项目模板，您可以：")
     print("  ✨ 编写和运行 Python 代码")
     print("  📦 使用 pip 管理依赖")
-    print("  🌐 启动 HTTP 服务器")
+    print("  🐍 创建虚拟环境")
     print("=" * 50)
     
     # 示例代码

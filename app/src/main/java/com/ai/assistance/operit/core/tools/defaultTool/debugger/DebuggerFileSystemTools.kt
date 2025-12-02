@@ -990,22 +990,6 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             )
         }
 
-        // Don't allow deleting system directories
-        val restrictedPaths = listOf("/system", "/proc", "/dev")
-        if (restrictedPaths.any { path.startsWith(it) }) {
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result =
-                            FileOperationData(
-                                    operation = "delete",
-                                    path = path,
-                                    successful = false,
-                                    details = "Deleting system directories is not allowed"
-                            ),
-                    error = "Deleting system directories is not allowed"
-            )
-        }
 
         return try {
             val deleteCommand = if (recursive) "rm -rf '$path'" else "rm -f '$path'"
@@ -1172,22 +1156,6 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             )
         }
 
-        // Don't allow moving system directories
-        val restrictedPaths = listOf("/system", "/data", "/proc", "/dev")
-        if (restrictedPaths.any { sourcePath.startsWith(it) }) {
-            return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result =
-                            FileOperationData(
-                                    operation = "move",
-                                    path = sourcePath,
-                                    successful = false,
-                                    details = "Moving system directories is not allowed"
-                            ),
-                    error = "Moving system directories is not allowed"
-            )
-        }
 
         return try {
             val result = AndroidShellExecutor.executeShellCommand("mv '$sourcePath' '$destPath'")

@@ -758,6 +758,28 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
+    // SSH远程文件系统工具
+    val sshTools = ToolGetter.getSSHRemoteConnectionTools(context)
+
+    // 登录SSH服务器
+    handler.registerTool(
+            name = "ssh_login",
+            descriptionGenerator = { tool ->
+                val host = tool.parameters.find { it.name == "host" }?.value ?: ""
+                val username = tool.parameters.find { it.name == "username" }?.value ?: ""
+                val port = tool.parameters.find { it.name == "port" }?.value ?: "22"
+                "登录SSH服务器: $username@$host:$port"
+            },
+            executor = { tool -> kotlinx.coroutines.runBlocking { sshTools.sshLogin(tool) } }
+    )
+
+    // 退出SSH
+    handler.registerTool(
+            name = "ssh_exit",
+            descriptionGenerator = { _ -> "退出SSH连接" },
+            executor = { tool -> kotlinx.coroutines.runBlocking { sshTools.sshExit(tool) } }
+    )
+
     // 搜索文件
     handler.registerTool(
             name = "find_files",

@@ -180,4 +180,13 @@ object ToolGetter {
     fun getChatManagerTool(context: Context): StandardChatManagerTool {
         return StandardChatManagerTool(context)
     }
+
+    /**
+     * 获取SSH远程连接工具
+     * @param context 应用上下文
+     * @return SSH远程连接工具实现（独立于终端）
+     */
+    fun getSSHRemoteConnectionTools(context: Context): SSHRemoteConnectionTools {
+        return SSHRemoteConnectionTools(context)
+    }
 }

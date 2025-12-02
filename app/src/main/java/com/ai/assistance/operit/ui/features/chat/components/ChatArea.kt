@@ -72,14 +72,30 @@ import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleS
 import com.ai.assistance.operit.util.WaifuMessageProcessor
 
 /**
- * 清理消息中的XML标签，保留纯文本内容和换行格式
+ * 清理消息中的XML标签，保留Markdown格式和纯文本内容
  */
 private fun cleanXmlTags(content: String): String {
     return content
-        .replace(Regex("<[^>]*>"), "") // 移除所有XML/HTML标签
-        .replace(Regex("[ \t]+"), " ") // 将多个空格和制表符替换为单个空格，但保留换行符
-        .replace(Regex("\n+"), "\n") // 将多个连续换行符替换为单个换行符
-        .trim() // 移除首尾空白
+        // 移除状态标签
+        .replace(Regex("<status[^>]*>.*?</status>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<status[^>]*/>"), "")
+        // 移除思考标签（包括 <think> 和 <thinking>）
+        .replace(Regex("<think(?:ing)?[^>]*>.*?</think(?:ing)?>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<think(?:ing)?[^>]*/>"), "")
+        // 移除搜索来源标签
+        .replace(Regex("<search[^>]*>.*?</search>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<search[^>]*/>"), "")
+        // 移除工具标签
+        .replace(Regex("<tool[^>]*>.*?</tool>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<tool[^>]*/>"), "")
+        // 移除工具结果标签
+        .replace(Regex("<tool_result[^>]*>.*?</tool_result>", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("<tool_result[^>]*/>"), "")
+        // 移除emotion标签
+        .replace(Regex("<emotion[^>]*>.*?</emotion>", RegexOption.DOT_MATCHES_ALL), "")
+        // 移除其他常见的XML标签
+        // .replace(Regex("<[^>]*>"), "")
+        .trim()
 }
 
 enum class ChatStyle {

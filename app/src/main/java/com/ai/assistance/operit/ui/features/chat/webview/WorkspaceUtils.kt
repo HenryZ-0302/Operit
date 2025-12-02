@@ -42,6 +42,10 @@ fun createAndGetDefaultWorkspace(context: Context, chatId: String, projectType: 
             copyTemplateFiles(context, webContentDir, "office")
             createProjectConfigIfNeeded(webContentDir, ProjectType.OFFICE)
         }
+        "android" -> {
+            copyTemplateFiles(context, webContentDir, "android")
+            createProjectConfigIfNeeded(webContentDir, ProjectType.ANDROID)
+        }
         else -> {
             copyTemplateFiles(context, webContentDir, "web")
             createProjectConfigIfNeeded(webContentDir, ProjectType.WEB)
@@ -77,7 +81,7 @@ fun ensureWorkspaceDirExists(path: String): File {
 }
 
 private enum class ProjectType {
-    WEB, NODE, TYPESCRIPT, PYTHON, JAVA, GO, OFFICE
+    WEB, NODE, TYPESCRIPT, PYTHON, JAVA, GO, OFFICE, ANDROID
 }
 
 private const val DEFAULT_WEB_PROJECT_CONFIG_JSON = """
@@ -167,9 +171,8 @@ private const val DEFAULT_TYPESCRIPT_PROJECT_CONFIG_JSON = """
     },
     "preview": {
         "type": "terminal",
-        "url": "http://localhost:3000",
-        "showPreviewButton": true,
-        "previewButtonLabel": "浏览器预览"
+        "url": "",
+        "showPreviewButton": false
     },
     "commands": [
         {
@@ -222,7 +225,7 @@ private const val DEFAULT_PYTHON_PROJECT_CONFIG_JSON = """
 {
     "projectType": "python",
     "title": "Python 项目",
-    "description": "支持虚拟环境和 pip 包管理，适用于数据分析和 Web 开发",
+    "description": "支持虚拟环境和 pip 包管理，适用于数据分析和开发",
     "server": {
         "enabled": false,
         "port": 8000,
@@ -230,9 +233,8 @@ private const val DEFAULT_PYTHON_PROJECT_CONFIG_JSON = """
     },
     "preview": {
         "type": "terminal",
-        "url": "http://localhost:8000",
-        "showPreviewButton": true,
-        "previewButtonLabel": "浏览器预览"
+        "url": "",
+        "showPreviewButton": false
     },
     "commands": [
         {
@@ -269,15 +271,6 @@ private const val DEFAULT_PYTHON_PROJECT_CONFIG_JSON = """
             "command": "python main.py",
             "workingDir": ".",
             "shell": true
-        },
-        {
-            "id": "python_server",
-            "label": "启动 HTTP 服务器",
-            "command": "python -m http.server 8000",
-            "workingDir": ".",
-            "shell": true,
-            "usesDedicatedSession": true,
-            "sessionTitle": "Python HTTP Server"
         }
     ],
     "export": {
@@ -290,7 +283,7 @@ private const val DEFAULT_JAVA_PROJECT_CONFIG_JSON = """
 {
     "projectType": "java",
     "title": "Java 项目",
-    "description": "支持 Gradle 和 Maven 构建工具，企业级应用开发",
+    "description": "标准 Gradle 项目结构，支持构建、测试和打包",
     "server": {
         "enabled": false,
         "port": 8080,
@@ -298,29 +291,56 @@ private const val DEFAULT_JAVA_PROJECT_CONFIG_JSON = """
     },
     "preview": {
         "type": "terminal",
-        "url": "http://localhost:8080",
-        "showPreviewButton": true,
-        "previewButtonLabel": "浏览器预览"
+        "url": "",
+        "showPreviewButton": false
     },
     "commands": [
         {
+            "id": "gradle_init",
+            "label": "初始化 Gradle Wrapper",
+            "command": "gradle wrapper --gradle-version 8.5",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
             "id": "gradle_build",
-            "label": "gradle build",
-            "command": "gradle build",
+            "label": "构建项目",
+            "command": "./gradlew build || gradle build",
             "workingDir": ".",
             "shell": true
         },
         {
             "id": "gradle_run",
-            "label": "gradle run",
-            "command": "gradle run",
+            "label": "运行程序",
+            "command": "./gradlew run || gradle run",
             "workingDir": ".",
             "shell": true
         },
         {
-            "id": "mvn_clean",
-            "label": "mvn clean install",
-            "command": "mvn clean install",
+            "id": "gradle_test",
+            "label": "运行测试",
+            "command": "./gradlew test || gradle test",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_jar",
+            "label": "打包 JAR",
+            "command": "./gradlew jar || gradle jar",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_clean",
+            "label": "清理构建",
+            "command": "./gradlew clean || gradle clean",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_tasks",
+            "label": "查看所有任务",
+            "command": "./gradlew tasks || gradle tasks",
             "workingDir": ".",
             "shell": true
         }
@@ -343,9 +363,8 @@ private const val DEFAULT_GO_PROJECT_CONFIG_JSON = """
     },
     "preview": {
         "type": "terminal",
-        "url": "http://localhost:8080",
-        "showPreviewButton": true,
-        "previewButtonLabel": "浏览器预览"
+        "url": "",
+        "showPreviewButton": false
     },
     "commands": [
         {
@@ -400,6 +419,99 @@ private const val DEFAULT_OFFICE_PROJECT_CONFIG_JSON = """
         "previewButtonLabel": ""
     },
     "commands": [],
+    "export": {
+        "enabled": false
+    }
+}
+"""
+
+private const val DEFAULT_ANDROID_PROJECT_CONFIG_JSON = """
+{
+    "projectType": "android",
+    "title": "Android 项目",
+    "description": "基于 Jetpack Compose 的现代化 Android 应用开发，使用 Gradle Version Catalog 管理依赖",
+    "server": {
+        "enabled": false,
+        "port": 8080,
+        "autoStart": false
+    },
+    "preview": {
+        "type": "terminal",
+        "url": "",
+        "showPreviewButton": false
+    },
+    "commands": [
+        {
+            "id": "chmod_gradlew",
+            "label": "赋予执行权限",
+            "command": "chmod +x gradlew",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "install_android_sdk",
+            "label": "⬇️ 下载并配置 SDK",
+            "command": "echo '开始安装 Android SDK...'; SDK_DIR=\"${'$'}HOME/android-sdk\"; mkdir -p \"${'$'}SDK_DIR\" && cd \"${'$'}SDK_DIR\" && echo '正在下载 Command Line Tools...' && wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdtools.zip && echo '正在解压...' && unzip -q cmdtools.zip && rm cmdtools.zip && mkdir -p cmdline-tools/latest && mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true && echo '正在安装 SDK 组件 (约500MB)...' && yes | cmdline-tools/latest/bin/sdkmanager --sdk_root=\"${'$'}SDK_DIR\" 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0' && cd - && echo \"sdk.dir=${'$'}SDK_DIR\" > local.properties && echo '✅ Android SDK 安装完成！' && echo \"SDK位置: ${'$'}SDK_DIR\" && echo 'local.properties 已配置'",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_build",
+            "label": "🔨 构建项目",
+            "command": "./gradlew build || gradlew.bat build",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_assemble_debug",
+            "label": "📦 打包 Debug APK",
+            "command": "./gradlew assembleDebug || gradlew.bat assembleDebug",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_assemble_release",
+            "label": "📦 打包 Release APK",
+            "command": "./gradlew assembleRelease || gradlew.bat assembleRelease",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_install_debug",
+            "label": "📱 安装到设备 (Debug)",
+            "command": "./gradlew installDebug || gradlew.bat installDebug",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_test",
+            "label": "🧪 运行单元测试",
+            "command": "./gradlew test || gradlew.bat test",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_clean",
+            "label": "🧹 清理构建",
+            "command": "./gradlew clean || gradlew.bat clean",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_tasks",
+            "label": "📋 查看所有任务",
+            "command": "./gradlew tasks || gradlew.bat tasks",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_dependencies",
+            "label": "📚 查看依赖树",
+            "command": "./gradlew :app:dependencies || gradlew.bat :app:dependencies",
+            "workingDir": ".",
+            "shell": true
+        }
+    ],
     "export": {
         "enabled": false
     }
@@ -498,6 +610,7 @@ private fun createProjectConfigIfNeeded(workspaceDir: File, projectType: Project
             ProjectType.JAVA -> DEFAULT_JAVA_PROJECT_CONFIG_JSON
             ProjectType.GO -> DEFAULT_GO_PROJECT_CONFIG_JSON
             ProjectType.OFFICE -> DEFAULT_OFFICE_PROJECT_CONFIG_JSON
+            ProjectType.ANDROID -> DEFAULT_ANDROID_PROJECT_CONFIG_JSON
         }
 
         try {

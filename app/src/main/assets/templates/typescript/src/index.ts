@@ -1,63 +1,33 @@
-import http from 'http';
-
 // Operit TypeScript 项目
 console.log('🚀 欢迎来到 Operit TypeScript 项目！');
 console.log('='.repeat(50));
+console.log('这是一个 TypeScript 项目模板，您可以：');
+console.log('  ✨ 编写类型安全的 TypeScript 代码');
+console.log('  📦 使用 pnpm 管理依赖');
+console.log('  🔄 使用 tsc watch 实时编译');
+console.log('='.repeat(50));
 
-interface ServerConfig {
-    hostname: string;
-    port: number;
+// 接口示例
+interface User {
+  name: string;
+  age: number;
 }
 
-const config: ServerConfig = {
-    hostname: '127.0.0.1',
-    port: 3000
+// 示例代码
+const greeting: string = "Hello from Operit!";
+console.log(`\n${greeting}\n`);
+
+// 类型安全的对象
+const user: User = {
+  name: "Operit User",
+  age: 25
 };
+console.log(`用户信息: ${user.name}, 年龄: ${user.age}`);
 
-const server = http.createServer((req, res) => {
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <title>Operit TypeScript</title>
-      <style>
-        body {
-          font-family: system-ui, sans-serif;
-          max-width: 800px;
-          margin: 50px auto;
-          padding: 20px;
-          text-align: center;
-        }
-        h1 { color: #3178c6; }
-        .badge {
-          display: inline-block;
-          padding: 5px 10px;
-          margin: 5px;
-          border-radius: 4px;
-          background: #3178c6;
-          color: white;
-          font-size: 14px;
-        }
-      </style>
-    </head>
-    <body>
-      <h1>🔷 TypeScript 服务器运行中</h1>
-      <p>恭喜！您的 Operit TypeScript 项目已成功启动。</p>
-      <div>
-        <span class="badge">TypeScript</span>
-        <span class="badge">pnpm</span>
-        <span class="badge">Node.js</span>
-      </div>
-      <p>服务器运行在 http://${config.hostname}:${config.port}</p>
-    </body>
-    </html>
-  `);
-});
+// 数组示例
+const numbers: number[] = [1, 2, 3, 4, 5];
+const sum: number = numbers.reduce((acc, num) => acc + num, 0);
+console.log(`数组 [${numbers}] 的总和是: ${sum}`);
 
-server.listen(config.port, config.hostname, () => {
-    console.log(`✅ 服务器运行在 http://${config.hostname}:${config.port}/`);
-    console.log('💡 提示：修改 src/index.ts 后运行 pnpm build 重新编译');
-});
+console.log('\n✅ 程序运行成功！');
+console.log('💡 提示：修改 src/index.ts 后运行 pnpm build 重新编译');
