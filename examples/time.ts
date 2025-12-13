@@ -20,48 +20,56 @@
 */
 
 const timePackage = (function () {
-  // 获取当前时间
-  const getCurrentTime = () => {
-    return new Date();
-  };
+  async function get_time(): Promise<any> {
+    const now = new Date();
 
-  // 格式化时间为易读格式
-  const formatReadable = (date = new Date()) => {
-    return date.toLocaleString();
-  };
+    return {
+      timestamp: now.getTime(),
+      iso: now.toISOString(),
+      local: now.toLocaleString(),
+      date: {
+        year: now.getFullYear(),
+        month: now.getMonth() + 1,
+        day: now.getDate(),
+        weekday: now.toLocaleDateString(undefined, { weekday: 'long' })
+      },
+      time: {
+        hours: now.getHours(),
+        minutes: now.getMinutes(),
+        seconds: now.getSeconds()
+      }
+    };
+  }
 
-  // ISO格式
-  const formatISO = (date = new Date()) => {
-    return date.toISOString();
-  };
+  async function format_time(): Promise<any> {
+    const now = new Date();
 
-  // 格式化为YYYY-MM-DD
-  const formatDate = (date = new Date()) => {
-    return date.toISOString().split('T')[0];
-  };
+    const pad = (n: number) => n.toString().padStart(2, '0');
 
-  // 格式化为HH:MM:SS
-  const formatTime = (date = new Date()) => {
-    return date.toTimeString().split(' ')[0];
-  };
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+
+    const time24h = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+
+    const suffix = hours >= 12 ? 'PM' : 'AM';
+    const hour12 = hours % 12 === 0 ? 12 : hours % 12;
+    const time12h = `${pad(hour12)}:${pad(minutes)}:${pad(seconds)} ${suffix}`;
+
+    return {
+      iso: now.toISOString(),
+      date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+      time24h,
+      time12h
+    };
+  }
 
   return {
-    main: async () => {
-      const now = getCurrentTime();
-      return `当前时间: ${formatReadable(now)}`;
-    },
-    getCurrentTime,
-    formatReadable,
-    formatISO,
-    formatDate,
-    formatTime
+    get_time,
+    format_time
   };
 })();
 
 // 逐个导出
-exports.main = timePackage.main;
-exports.getCurrentTime = timePackage.getCurrentTime;
-exports.formatReadable = timePackage.formatReadable;
-exports.formatISO = timePackage.formatISO;
-exports.formatDate = timePackage.formatDate;
-exports.formatTime = timePackage.formatTime; 
+exports.get_time = timePackage.get_time;
+exports.format_time = timePackage.format_time;

@@ -580,9 +580,9 @@ const dailyLife = (function () {
         }
     }
     /**
-     * Use Intent to share a text message via WeChat
-     * @param params - Parameters with message content
-     */
+    * Use Intent to share a text message via WeChat
+    * @param params - Parameters with message content
+    */
     async function wechat_send_message(params) {
         try {
             if (!params.message) {
@@ -592,7 +592,7 @@ const dailyLife = (function () {
             const intent = new Intent("android.intent.action.SEND" /* IntentAction.ACTION_SEND */);
             intent.setType("text/plain");
             intent.putExtra("android.intent.extra.TEXT", params.message);
-            intent.setPackage("com.tencent.mm");
+            intent.setComponent("com.tencent.mm", "com.tencent.mm.ui.tools.ShareImgUI");
             intent.addFlag(268435456 /* IntentFlag.ACTIVITY_NEW_TASK */);
             const result = await intent.start();
             return {
@@ -613,9 +613,9 @@ const dailyLife = (function () {
         }
     }
     /**
-     * Use Intent to share a text message via QQ
-     * @param params - Parameters with message content
-     */
+    * Use Intent to share a text message via QQ
+    * @param params - Parameters with message content
+    */
     async function qq_send_message(params) {
         try {
             if (!params.message) {
@@ -625,7 +625,7 @@ const dailyLife = (function () {
             const intent = new Intent("android.intent.action.SEND" /* IntentAction.ACTION_SEND */);
             intent.setType("text/plain");
             intent.putExtra("android.intent.extra.TEXT", params.message);
-            intent.setPackage("com.tencent.mobileqq");
+            intent.setComponent("com.tencent.mobileqq", "com.tencent.mobileqq.activity.JumpActivity");
             intent.addFlag(268435456 /* IntentFlag.ACTIVITY_NEW_TASK */);
             const result = await intent.start();
             return {
@@ -646,9 +646,9 @@ const dailyLife = (function () {
         }
     }
     /**
-     * Use Intent to open WeChat Moments publish screen with text prefilled
-     * @param params - Parameters with message content
-     */
+    * Use Intent to open WeChat Moments publish screen with text prefilled
+    * @param params - Parameters with message content
+    */
     async function wechat_post_moments(params) {
         try {
             if (!params.message) {
@@ -686,6 +686,7 @@ const dailyLife = (function () {
     async function make_phone_call(params) {
         try {
             if (!params.phone_number) {
+                throw new Error("Phone number is required");
                 throw new Error("Phone number is required");
             }
             console.log(`拨打电话: ${params.phone_number}`);
@@ -1226,7 +1227,6 @@ const dailyLife = (function () {
 //逐个导出
 exports.get_current_date = dailyLife.get_current_date;
 exports.device_status = dailyLife.device_status;
-exports.search_weather = dailyLife.search_weather;
 exports.set_reminder = dailyLife.set_reminder;
 exports.set_alarm = dailyLife.set_alarm;
 exports.send_message = dailyLife.send_message;

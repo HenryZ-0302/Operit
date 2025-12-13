@@ -2,12 +2,14 @@
 {
     "name": "tavily",
     "description": "使用Tavily API执行高级网络搜索、内容提取、网站爬取和站点地图生成。",
+    "env": [
+        "TAVILY_API_KEY"
+    ],
     "tools": [
         {
             "name": "search",
             "description": "一个强大的网络搜索工具，使用Tavily的AI搜索引擎提供全面、实时的结果。",
             "parameters": [
-                { "name": "api_key", "description": "您的Tavily API密钥。", "type": "string", "required": true },
                 { "name": "query", "description": "搜索查询", "type": "string", "required": true },
                 { "name": "search_depth", "description": "搜索深度，可以是 'basic' 或 'advanced'", "type": "string", "required": false, "default": "basic" },
                 { "name": "topic", "description": "搜索类别，可以是 'general' 或 'news'", "type": "string", "required": false, "default": "general" },
@@ -23,7 +25,6 @@
             "name": "extract",
             "description": "一个强大的网页内容提取工具，从指定的URL检索和处理原始内容。",
             "parameters": [
-                { "name": "api_key", "description": "您的Tavily API密钥。", "type": "string", "required": true },
                 { "name": "urls", "description": "要提取内容的URL列表", "type": "array", "required": true },
                 { "name": "extract_depth", "description": "提取深度 - 'basic' 或 'advanced'", "type": "string", "required": false, "default": "basic" },
                 { "name": "include_images", "description": "在响应中包含从URL中提取的图像列表", "type": "boolean", "required": false, "default": false },
@@ -34,7 +35,6 @@
             "name": "crawl",
             "description": "一个强大的网络爬虫，从指定的基URL开始结构化地爬取网站。",
             "parameters": [
-                { "name": "api_key", "description": "您的Tavily API密钥。", "type": "string", "required": true },
                 { "name": "url", "description": "开始爬取的根URL", "type": "string", "required": true },
                 { "name": "max_depth", "description": "爬取的最大深度", "type": "number", "required": false, "default": 1 },
                 { "name": "max_breadth", "description": "每层要跟随的最大链接数", "type": "number", "required": false, "default": 20 },
@@ -48,7 +48,6 @@
             "name": "map",
             "description": "一个强大的网站地图工具，创建网站URL的结构化地图。",
             "parameters": [
-                { "name": "api_key", "description": "您的Tavily API密钥。", "type": "string", "required": true },
                 { "name": "url", "description": "开始映射的根URL", "type": "string", "required": true },
                 { "name": "max_depth", "description": "映射的最大深度", "type": "number", "required": false, "default": 1 },
                 { "name": "max_breadth", "description": "每层要跟随的最大链接数", "type": "number", "required": false, "default": 20 },
@@ -67,13 +66,11 @@ const tavily = (function () {
         map: 'https://api.tavily.com/map'
     };
     async function makeTavilyRequest(endpoint, params) {
-        if (!params.api_key) {
-            throw new Error("Tavily API key is required.");
+        const apiKey = getEnv("TAVILY_API_KEY");
+        if (!apiKey) {
+            throw new Error("Tavily API key is not set. Please configure it in the environment variables.");
         }
-        const apiKey = params.api_key;
-        // Do not send the API key in the request body to the Tavily API
         const requestBody = Object.assign({}, params);
-        delete requestBody.api_key;
         const headers = {
             'accept': 'application/json',
             'content-type': 'application/json',

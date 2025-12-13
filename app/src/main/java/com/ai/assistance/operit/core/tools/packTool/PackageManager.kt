@@ -11,6 +11,7 @@ import com.ai.assistance.operit.core.tools.mcp.MCPManager
 import com.ai.assistance.operit.core.tools.mcp.MCPPackage
 import com.ai.assistance.operit.core.tools.mcp.MCPServerConfig
 import com.ai.assistance.operit.core.tools.mcp.MCPToolExecutor
+import com.ai.assistance.operit.data.preferences.EnvPreferences
 import com.ai.assistance.operit.data.model.PackageToolPromptCategory
 import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.data.model.ToolResult
@@ -56,6 +57,9 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
 
     // JavaScript engine for executing JS package code
     private val jsEngine by lazy { JsEngine(context) }
+
+    // Environment preferences for package-level env variables
+    private val envPreferences by lazy { EnvPreferences.getInstance(context) }
 
     // MCP Manager instance (lazy loading)
     private val mcpManager by lazy { MCPManager.getInstance(context) }
@@ -375,6 +379,42 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             val toolPackage =
                     getPackageTools(packageName)
                             ?: return "Failed to load package data for: $packageName"
+
+            // Validate required environment variables, if any
+            if (toolPackage.env.isNotEmpty()) {
+                val missingEnv =
+                        toolPackage.env
+                                .map { it.trim() }
+                                .filter { it.isNotEmpty() }
+                                .filter { envName ->
+                                    val value = try {
+                                        envPreferences.getEnv(envName)
+                                    } catch (e: Exception) {
+                                        AppLogger.e(
+                                                TAG,
+                                                "Error reading environment variable '$envName' for package '$packageName'",
+                                                e
+                                        )
+                                        null
+                                    }
+                                    value.isNullOrEmpty()
+                                }
+
+                if (missingEnv.isNotEmpty()) {
+                    val msg =
+                            buildString {
+                                append("Package '")
+                                append(packageName)
+                                append("' requires environment variable")
+                                if (missingEnv.size > 1) append("s")
+                                append(": ")
+                                append(missingEnv.joinToString(", "))
+                                append(". Please set them before using this package.")
+                            }
+                    AppLogger.w(TAG, msg)
+                    return msg
+                }
+            }
 
             // Register the package tools with AIToolHandler
             registerPackageTools(toolPackage)

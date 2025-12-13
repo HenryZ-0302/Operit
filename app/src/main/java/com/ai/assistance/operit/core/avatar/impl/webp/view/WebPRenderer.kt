@@ -10,13 +10,10 @@ import android.widget.ImageView
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.platform.LocalContext
@@ -67,62 +64,57 @@ fun WebPRenderer(
         mutableStateOf<android.graphics.drawable.Drawable?>(null)
     }
 
-    // Decode animation when path changes - use LaunchedEffect for async operations
-    LaunchedEffect(animationPath) {
+    // Decode animation when path changes
+    DisposableEffect(animationPath) {
         if (animationPath.isBlank()) {
             drawableState.value = null
-            return@LaunchedEffect
+            return@DisposableEffect onDispose { }
         }
 
         val assets = context.assets
         AppLogger.d("WebPRenderer", "Decode start: $animationPath")
         
         try {
-            val drawable = withContext(Dispatchers.IO) {
-                if (Build.VERSION.SDK_INT >= 28) {
-                    // Always decode from bytes to support compressed assets in APK
-                    val inputStream = if (File(animationPath).isAbsolute) {
-                        FileInputStream(animationPath)
-                    } else {
-                        assets.open(animationPath)
-                    }
-                    val bytes = inputStream.use { it.readBytes() }
-                    val src = ImageDecoder.createSource(ByteBuffer.wrap(bytes))
-                    ImageDecoder.decodeDrawable(src)
+            if (Build.VERSION.SDK_INT >= 28) {
+                // Always decode from bytes to support compressed assets in APK
+                val inputStream = if (File(animationPath).isAbsolute) {
+                    FileInputStream(animationPath)
                 } else {
-                    // API < 28: show first frame as static
-                    val inputStream = if (File(animationPath).isAbsolute) {
-                        FileInputStream(animationPath)
+                    assets.open(animationPath)
+                }
+                val bytes = inputStream.use { it.readBytes() }
+                val src = ImageDecoder.createSource(ByteBuffer.wrap(bytes))
+                val drawable = ImageDecoder.decodeDrawable(src)
+                drawableState.value = drawable
+                
+                if (drawable is AnimatedImageDrawable) {
+                    drawable.repeatCount = if (model.shouldLoop) {
+                        AnimatedImageDrawable.REPEAT_INFINITE
                     } else {
-                        assets.open(animationPath)
+                        model.repeatCount
                     }
-                    val bmp = inputStream.use { BitmapFactory.decodeStream(it) }
-                    BitmapDrawable(context.resources, bmp)
-                }
-            }
-            
-            drawableState.value = drawable
-            
-            if (drawable is AnimatedImageDrawable) {
-                drawable.repeatCount = if (model.shouldLoop) {
-                    AnimatedImageDrawable.REPEAT_INFINITE
+                    drawable.start()
+                    AppLogger.d("WebPRenderer", "Animated start: $animationPath")
                 } else {
-                    model.repeatCount
+                    AppLogger.d("WebPRenderer", "Decoded non-animated drawable for: $animationPath")
                 }
-                drawable.start()
-                AppLogger.d("WebPRenderer", "Animated start: $animationPath")
             } else {
-                AppLogger.d("WebPRenderer", "Decoded non-animated drawable for: $animationPath")
+                // API < 28: show first frame as static
+                val inputStream = if (File(animationPath).isAbsolute) {
+                    FileInputStream(animationPath)
+                } else {
+                    assets.open(animationPath)
+                }
+                val bmp = inputStream.use { BitmapFactory.decodeStream(it) }
+                drawableState.value = BitmapDrawable(context.resources, bmp)
+                AppLogger.d("WebPRenderer", "Static fallback (API<28): $animationPath")
             }
         } catch (e: Exception) {
             AppLogger.e("WebPRenderer", "Decode error for $animationPath: ${e.message}", e)
             drawableState.value = null
             onError("Failed to load animation: ${e.message}")
         }
-    }
 
-    // Cleanup on dispose
-    DisposableEffect(animationPath) {
         onDispose {
             try {
                 val d = drawableState.value

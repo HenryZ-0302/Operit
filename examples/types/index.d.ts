@@ -150,6 +150,9 @@ declare global {
     // Send intermediate result function
     function sendIntermediateResult<T>(result: T): void;
 
+    // Get environment variable function
+    function getEnv(key: string): string | undefined;
+
     // Utility objects
     const _: {
         isEmpty(value: any): boolean;

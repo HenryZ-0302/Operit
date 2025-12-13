@@ -40,6 +40,8 @@ import com.ai.assistance.operit.core.tools.PackageTool
 import com.ai.assistance.operit.core.tools.ToolPackage
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.mcp.MCPRepository
+import com.ai.assistance.operit.data.preferences.EnvPreferences
+import com.ai.assistance.operit.ui.features.packages.screens.mcp.components.MCPEnvironmentVariablesDialog
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.ui.features.packages.components.EmptyState
 import com.ai.assistance.operit.ui.features.packages.components.PackageTab
@@ -65,6 +67,8 @@ fun PackageManagerScreen(
     val scope = rememberCoroutineScope()
     val mcpRepository = remember { MCPRepository(context) }
 
+    val envPreferences = remember { EnvPreferences.getInstance(context) }
+
     // State for available and imported packages
     val availablePackages = remember { mutableStateOf<Map<String, ToolPackage>>(emptyMap()) }
     val importedPackages = remember { mutableStateOf<List<String>>(emptyList()) }
@@ -85,6 +89,24 @@ fun PackageManagerScreen(
 
     // Tab selection state
     var selectedTab by rememberSaveable { mutableStateOf(PackageTab.PACKAGES) }
+
+    // Environment variables dialog state
+    var showEnvDialog by remember { mutableStateOf(false) }
+    var envVariables by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
+    val requiredEnvKeys by remember {
+        derivedStateOf {
+            val packagesMap = availablePackages.value
+
+            packagesMap.values
+                .flatMap { it.env }
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+                .toList()
+                .sorted()
+        }
+    }
 
     // File picker launcher for importing external packages
     val packageFilePicker =
@@ -109,14 +131,15 @@ fun PackageManagerScreen(
                             // 根据当前选中的标签页处理不同类型的文件
                             when (selectedTab) {
                                 PackageTab.PACKAGES -> {
-                            if (!fileName!!.endsWith(".js")) {
+                            val fileNameNonNull = fileName ?: return@launch
+                            if (!fileNameNonNull.endsWith(".js")) {
                                         snackbarHostState.showSnackbar(message = context.getString(R.string.package_js_only))
                                 return@launch
                             }
 
                             // Copy the file to a temporary location
                             val inputStream = context.contentResolver.openInputStream(uri)
-                            val tempFile = File(context.cacheDir, fileName)
+                            val tempFile = File(context.cacheDir, fileNameNonNull)
 
                             inputStream?.use { input ->
                                 tempFile.outputStream().use { output -> input.copyTo(output) }
@@ -203,24 +226,48 @@ fun PackageManagerScreen(
             },
             floatingActionButton = {
                 if (selectedTab == PackageTab.PACKAGES) { // || selectedTab == PackageTab.AUTOMATION_CONFIGS) {
-                    FloatingActionButton(
-                            onClick = { packageFilePicker.launch("*/*") },
-                            containerColor = MaterialTheme.colorScheme.primaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier =
-                                    Modifier.shadow(
-                                            elevation = 6.dp,
-                                            shape = FloatingActionButtonDefaults.shape
-                                    )
-                    ) { 
-                        Icon(
-                            imageVector = Icons.Rounded.Add, 
-                            contentDescription = when (selectedTab) {
-                                PackageTab.PACKAGES -> context.getString(R.string.import_external_package)
-                                // PackageTab.AUTOMATION_CONFIGS -> "导入自动化配置"
-                                else -> context.getString(R.string.import_action)
-                            }
-                        ) 
+                    Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalAlignment = Alignment.End
+                    ) {
+                        // Environment variables management button
+                        SmallFloatingActionButton(
+                                onClick = {
+                                    envVariables =
+                                            requiredEnvKeys.associateWith { key ->
+                                                envPreferences.getEnv(key) ?: ""
+                                            }
+                                    showEnvDialog = true
+                                },
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        ) {
+                            Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "管理环境变量"
+                            )
+                        }
+
+                        // Existing import package button
+                        FloatingActionButton(
+                                onClick = { packageFilePicker.launch("*/*") },
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier =
+                                        Modifier.shadow(
+                                                elevation = 6.dp,
+                                                shape = FloatingActionButtonDefaults.shape
+                                        )
+                        ) {
+                            Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = when (selectedTab) {
+                                        PackageTab.PACKAGES -> context.getString(R.string.import_external_package)
+                                        // PackageTab.AUTOMATION_CONFIGS -> "导入自动化配置"
+                                        else -> context.getString(R.string.import_action)
+                                    }
+                            )
+                        }
                     }
                 }
             }
@@ -235,7 +282,7 @@ fun PackageManagerScreen(
                     selectedTabIndex = selectedTab.ordinal,
                     modifier = Modifier.fillMaxWidth(),
                     divider = {
-                        Divider(
+                        HorizontalDivider(
                                 thickness = 1.dp,
                                 color = MaterialTheme.colorScheme.outlineVariant
                         )
@@ -393,7 +440,8 @@ fun PackageManagerScreen(
 
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
-                                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                                    contentPadding = PaddingValues(bottom = 120.dp) // Add padding to avoid FAB overlap
                                 ) {
                                     groupedPackages.forEach { (category, packagesInCategory) ->
                                         val categoryColor = when (category) {
@@ -524,8 +572,100 @@ fun PackageManagerScreen(
                         }
                 )
             }
+
+            // Environment Variables Dialog for packages
+            if (showEnvDialog) {
+                PackageEnvironmentVariablesDialog(
+                        requiredEnvKeys = requiredEnvKeys,
+                        currentValues = envVariables,
+                        onDismiss = { showEnvDialog = false },
+                        onConfirm = { updated ->
+                            envPreferences.setAllEnv(updated)
+                            envVariables = updated
+                            showEnvDialog = false
+                        }
+                )
+            }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PackageEnvironmentVariablesDialog(
+    requiredEnvKeys: List<String>,
+    currentValues: Map<String, String>,
+    onDismiss: () -> Unit,
+    onConfirm: (Map<String, String>) -> Unit
+) {
+    val editableValuesState =
+        remember(requiredEnvKeys, currentValues) {
+            mutableStateOf(
+                requiredEnvKeys.associateWith { key -> currentValues[key] ?: "" }
+            )
+        }
+    val editableValues by editableValuesState
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "配置环境变量") },
+        text = {
+            if (requiredEnvKeys.isEmpty()) {
+                Text(text = "当前已导入的工具包没有声明需要的环境变量。")
+            } else {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "以下环境变量由当前已导入的工具包声明，请为每一项填写值：",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(requiredEnvKeys) { key ->
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = key,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                OutlinedTextField(
+                                    value = editableValues[key] ?: "",
+                                    onValueChange = { newValue ->
+                                        editableValuesState.value =
+                                            editableValuesState.value.toMutableMap().apply {
+                                                this[key] = newValue
+                                            }
+                                    },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(editableValues)
+                }
+            ) {
+                Text(text = "保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "取消")
+            }
+        }
+    )
 }
 
 @Composable

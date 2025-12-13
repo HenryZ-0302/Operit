@@ -1,6 +1,8 @@
 package com.ai.assistance.operit.core.tools.defaultTool.standard
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.core.config.FunctionalPrompts
 import com.ai.assistance.operit.core.tools.AutomationExecutionResult
@@ -15,6 +17,7 @@ import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
+import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.ui.common.displays.UIOperationOverlay
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ImagePoolManager
@@ -24,6 +27,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.delay
 import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -383,25 +387,31 @@ open class StandardUITools(protected val context: Context) {
             while (step < maxSteps && !finished) {
                 step++
 
-                val userMessageBuilder = StringBuilder()
-                userMessageBuilder.appendLine("Task: $intent")
-                userMessageBuilder.appendLine("Step: $step / $maxSteps")
-
-                if (actionLogs.isNotEmpty()) {
-                    userMessageBuilder.appendLine("Previous actions (most recent first):")
-                    actionLogs.asReversed().take(5).forEach { log ->
-                        userMessageBuilder.appendLine("- $log")
-                    }
-                }
-
                 val screenshotLink = captureScreenshotForAgent()
-                if (screenshotLink != null) {
-                    userMessageBuilder.appendLine()
-                    userMessageBuilder.appendLine("[SCREENSHOT] Below is the latest screen image:")
-                    userMessageBuilder.appendLine(screenshotLink)
-                }
 
-                val userMessage = userMessageBuilder.toString().trim()
+                val screenInfo = buildString {
+                    if (screenshotLink != null) {
+                        appendLine("[SCREENSHOT] Below is the latest screen image:")
+                        appendLine(screenshotLink)
+                    } else {
+                        appendLine("No screenshot available for this step.")
+                    }
+                }.trim()
+
+                val userMessage =
+                        if (step == 1) {
+                            buildString {
+                                appendLine(intent)
+                                appendLine()
+                                appendLine(screenInfo)
+                            }.trim()
+                        } else {
+                            buildString {
+                                appendLine("** Screen Info **")
+                                appendLine()
+                                appendLine(screenInfo)
+                            }.trim()
+                        }
 
                 history.add("user" to userMessage)
 
@@ -420,7 +430,6 @@ open class StandardUITools(protected val context: Context) {
 
                 history.add("assistant" to fullResponse)
 
-                val think = extractTagContent(fullResponse, "think") ?: ""
                 val answer = extractTagContent(fullResponse, "answer") ?: fullResponse
 
                 val parsed = parseAgentAction(answer)
@@ -519,22 +528,59 @@ open class StandardUITools(protected val context: Context) {
             }
 
             val timestampFormat = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.getDefault())
-            val fileName = "ui_screenshot_${timestampFormat.format(Date())}.png"
+            val fileName = "ui_screenshot_${timestampFormat.format(Date())}.jpg"
             val file = File(screenshotDir, fileName)
 
-            val command = "screencap -p ${file.absolutePath}"
-            val result = AndroidShellExecutor.executeShellCommand(command)
-            if (!result.success) {
-                AppLogger.w(TAG, "captureScreenshotForAgent: screencap failed: ${result.stderr}")
-                return null
-            }
+            val floatingService = FloatingChatService.getInstance()
+            try {
+                // Temporarily hide the floating status indicator from screenshots
+                floatingService?.setStatusIndicatorAlpha(0f)
+                val command = "screencap -p ${file.absolutePath}"
+                val result = AndroidShellExecutor.executeShellCommand(command)
+                if (!result.success) {
+                    AppLogger.w(TAG, "captureScreenshotForAgent: screencap failed: ${result.stderr}")
+                    return null
+                }
 
-            val imageId = ImagePoolManager.addImage(file.absolutePath)
-            if (imageId == "error") {
-                AppLogger.e(TAG, "captureScreenshotForAgent: failed to register image: ${file.absolutePath}")
-                null
-            } else {
-                "<link type=\"image\" id=\"$imageId\"></link>"
+                try {
+                    val originalBitmap = BitmapFactory.decodeFile(file.absolutePath)
+                    if (originalBitmap != null) {
+                        val width = originalBitmap.width
+                        val height = originalBitmap.height
+                        val maxDimension = 1080
+                        val maxOriginalDim = if (width > height) width else height
+                        val scale = maxOriginalDim.toFloat() / maxDimension.toFloat()
+
+                        val targetBitmap = if (scale > 1f) {
+                            val newWidth = (width / scale).toInt().coerceAtLeast(1)
+                            val newHeight = (height / scale).toInt().coerceAtLeast(1)
+                            Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, true)
+                        } else {
+                            originalBitmap
+                        }
+
+                        FileOutputStream(file).use { out ->
+                            targetBitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
+                        }
+
+                        if (targetBitmap !== originalBitmap) {
+                            originalBitmap.recycle()
+                        }
+                        targetBitmap.recycle()
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "captureScreenshotForAgent: downscale/compress failed: ${file.absolutePath}", e)
+                }
+
+                val imageId = ImagePoolManager.addImage(file.absolutePath)
+                if (imageId == "error") {
+                    AppLogger.e(TAG, "captureScreenshotForAgent: failed to register image: ${file.absolutePath}")
+                    null
+                } else {
+                    "<link type=\"image\" id=\"$imageId\"></link>"
+                }
+            } finally {
+                floatingService?.setStatusIndicatorAlpha(1f)
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "captureScreenshotForAgent failed", e)
@@ -743,7 +789,7 @@ open class StandardUITools(protected val context: Context) {
                             )
                     val result = systemTools.listInstalledApps(listTool)
                     if (result.success && result.result is AppListData) {
-                        val apps = (result.result as AppListData).packages
+                        val apps = result.result.packages
                         val preview =
                                 if (apps.isEmpty()) "(no apps found)"
                                 else apps.take(20).joinToString("; ")
@@ -801,19 +847,16 @@ open class StandardUITools(protected val context: Context) {
                         parseRelativePoint(element, screenWidth, screenHeight)
                                 ?: return fail(message = "Invalid element coordinates for Long Press: $element")
                 // 通过起点终点相同且较长duration的滑动来模拟长按
-                val swipeTool =
+                val longPressTool =
                         AITool(
-                                name = "swipe",
+                                name = "long_press",
                                 parameters =
                                         listOf(
-                                                ToolParameter("start_x", x.toString()),
-                                                ToolParameter("start_y", y.toString()),
-                                                ToolParameter("end_x", x.toString()),
-                                                ToolParameter("end_y", y.toString()),
-                                                ToolParameter("duration", "600")
+                                                ToolParameter("x", x.toString()),
+                                                ToolParameter("y", y.toString())
                                         )
                         )
-                val result = swipe(swipeTool)
+                val result = longPress(longPressTool)
                 if (result.success) ok() else fail(message = result.error ?: "Long press failed at ($x,$y)")
             }
             "Wait" -> {

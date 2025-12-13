@@ -276,6 +276,7 @@ METADATA
     "name": "Automatic_bilibili_assistant",
     "description": "高级B站智能助手，通过UI自动化技术实现B站应用交互...",
     "category": "UI_AUTOMATION",
+    "env": ["BILIBILI_SESSDATA"],
     "tools": [
         {
             "name": "search_video",
@@ -299,6 +300,7 @@ METADATA
 -   `name`: 脚本的唯一标识符。
 -   `description`: 对脚本功能的详细描述。
 -   `category`: 脚本分类，例如 `UI_AUTOMATION`, `NETWORK`, `DAILY_LIFE`。
+-   `env`: （可选）字符串数组，声明该脚本/包运行时依赖的环境变量名称，例如各类 API Key。应用会根据这里列出的键在“环境配置”界面中展示对应的输入项，并在激活包前校验这些变量是否已经配置。
 -   `tools`: 一个数组，定义了该脚本暴露给外部调用的所有工具（函数）。
     -   `name`: 工具的函数名。
     -   `description`: 工具功能的描述。

@@ -23,6 +23,7 @@ import org.json.JSONObject
 import java.security.MessageDigest
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
+import com.ai.assistance.operit.data.preferences.EnvPreferences
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import android.graphics.Bitmap
@@ -412,6 +413,26 @@ class JsEngine(private val context: Context) {
                         reject(error);
                     }
                 });
+            }
+
+            // 环境变量访问助手
+            function getEnv(key) {
+                try {
+                    if (typeof NativeInterface !== 'undefined' && NativeInterface.getEnv) {
+                        var name = String(key || "").trim();
+                        if (!name) {
+                            return undefined;
+                        }
+                        var value = NativeInterface.getEnv(name);
+                        if (value === null || value === undefined || value === "") {
+                            return undefined;
+                        }
+                        return String(value);
+                    }
+                } catch (e) {
+                    console.error("getEnv error:", e);
+                }
+                return undefined;
             }
             
             // 加载工具调用的便捷方法
@@ -959,6 +980,21 @@ class JsEngine(private val context: Context) {
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Native decompress operation failed: ${e.message}", e)
                 "{\"nativeError\":\"${e.message?.replace("\"", "'")}\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun getEnv(key: String): String? {
+            return try {
+                val name = key.trim()
+                if (name.isEmpty()) {
+                    ""
+                } else {
+                    EnvPreferences.getInstance(context).getEnv(name) ?: ""
+                }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error reading environment variable from JS: $key", e)
+                ""
             }
         }
 

@@ -32,6 +32,7 @@ import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.services.floating.FloatingWindowCallback
 import com.ai.assistance.operit.services.floating.FloatingWindowManager
 import com.ai.assistance.operit.services.floating.FloatingWindowState
+import com.ai.assistance.operit.services.floating.StatusIndicatorStyle
 import com.ai.assistance.operit.ui.floating.FloatingMode
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
@@ -46,6 +47,8 @@ class FloatingChatService : Service(), FloatingWindowCallback {
 
     private val NOTIFICATION_ID = 1001
     private val CHANNEL_ID = "floating_chat_channel"
+
+    private val PREF_KEY_STATUS_INDICATOR_STYLE = "status_indicator_style"
 
     lateinit var windowState: FloatingWindowState
     private lateinit var windowManager: FloatingWindowManager
@@ -71,6 +74,13 @@ class FloatingChatService : Service(), FloatingWindowCallback {
     private val colorScheme = mutableStateOf<ColorScheme?>(null)
     private val typography = mutableStateOf<Typography?>(null)
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    companion object {
+        @Volatile
+        private var instance: FloatingChatService? = null
+
+        fun getInstance(): FloatingChatService? = instance
+    }
 
     inner class LocalBinder : Binder() {
         private var closeCallback: (() -> Unit)? = null
@@ -129,6 +139,8 @@ class FloatingChatService : Service(), FloatingWindowCallback {
     override fun onCreate() {
         super.onCreate()
         AppLogger.d(TAG, "onCreate")
+
+        instance = this
 
         Thread.setDefaultUncaughtExceptionHandler(customExceptionHandler)
 
@@ -310,7 +322,12 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             }
 
             if (intent?.hasExtra("CHAT_MESSAGES") == true) {
-                val messagesArray = intent.getParcelableArrayExtra("CHAT_MESSAGES")
+                @Suppress("DEPRECATION")
+                val messagesArray = if (Build.VERSION.SDK_INT >= 33) { // Build.VERSION_CODES.TIRAMISU
+                    intent.getParcelableArrayExtra("CHAT_MESSAGES", ChatMessage::class.java)
+                } else {
+                    intent.getParcelableArrayExtra("CHAT_MESSAGES")
+                }
                 if (messagesArray != null) {
                     val messages = mutableListOf<ChatMessage>()
                     messagesArray.forEach { if (it is ChatMessage) messages.add(it) }
@@ -443,6 +460,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error in onDestroy", e)
         }
+        instance = null
     }
 
     override fun onClose() {
@@ -520,6 +538,22 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         windowState.saveState()
     }
 
+    override fun getStatusIndicatorStyle(): StatusIndicatorStyle {
+        val defaultStyleName = StatusIndicatorStyle.FULLSCREEN_RAINBOW.name
+        val stored = prefs.getString(PREF_KEY_STATUS_INDICATOR_STYLE, defaultStyleName)
+        return try {
+            StatusIndicatorStyle.valueOf(stored ?: defaultStyleName)
+        } catch (e: IllegalArgumentException) {
+            AppLogger.e(TAG, "Invalid status indicator style in prefs: $stored, fallback to default", e)
+            StatusIndicatorStyle.FULLSCREEN_RAINBOW
+        }
+    }
+
+    fun setStatusIndicatorStyle(style: StatusIndicatorStyle) {
+        prefs.edit().putString(PREF_KEY_STATUS_INDICATOR_STYLE, style.name).apply()
+        AppLogger.d(TAG, "Status indicator style set to: $style")
+    }
+
     /**
      * 获取悬浮窗的ComposeView实例，用于申请输入法焦点
      * @return ComposeView? 当前悬浮窗的ComposeView实例，如果未初始化则返回null
@@ -543,6 +577,12 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             AppLogger.d(TAG, "Window interaction set to: $enabled")
         } else {
             AppLogger.w(TAG, "WindowManager not initialized, cannot set interaction.")
+        }
+    }
+
+    fun setStatusIndicatorAlpha(alpha: Float) {
+        if (::windowManager.isInitialized) {
+            windowManager.setStatusIndicatorAlpha(alpha)
         }
     }
 
