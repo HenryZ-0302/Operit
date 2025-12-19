@@ -61,7 +61,7 @@ if errorlevel 1 (
 )
 
 echo [4/4] Shower server 已在设备后台尝试启动（若无错误信息）。
-echo 现在可以从上位机连接 ws://<device>:8765 ，发送例如:
+echo 现在可以从上位机连接 ws://<device>:8986 ，发送例如:
 
 echo   CREATE_DISPLAY 1080 1920 320
 

@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
@@ -344,6 +347,9 @@ fun ModelApiSettingsSection(
                     )
                 }
 
+                val apiKeyInteractionSource = remember { MutableInteractionSource() }
+                val isApiKeyFocused by apiKeyInteractionSource.collectIsFocusedAsState()
+
                 SettingsTextField(
                         title = stringResource(R.string.api_key),
                         subtitle =
@@ -351,15 +357,17 @@ fun ModelApiSettingsSection(
                                         stringResource(R.string.api_key_placeholder_default)
                                 else
                                         stringResource(R.string.api_key_placeholder_custom),
-                     value = if (isUsingDefaultApiKey) "" else apiKeyInput,
-                    onValueChange = {
-                        val filteredInput = it.replace("\n", "").replace("\r", "").replace(" ", "")
-                        apiKeyInput = filteredInput
+                        value = if (isUsingDefaultApiKey) "" else apiKeyInput,
+                        onValueChange = {
+                            val filteredInput = it.replace("\n", "").replace("\r", "").replace(" ", "")
+                            apiKeyInput = filteredInput
                         },
                         keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Text,
                                 imeAction = ImeAction.Next
-                        )
+                        ),
+                        visualTransformation = if (isApiKeyFocused || apiKeyInput.isEmpty()) VisualTransformation.None else ApiKeyVisualTransformation(),
+                        interactionSource = apiKeyInteractionSource
                 )
             }
 
@@ -947,12 +955,16 @@ internal fun SettingsTextField(
         enabled: Boolean = true,
         singleLine: Boolean = true,
         keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+        keyboardActions: KeyboardActions = KeyboardActions.Default,
+        visualTransformation: VisualTransformation = VisualTransformation.None,
+        interactionSource: MutableInteractionSource? = null,
         valueFilter: ((String) -> String)? = null,
         trailingContent: @Composable (() -> Unit)? = null,
         unitText: String? = null
 ) {
     val focusManager = LocalFocusManager.current
     val backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+    val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
 
     Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -994,6 +1006,9 @@ internal fun SettingsTextField(
                             singleLine = singleLine,
                             enabled = enabled,
                             keyboardOptions = keyboardOptions,
+                            keyboardActions = keyboardActions,
+                            visualTransformation = visualTransformation,
+                            interactionSource = resolvedInteractionSource,
                             textStyle =
                                     TextStyle(
                                             color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1028,11 +1043,7 @@ internal fun SettingsTextField(
                                         )
                                     }
                                 }
-                            },
-                            keyboardActions =
-                                    KeyboardActions(
-                                            onAny = { focusManager.clearFocus() }
-                                    )
+                            }
                     )
                 }
                 trailingContent?.invoke()

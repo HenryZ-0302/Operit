@@ -13,9 +13,12 @@ import com.ai.assistance.operit.core.tools.AppListData
 import com.ai.assistance.operit.core.tools.defaultTool.ToolGetter
 import com.ai.assistance.operit.core.tools.defaultTool.standard.StandardUITools
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
+import com.ai.assistance.operit.core.tools.system.ShizukuAuthorizer
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
+import com.ai.assistance.operit.data.preferences.AndroidPermissionPreferences
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.androidPermissionPreferences
 import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.ui.common.displays.UIAutomationProgressOverlay
@@ -540,11 +543,27 @@ class ActionHandler(
         AppLogger.d("ActionHandler", "resolveShowerUsageContext: fetching preferred permission level")
         val level = androidPermissionPreferences.getPreferredPermissionLevel() ?: AndroidPermissionLevel.STANDARD
         AppLogger.d("ActionHandler", "resolveShowerUsageContext: level=$level")
-        val isAdbOrHigher = when (level) {
+        var isAdbOrHigher = when (level) {
             AndroidPermissionLevel.DEBUGGER,
             AndroidPermissionLevel.ADMIN,
             AndroidPermissionLevel.ROOT -> true
             else -> false
+        }
+
+        if (isAdbOrHigher) {
+            val experimentalEnabled = try {
+                DisplayPreferencesManager.getInstance(context).isExperimentalVirtualDisplayEnabled()
+            } catch (e: Exception) {
+                AppLogger.e("ActionHandler", "Error reading experimental virtual display flag", e)
+                true
+            }
+            if (!experimentalEnabled) {
+                AppLogger.d(
+                    "ActionHandler",
+                    "resolveShowerUsageContext: experimental virtual display disabled, not using Shower"
+                )
+                isAdbOrHigher = false
+            }
         }
         val showerId = try {
             ShowerController.getDisplayId()
@@ -653,8 +672,13 @@ class ActionHandler(
 
     private fun saveCompressedScreenshotFromBitmap(bitmap: Bitmap): Pair<String?, Pair<Int, Int>?> {
         return try {
-            val width = bitmap.width
-            val height = bitmap.height
+            val originalWidth = bitmap.width
+            val originalHeight = bitmap.height
+
+            val prefs = DisplayPreferencesManager.getInstance(context)
+            val format = prefs.getScreenshotFormat().uppercase(Locale.getDefault())
+            val quality = prefs.getScreenshotQuality().coerceIn(50, 100)
+            val scalePercent = prefs.getScreenshotScalePercent().coerceIn(50, 100)
 
             val screenshotDir = File("/sdcard/Download/Operit/cleanOnExit")
             if (!screenshotDir.exists()) {
@@ -662,13 +686,33 @@ class ActionHandler(
             }
 
             val shortName = System.currentTimeMillis().toString().takeLast(4)
-            val file = File(screenshotDir, "$shortName.jpg")
+            val (compressFormat, fileExt, effectiveQuality) = when (format) {
+                "JPG", "JPEG" -> Triple(Bitmap.CompressFormat.JPEG, "jpg", quality)
+                else -> Triple(Bitmap.CompressFormat.PNG, "png", 100)
+            }
 
-            FileOutputStream(file).use { outputStream ->
-                val ok = bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
-                if (!ok) {
-                    AppLogger.e("ActionHandler", "Shower screenshot: JPEG compression failed for ${file.absolutePath}")
-                    return Pair(null, null)
+            val scaleFactor = scalePercent / 100.0
+            val bitmapForSave = if (scaleFactor in 0.0..0.999) {
+                val newWidth = (originalWidth * scaleFactor).toInt().coerceAtLeast(1)
+                val newHeight = (originalHeight * scaleFactor).toInt().coerceAtLeast(1)
+                Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+            } else {
+                bitmap
+            }
+
+            val file = File(screenshotDir, "$shortName.$fileExt")
+
+            try {
+                FileOutputStream(file).use { outputStream ->
+                    val ok = bitmapForSave.compress(compressFormat, effectiveQuality, outputStream)
+                    if (!ok) {
+                        AppLogger.e("ActionHandler", "Shower screenshot: compression failed for ${file.absolutePath}")
+                        return Pair(null, null)
+                    }
+                }
+            } finally {
+                if (bitmapForSave !== bitmap) {
+                    bitmapForSave.recycle()
                 }
             }
 
@@ -677,7 +721,7 @@ class ActionHandler(
                 AppLogger.e("ActionHandler", "Shower screenshot: failed to register image: ${file.absolutePath}")
                 Pair(null, null)
             } else {
-                Pair("<link type=\"image\" id=\"$imageId\"></link>", Pair(width, height))
+                Pair("<link type=\"image\" id=\"$imageId\"></link>", Pair(originalWidth, originalHeight))
             }
         } catch (e: Exception) {
             AppLogger.e("ActionHandler", "Error saving compressed screenshot", e)
@@ -707,6 +751,39 @@ class ActionHandler(
                 val app = fields["app"]?.takeIf { it.isNotBlank() } ?: return fail(message = "No app name specified for Launch")
                 val packageName = resolveAppPackageName(app)
                 try {
+                    val preferredLevel = androidPermissionPreferences.getPreferredPermissionLevel()
+                        ?: AndroidPermissionLevel.STANDARD
+                    val experimentalEnabled = try {
+                        DisplayPreferencesManager.getInstance(context).isExperimentalVirtualDisplayEnabled()
+                    } catch (e: Exception) {
+                        AppLogger.e(
+                            "ActionHandler",
+                            "Error reading experimental virtual display flag for Launch",
+                            e
+                        )
+                        true
+                    }
+
+                    if (preferredLevel == AndroidPermissionLevel.DEBUGGER && experimentalEnabled) {
+                        val isShizukuRunning = ShizukuAuthorizer.isShizukuServiceRunning()
+                        val hasShizukuPermission =
+                            if (isShizukuRunning) ShizukuAuthorizer.hasShizukuPermission() else false
+
+                        if (!isShizukuRunning || !hasShizukuPermission) {
+                            val reason = if (!isShizukuRunning) {
+                                ShizukuAuthorizer.getServiceErrorMessage().ifBlank { "Shizuku 服务未运行" }
+                            } else {
+                                ShizukuAuthorizer.getPermissionErrorMessage().ifBlank { "Shizuku 权限未授予" }
+                            }
+                            return fail(
+                                shouldFinish = true,
+                                message = "当前已选择 ADB 调试权限，但 Shizuku 不可用，无法启用实验性虚拟屏幕。\n" +
+                                    reason +
+                                    "\n\n请先在「权限授予」界面启动并授权 Shizuku，然后重新尝试 Launch 操作。"
+                            )
+                        }
+                    }
+
                     if (showerCtx.isAdbOrHigher) {
                         // High-privilege path: use Shower server + virtual display.
                         val pm = context.packageManager

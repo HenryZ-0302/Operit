@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import android.widget.Toast
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigSummary
@@ -1007,6 +1008,15 @@ private fun ModelSelectorItem(
     onManageClick: () -> Unit,
     onInfoClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val showAutoGlmError: () -> Unit = {
+        Toast.makeText(
+            context,
+            "禁止使用autoglm作为对话主模型。对话模型和ui控制模型是分离的，请选择任意一个别的聪明的大模型。如有疑问，请仔细阅读文档学习软件的模型配置机制。",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
     val currentConfig = configSummaries.find { it.id == currentConfigMapping.configId }
     var expandedConfigId by remember { mutableStateOf<String?>(null) } // 用于记录当前展开的配置的模型列表
 
@@ -1124,8 +1134,13 @@ private fun ModelSelectorItem(
                                         expandedConfigId = if (isExpanded) null else config.id
                                     } else {
                                         // 如果只有一个模型，直接选择
-                                        onSelectModel(config.id, 0)
-                                        onExpandedChange(false)
+                                        val singleModelName = modelList.firstOrNull().orEmpty()
+                                        if (singleModelName.contains("autoglm", ignoreCase = true)) {
+                                            showAutoGlmError()
+                                        } else {
+                                            onSelectModel(config.id, 0)
+                                            onExpandedChange(false)
+                                        }
                                     }
                                 }
                                 .padding(horizontal = 8.dp, vertical = 6.dp)
@@ -1195,9 +1210,13 @@ private fun ModelSelectorItem(
                                                 else Color.Transparent
                                             )
                                             .clickable {
-                                                onSelectModel(config.id, index)
-                                                onExpandedChange(false)
-                                                expandedConfigId = null
+                                                if (modelName.contains("autoglm", ignoreCase = true)) {
+                                                    showAutoGlmError()
+                                                } else {
+                                                    onSelectModel(config.id, index)
+                                                    onExpandedChange(false)
+                                                    expandedConfigId = null
+                                                }
                                             }
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {

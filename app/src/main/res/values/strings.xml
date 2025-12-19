@@ -2576,11 +2576,11 @@
     <string name="select_api_provider">点击选择API提供商</string>
     <string name="select">选择</string>
     <string name="default_config_model_restriction">使用默认配置时，只能使用deepseek-chat模型</string>
-    <string name="enable_direct_image_processing">启用直接图片处理</string>
+    <string name="enable_direct_image_processing">模型支持识图</string>
     <string name="enable_direct_image_processing_desc">启用后，图片将直接发送给AI处理，而不是让AI通过OCR工具读取</string>
     <string name="enable_google_search">启用 Google Search</string>
     <string name="enable_google_search_desc">启用后，Gemini 将使用 Google 搜索来增强回答（可能产生额外费用）</string>
-    <string name="enable_tool_call">启用 Tool Call 接口调用工具</string>
+    <string name="enable_tool_call">模型支持ToolCall</string>
     <string name="enable_tool_call_desc">关闭时，会使用软件内工具调用机制，也可以完成工具调用。开启后，将会使用API的专用接口进行原生工具调用（需要模型支持）</string>
     <string name="enable_deepseek_reasoning">启用 DeepSeek 推理模式</string>
     <string name="enable_deepseek_reasoning_desc">启用后，&lt;think&gt;标签内的内容将作为reasoning_content发送给DeepSeek模型，用于支持DeepSeek-R1等推理模型的工具调用</string>
@@ -3448,6 +3448,8 @@
     <string name="reset_all_display_settings">重置所有显示设置</string>
     <string name="ui_accessibility_mode">无障碍适配模式</string>
     <string name="ui_accessibility_mode_description">为 TalkBack 等无障碍用户优化 UI 自动化行为，优先给出可朗读的操作步骤，谨慎执行自动点击。</string>
+    <string name="experimental_virtual_display">实验性虚拟屏幕</string>
+    <string name="experimental_virtual_display_description">使用基于虚拟屏幕的 ADB+Shizuku 自动化，功能仍在实验阶段，可能不稳定。</string>
     
     <!-- Chat History Management -->
     <string name="default_profile_name">默认配置</string>

@@ -2552,11 +2552,11 @@
     <string name="select_api_provider">Click to select API provider</string>
     <string name="select">Select</string>
     <string name="default_config_model_restriction">When using default configuration, only deepseek-chat model can be used</string>
-    <string name="enable_direct_image_processing">Enable Direct Image Processing</string>
+    <string name="enable_direct_image_processing">Model supports vision</string>
     <string name="enable_direct_image_processing_desc">When enabled, images will be sent directly to the AI for processing instead of using OCR tools to read them</string>
     <string name="enable_google_search">Enable Google Search</string>
     <string name="enable_google_search_desc">When enabled, Gemini will use Google Search to enhance responses (may incur additional charges)</string>
-    <string name="enable_tool_call">Enable Tool Call Interface</string>
+    <string name="enable_tool_call">Model supports ToolCall</string>
     <string name="enable_tool_call_desc">When disabled, uses the built-in tool invocation mechanism which also supports tool calls. When enabled, uses the API\'s dedicated native interface (requires model support)</string>
     <string name="enable_deepseek_reasoning">Enable DeepSeek Reasoning Mode</string>
     <string name="enable_deepseek_reasoning_desc">When enabled, content within &lt;think&gt; tags will be sent as reasoning_content to DeepSeek models, supporting tool invocation for reasoning models like DeepSeek-R1</string>

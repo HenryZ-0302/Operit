@@ -16,7 +16,7 @@ import okio.ByteString
  * Lightweight controller to talk to the Shower server running locally on the device.
  *
  * Responsibilities:
- * - Maintain a single WebSocket connection to ws://127.0.0.1:8765
+ * - Maintain a single WebSocket connection to ws://127.0.0.1:8986
  * - Send simple text commands: CREATE_DISPLAY, LAUNCH_APP, TAP, KEY, TOUCH_*
  * - Parse log messages to discover the virtual display id created by Shower.
  *
@@ -26,7 +26,7 @@ object ShowerController {
 
     private const val TAG = "ShowerController"
     private const val HOST = "127.0.0.1"
-    private const val PORT = 8765
+    private const val PORT = 8986
 
     private val client: OkHttpClient = OkHttpClient.Builder().build()
 

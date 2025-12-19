@@ -21,6 +21,7 @@ import com.ai.assistance.operit.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
 import com.ai.assistance.operit.api.chat.llmprovider.AIServiceFactory
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.data.model.FunctionType
@@ -264,6 +265,16 @@ fun FunctionConfigCard(
     var isTestingConnection by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf<Result<String>?>(null) }
 
+    val showAutoGlmError: () -> Unit = {
+        if (functionType == FunctionType.CHAT) {
+            Toast.makeText(
+                context,
+                "禁止使用autoglm作为对话主模型。对话模型和ui控制模型是分离的，请选择任意一个别的聪明的大模型。如有疑问，请仔细阅读文档学习软件的模型配置机制。",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     LaunchedEffect(testResult) {
         if (testResult != null) {
             kotlinx.coroutines.delay(5000)
@@ -472,8 +483,13 @@ fun FunctionConfigCard(
                                                         expandedConfigId = if (isExpanded) null else config.id
                                                     } else {
                                                         // 如果只有一个模型，直接选择
-                                                        onConfigSelected(config.id, 0)
-                                                        expanded = false
+                                                        val singleModelName = modelList.firstOrNull().orEmpty()
+                                                        if (functionType == FunctionType.CHAT && singleModelName.contains("autoglm", ignoreCase = true)) {
+                                                            showAutoGlmError()
+                                                        } else {
+                                                            onConfigSelected(config.id, 0)
+                                                            expanded = false
+                                                        }
                                                     }
                                                 },
                                         shape = RoundedCornerShape(8.dp),
@@ -562,9 +578,13 @@ fun FunctionConfigCard(
                                                     .fillMaxWidth()
                                                     .padding(vertical = 2.dp)
                                                     .clickable {
-                                                        onConfigSelected(config.id, index)
-                                                        expanded = false
-                                                        expandedConfigId = null
+                                                        if (functionType == FunctionType.CHAT && modelName.contains("autoglm", ignoreCase = true)) {
+                                                            showAutoGlmError()
+                                                        } else {
+                                                            onConfigSelected(config.id, index)
+                                                            expanded = false
+                                                            expandedConfigId = null
+                                                        }
                                                     },
                                                 shape = RoundedCornerShape(6.dp),
                                                 color = if (isModelSelected)

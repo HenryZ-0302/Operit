@@ -45,7 +45,7 @@ import java.nio.charset.StandardCharsets;
 public class Main {
 
     private static final String TAG = "ShowerMain";
-    private static final int DEFAULT_PORT = 8765;
+    private static final int DEFAULT_PORT = 8986;
     private static final int DEFAULT_BIT_RATE = 4_000_000;
 
     private static final int VIRTUAL_DISPLAY_FLAG_PUBLIC = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC;

@@ -245,6 +245,13 @@ private fun AutoGlmOneClickScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
+                    text = "不要把autoglm模型作为对话主模型",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
                     text = "注意：如果已经配置过就不需要管了，这里切勿改成 autoglm 等小模型。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -23,6 +23,7 @@ import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.services.floating.StatusIndicatorStyle
 import com.ai.assistance.operit.ui.components.CustomScaffold
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,8 +44,12 @@ fun GlobalDisplaySettingsScreen(
     val showUserName by displayPreferencesManager.showUserName.collectAsState(initial = false)
     val showFpsCounter by displayPreferencesManager.showFpsCounter.collectAsState(initial = false)
     val enableReplyNotification by displayPreferencesManager.enableReplyNotification.collectAsState(initial = true)
+    val enableExperimentalVirtualDisplay by displayPreferencesManager.enableExperimentalVirtualDisplay.collectAsState(initial = true)
     val globalUserName by displayPreferencesManager.globalUserName.collectAsState(initial = null)
     val globalUserAvatarUri by displayPreferencesManager.globalUserAvatarUri.collectAsState(initial = null)
+    val screenshotFormat by displayPreferencesManager.screenshotFormat.collectAsState(initial = "PNG")
+    val screenshotQuality by displayPreferencesManager.screenshotQuality.collectAsState(initial = 90)
+    val screenshotScalePercent by displayPreferencesManager.screenshotScalePercent.collectAsState(initial = 100)
     val keepScreenOn by apiPreferences.keepScreenOnFlow.collectAsState(initial = true)
 
     val hasBackgroundImage by userPreferences.useBackgroundImage.collectAsState(initial = false)
@@ -241,6 +246,21 @@ fun GlobalDisplaySettingsScreen(
                 backgroundColor = componentBackgroundColor
             )
 
+            DisplayToggleItem(
+                title = stringResource(R.string.experimental_virtual_display),
+                subtitle = stringResource(R.string.experimental_virtual_display_description),
+                checked = enableExperimentalVirtualDisplay,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(
+                            enableExperimentalVirtualDisplay = it
+                        )
+                        showSaveSuccessMessage = true
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -286,6 +306,128 @@ fun GlobalDisplaySettingsScreen(
                             showSaveSuccessMessage = true
                         },
                         label = { Text("顶部提示条") }
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(componentBackgroundColor)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = "自动化截图设置",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "图片格式",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Normal
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = screenshotFormat.equals("PNG", ignoreCase = true),
+                        onClick = {
+                            scope.launch {
+                                displayPreferencesManager.saveDisplaySettings(screenshotFormat = "PNG")
+                                showSaveSuccessMessage = true
+                            }
+                        },
+                        label = { Text("PNG（无损，默认）") }
+                    )
+                    FilterChip(
+                        selected = screenshotFormat.equals("JPG", ignoreCase = true) ||
+                                screenshotFormat.equals("JPEG", ignoreCase = true),
+                        onClick = {
+                            scope.launch {
+                                displayPreferencesManager.saveDisplaySettings(screenshotFormat = "JPG")
+                                showSaveSuccessMessage = true
+                            }
+                        },
+                        label = { Text("JPG（有损，体积更小）") }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                var qualitySliderValue by remember { mutableStateOf(screenshotQuality.toFloat()) }
+                LaunchedEffect(screenshotQuality) {
+                    qualitySliderValue = screenshotQuality.toFloat()
+                }
+
+                Text(
+                    text = "画质（仅对 JPG 生效）",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Normal
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Slider(
+                        value = qualitySliderValue,
+                        onValueChange = { qualitySliderValue = it },
+                        valueRange = 50f..100f,
+                        modifier = Modifier.weight(1f),
+                        onValueChangeFinished = {
+                            val q = qualitySliderValue.roundToInt().coerceIn(50, 100)
+                            scope.launch {
+                                displayPreferencesManager.saveDisplaySettings(screenshotQuality = q)
+                                showSaveSuccessMessage = true
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "${qualitySliderValue.roundToInt()}%",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                var scaleSliderValue by remember { mutableStateOf(screenshotScalePercent.toFloat()) }
+                LaunchedEffect(screenshotScalePercent) {
+                    scaleSliderValue = screenshotScalePercent.toFloat()
+                }
+
+                Text(
+                    text = "分辨率缩放（发送前缩小截图）",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Normal
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Slider(
+                        value = scaleSliderValue,
+                        onValueChange = { scaleSliderValue = it },
+                        valueRange = 50f..100f,
+                        modifier = Modifier.weight(1f),
+                        onValueChangeFinished = {
+                            val s = scaleSliderValue.roundToInt().coerceIn(50, 100)
+                            scope.launch {
+                                displayPreferencesManager.saveDisplaySettings(screenshotScalePercent = s)
+                                showSaveSuccessMessage = true
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "${scaleSliderValue.roundToInt()}%",
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
             }

@@ -9,7 +9,7 @@ Usage examples (run from tools directory):
 Requirements:
     pip install websocket-client
 
-By default this script will run `adb forward tcp:8765 tcp:8765` so that
+By default this script will run `adb forward tcp:8986 tcp:8986` so that
 it can connect to the WebSocket server started on the device by
 run_shower_server.bat.
 """
@@ -372,7 +372,7 @@ def connect_and_run(host: str, port: int, width: int, height: int, dpi: int, dur
 def main() -> None:
     parser = argparse.ArgumentParser(description="Shower WebSocket virtual display client")
     parser.add_argument("--host", default="127.0.0.1", help="WebSocket host (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=8765, help="WebSocket port (default: 8765)")
+    parser.add_argument("--port", type=int, default=8986, help="WebSocket port (default: 8986)")
     parser.add_argument("--width", type=int, default=1080, help="Virtual display width")
     parser.add_argument("--height", type=int, default=1920, help="Virtual display height")
     parser.add_argument("--dpi", type=int, default=320, help="Virtual display dpi")

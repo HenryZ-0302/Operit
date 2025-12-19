@@ -30,7 +30,7 @@ object ShowerServerManager {
     suspend fun ensureServerStarted(context: Context): Boolean {
         // 0) If a Shower server is already listening on the default port, just reuse it.
         if (isServerListening()) {
-            AppLogger.d(TAG, "Shower server already listening on 127.0.0.1:8765, skipping start")
+            AppLogger.d(TAG, "Shower server already listening on 127.0.0.1:8986, skipping start")
             return true
         }
 
@@ -79,13 +79,13 @@ object ShowerServerManager {
             if (isServerListening()) {
                 AppLogger.d(
                     TAG,
-                    "Shower server is now listening on 127.0.0.1:8765 after ~${(attempt + 1) * 200}ms"
+                    "Shower server is now listening on 127.0.0.1:8986 after ~${(attempt + 1) * 200}ms"
                 )
                 return true
             }
         }
 
-        AppLogger.e(TAG, "Shower server did not start listening on 127.0.0.1:8765 within the expected time")
+        AppLogger.e(TAG, "Shower server did not start listening on 127.0.0.1:8986 within the expected time")
         return false
     }
 
@@ -130,7 +130,7 @@ object ShowerServerManager {
     private suspend fun isServerListening(): Boolean = withContext(Dispatchers.IO) {
         return@withContext try {
             Socket().use { socket ->
-                socket.connect(InetSocketAddress("127.0.0.1", 8765), 200)
+                socket.connect(InetSocketAddress("127.0.0.1", 8986), 200)
             }
             true
         } catch (e: Exception) {
