@@ -45,7 +45,7 @@ import com.ai.assistance.operit.util.GithubReleaseUtil
 import kotlinx.coroutines.launch
 import com.ai.assistance.operit.ui.components.CustomScaffold
 
-private const val GITHUB_PROJECT_URL = "https://github.com/AAswordman/Operit"
+// 已移除原作者的 GitHub 链接
 
 @Composable
 fun HtmlText(
@@ -525,34 +525,8 @@ fun AboutScreen(
                             icon = Icons.Rounded.Info,
                             title = stringResource(id = R.string.developer),
                             content = {
-                                HtmlText(
-                                    html = stringResource(id = R.string.about_developer),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        InfoItem(
-                            icon = Icons.Rounded.Info,
-                            title = stringResource(id = R.string.contact),
-                            content = {
                                 Text(
-                                    text = stringResource(id = R.string.about_contact),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                        InfoItem(
-                            icon = Icons.Rounded.Info,
-                            title = stringResource(id = R.string.project_url),
-                            content = {
-                                HtmlText(
-                                    html = stringResource(id = R.string.about_website),
+                                    text = stringResource(id = R.string.about_developer),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
@@ -570,51 +544,7 @@ fun AboutScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                ElevatedCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_PROJECT_URL)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(intent)
-                        },
-                    shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Star,
-                                contentDescription = stringResource(R.string.github_star_description),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(
-                                text = stringResource(R.string.star_on_github),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))\r\n
 
                 ElevatedCard(
                     modifier = Modifier
