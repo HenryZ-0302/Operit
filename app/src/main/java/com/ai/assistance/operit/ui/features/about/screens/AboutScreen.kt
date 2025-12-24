@@ -502,7 +502,7 @@ fun AboutScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))\r\n
+                Spacer(modifier = Modifier.height(16.dp))
 
                 ElevatedCard(
                     modifier = Modifier
