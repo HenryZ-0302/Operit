@@ -453,48 +453,6 @@ fun AboutScreen(
                     modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
                 )
 
-                Button(
-                    onClick = { checkForUpdates() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .alpha(buttonAlpha.value),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 1.dp, pressedElevation = 3.dp),
-                    enabled = updateStatus !is UpdateStatus.Checking
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (updateStatus is UpdateStatus.Checking) {
-                            CircularProgressIndicator(
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Update,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                        Text(
-                            text = if (updateStatus is UpdateStatus.Checking)
-                                stringResource(id = R.string.checking_updates)
-                            else stringResource(id = R.string.check_for_updates),
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(16.dp))
 
                 ElevatedCard(
