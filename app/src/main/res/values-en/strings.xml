@@ -1,5 +1,5 @@
  <resources>
-    <string name="app_name">Operit AI</string>
+    <string name="app_name">Aether AI</string>
     <string name="accessibility_service_description">Used to obtain the UI hierarchy, providing faster interface analysis capabilities for AI assistants, and does not collect or store any personal information.</string>
     
     <!-- Model selector related -->
@@ -163,13 +163,13 @@
     <string name="termux_setup_guide">Termux Setup Guide</string>
     
     <!-- About Screen -->
-    <string name="about_title">About Operit AI</string>
+    <string name="about_title">About Aether AI</string>
     <string name="about_version">Version: %1$s</string>
-    <string name="about_description">Operit AI is an intelligent assistant application that helps users use their devices more efficiently, providing interface analysis, chat conversations, and more.</string>
-    <string name="about_developer">Developer: &lt;a href="https://github.com/AAswordman"&gt;AAswordman&lt;/a&gt;</string>
-    <string name="about_contact">Contact Us: aaswordsman@foxmail.com</string>
-    <string name="about_website">&lt;a href="https://github.com/AAswordman/Operit"&gt;GitHub: https://github.com/AAswordman/Operit&lt;/a&gt;</string>
-    <string name="about_copyright">© 2023-2024 Operit. All Rights Reserved.</string>
+    <string name="about_description">Aether AI is an intelligent assistant application that helps users use their devices more efficiently, providing interface analysis, chat conversations, and more.</string>
+    <string name="about_developer">Developer: HY</string>
+    <string name="about_contact"></string>
+    <string name="about_website"></string>
+    <string name="about_copyright">© 2024-2025 Aether AI. All Rights Reserved.</string>
     <string name="star_on_github">Star on GitHub</string>
     <string name="update_log">Update Log</string>
     <string name="app_logo_description">App Logo</string>
