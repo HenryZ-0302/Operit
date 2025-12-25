@@ -24,12 +24,18 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,9 +49,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.ui.floating.FloatContext
 import com.ai.assistance.operit.ui.floating.FloatingMode
+import kotlin.math.abs
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -65,8 +73,33 @@ fun BottomControlBar(
     onEnterEditMode: (String) -> Unit,
     onShowDragHintsChange: (Boolean) -> Unit,
     userMessage: String,
+    onUserMessageChange: (String) -> Unit,
+    onSendClick: () -> Unit,
+    volumeLevel: Float,
     modifier: Modifier = Modifier
 ) {
+    // 底部输入模式：false = 文本输入框；true = 整条变成“按住说话”按钮
+    var isHoldToSpeakMode by remember { mutableStateOf(false) }
+    var isCancelRegion by remember { mutableStateOf(false) }
+    var isPressed by remember { mutableStateOf(false) }
+    // 简单的音量历史，用于在长按时绘制一个从右往左移动的波形条
+    val volumeHistory = remember {
+        mutableStateListOf<Float>().apply {
+            repeat(24) { add(0f) }
+        }
+    }
+    val density = LocalDensity.current
+    // 取消区域：大致拖出胶囊高度（56dp）之外才算取消
+    val cancelThresholdPx = with(density) { 56.dp.toPx() }
+
+    // 在长按语音时，根据当前音量持续更新历史，用于绘制音量波形
+    LaunchedEffect(volumeLevel, isPressed, isRecording) {
+        if (isPressed && isRecording && volumeHistory.isNotEmpty()) {
+            volumeHistory.removeAt(0)
+            volumeHistory.add(volumeLevel.coerceIn(0f, 1f))
+        }
+    }
+
     AnimatedVisibility(
         visible = visible,
         modifier = modifier
@@ -74,32 +107,222 @@ fun BottomControlBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 64.dp, start = 32.dp, end = 32.dp)
+                .padding(bottom = 64.dp, start = 32.dp, end = 32.dp),
+            contentAlignment = Alignment.Center
         ) {
-            // 返回按钮 - 左侧
-            BackButton(
-                floatContext = floatContext,
-                modifier = Modifier.align(Alignment.CenterStart)
-            )
+            val pillColor = when {
+                isCancelRegion && isHoldToSpeakMode -> MaterialTheme.colorScheme.error
+                isHoldToSpeakMode && isPressed -> Color(0xFFE0E0E0) // 按下时使用实心浅灰色
+                else -> Color.White
+            }
 
-            // 麦克风按钮 - 中间（带拖动提示）
-            MicrophoneButtonWithHints(
-                isRecording = isRecording,
-                isProcessingSpeech = isProcessingSpeech,
-                showDragHints = showDragHints,
-                onStartVoiceCapture = onStartVoiceCapture,
-                onStopVoiceCapture = onStopVoiceCapture,
-                onEnterWaveMode = onEnterWaveMode,
-                onEnterEditMode = onEnterEditMode,
-                onShowDragHintsChange = onShowDragHintsChange,
-                userMessage = userMessage,
-                modifier = Modifier.align(Alignment.Center)
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = CircleShape,
+                        clip = false
+                    )
+                    .clip(CircleShape)
+                    .background(pillColor)
+            ) {
+                // 文本输入模式与按住说话模式共用的基础布局
+                OutlinedTextField(
+                    value = userMessage,
+                    onValueChange = onUserMessageChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    singleLine = true,
+                    placeholder = {
+                        if (!isHoldToSpeakMode) {
+                            Text(
+                                text = "输入文字，或用语音",
+                                color = Color.Gray
+                            )
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.Black,
+                        unfocusedTextColor = Color.Black,
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        cursorColor = MaterialTheme.colorScheme.primary
+                    ),
+                    leadingIcon = {
+                        VoiceLeadingIcon(
+                            isRecording = isRecording,
+                            isProcessingSpeech = isProcessingSpeech,
+                            isHoldToSpeakMode = isHoldToSpeakMode,
+                            isPressed = isPressed,
+                            onToggleHoldToSpeakMode = {
+                                // 从按住说话模式切回时，如在录音则取消
+                                if (isHoldToSpeakMode && isRecording) {
+                                    onStopVoiceCapture(true)
+                                }
+                                isHoldToSpeakMode = !isHoldToSpeakMode
+                                isCancelRegion = false
+                                isPressed = false
+                            }
+                        )
+                    },
+                    trailingIcon = {
+                        if (!isHoldToSpeakMode) {
+                            IconButton(
+                                onClick = onSendClick,
+                                enabled = userMessage.isNotBlank()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Send,
+                                    contentDescription = "发送",
+                                    tint = if (userMessage.isNotBlank()) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                    },
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                    }
+                )
 
-            // 缩小成悬浮球按钮 - 右侧
-            MinimizeToVoiceBallButton(
-                floatContext = floatContext,
-                modifier = Modifier.align(Alignment.CenterEnd)
+                if (isHoldToSpeakMode) {
+                    // 按住说话模式：在文本框之上叠加手势区域和提示文案
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                    ) {
+                        // 手势区域：尽量避开左右图标，只覆盖中间区域
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .padding(start = 56.dp, end = 56.dp)
+                                .pointerInput(cancelThresholdPx) {
+                                    awaitPointerEventScope {
+                                        while (true) {
+                                            // 等待按下
+                                            val downEvent = awaitPointerEvent(PointerEventPass.Main)
+                                            val downChange = downEvent.changes.firstOrNull()
+                                            if (downChange == null || !downChange.pressed) continue
+
+                                            val startPosition = downChange.position
+                                            var totalDragY = 0f
+                                            isPressed = true
+                                            isCancelRegion = false
+                                            onStartVoiceCapture()
+
+                                            // 跟踪拖动和抬起
+                                            while (true) {
+                                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                                val change = event.changes.firstOrNull() ?: break
+
+                                                if (!change.pressed) {
+                                                    // 手指抬起
+                                                    onStopVoiceCapture(isCancelRegion)
+                                                    isCancelRegion = false
+                                                    isPressed = false
+                                                    totalDragY = 0f
+                                                    break
+                                                }
+
+                                                val position = change.position
+                                                val dy = position.y - startPosition.y
+                                                totalDragY = dy
+                                                // 拖出胶囊区域（向上或向下大幅移动）即进入取消状态
+                                                isCancelRegion = abs(totalDragY) > cancelThresholdPx
+                                            }
+                                        }
+                                    }
+                                }
+                        )
+
+                        if (isPressed && !isCancelRegion) {
+                            // 在普通长按状态下绘制居中、较小的黑色音量波形，右侧为最新音量
+                            Canvas(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp)
+                            ) {
+                                val barCount = volumeHistory.size
+                                if (barCount > 0) {
+                                    // 保留更大的左右空白，让波形更窄、更居中
+                                    val horizontalMargin = size.width * 0.28f
+                                    val availableWidth = size.width - horizontalMargin * 2f
+                                    val barWidth = availableWidth / (barCount * 1.4f)
+                                    val gap = barWidth * 0.4f
+                                    // 波形高度占胶囊高度的 30%，围绕垂直中心对称
+                                    val maxHeight = size.height * 0.3f
+                                    val centerY = size.height / 2f
+
+                                    volumeHistory.forEachIndexed { index: Int, value: Float ->
+                                        // index 越大，位置越靠右（最新的在最右侧）
+                                        val xRight = size.width - horizontalMargin - (barWidth + gap) * (barCount - 1 - index).toFloat()
+                                        val barHeight = (value.coerceIn(0f, 1f)) * maxHeight
+                                        val top = centerY - barHeight / 2f
+                                        drawRect(
+                                            color = Color.Black,
+                                            topLeft = Offset(xRight - barWidth, top),
+                                            size = androidx.compose.ui.geometry.Size(barWidth, barHeight)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // 未按下或处于取消区域时，显示提示文案
+                            Text(
+                                text = if (isCancelRegion) "松手取消" else "按住说话",
+                                color = if (isCancelRegion) Color.White else Color.Black,
+                                modifier = Modifier.align(Alignment.Center)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceLeadingIcon(
+    isRecording: Boolean,
+    isProcessingSpeech: Boolean,
+    isHoldToSpeakMode: Boolean,
+    isPressed: Boolean,
+    onToggleHoldToSpeakMode: () -> Unit
+) {
+    val iconColor =
+        if (isRecording || isProcessingSpeech || isHoldToSpeakMode) {
+            MaterialTheme.colorScheme.secondary
+        } else {
+            MaterialTheme.colorScheme.primary
+        }
+
+    // 按住说话时隐藏图标并禁用点击，但保留占位，保证布局稳定
+    val boxModifierBase = Modifier
+        .size(32.dp)
+        .clip(CircleShape)
+        .background(Color.Transparent)
+
+    val boxModifier = if (isHoldToSpeakMode && isPressed) {
+        boxModifierBase
+    } else {
+        boxModifierBase.clickable { onToggleHoldToSpeakMode() }
+    }
+
+    Box(
+        modifier = boxModifier,
+        contentAlignment = Alignment.Center
+    ) {
+        if (!(isHoldToSpeakMode && isPressed)) {
+            Icon(
+                imageVector = Icons.Default.Mic,
+                contentDescription = "语音输入",
+                tint = iconColor,
+                modifier = Modifier.size(20.dp)
             )
         }
     }

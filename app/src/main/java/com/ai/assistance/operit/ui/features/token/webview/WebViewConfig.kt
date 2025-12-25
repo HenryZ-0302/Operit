@@ -51,7 +51,15 @@ object WebViewConfig {
 
                 // 对于Android 8.0及以上版本的安全Webview优化
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    safeBrowsingEnabled = true
+                    try {
+                        safeBrowsingEnabled = true
+                    } catch (e: AbstractMethodError) {
+                        AppLogger.w("WebViewConfig", "Safe browsing not supported on this WebView implementation: ${e.message}")
+                    } catch (e: NoSuchMethodError) {
+                        AppLogger.w("WebViewConfig", "Safe browsing method missing on this WebView implementation: ${e.message}")
+                    } catch (e: Throwable) {
+                        AppLogger.w("WebViewConfig", "Failed to enable safe browsing: ${e.message}")
+                    }
                 }
             }
 

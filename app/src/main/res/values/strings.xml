@@ -3592,4 +3592,15 @@
     <string name="backup_confirm">确认</string>
     <string name="backup_cancel">取消</string>
     <string name="provider_doubao">豆包（火山模型）</string>
+
+    <!-- Help Screen - Mirror Selection Dialog -->
+    <string name="help_loading_message">正在加载使用手册...</string>
+    <string name="help_mirror_dialog_title">选择帮助文档镜像</string>
+    <string name="help_mirror_label_main">主站</string>
+    <string name="help_mirror_label_mirror1">镜像一</string>
+    <string name="help_mirror_label_legacy">原站</string>
+    <string name="help_mirror_latency_ms">%1$dms</string>
+    <string name="help_mirror_latency_timeout">超时</string>
+    <string name="help_mirror_latency_testing">测试中...</string>
+
 </resources>

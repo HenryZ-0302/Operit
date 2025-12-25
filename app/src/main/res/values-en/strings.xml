@@ -3566,4 +3566,15 @@
     <string name="backup_confirm">Confirm</string>
     <string name="backup_cancel">Cancel</string>
     <string name="provider_doubao">Doubao (Volcano Model)</string>
+
+    <!-- Help Screen - Mirror Selection Dialog -->
+    <string name="help_loading_message">Loading user guide...</string>
+    <string name="help_mirror_dialog_title">Select help site mirror</string>
+    <string name="help_mirror_label_main">Main site</string>
+    <string name="help_mirror_label_mirror1">Mirror 1</string>
+    <string name="help_mirror_label_legacy">Legacy site</string>
+    <string name="help_mirror_latency_ms">%1$d ms</string>
+    <string name="help_mirror_latency_timeout">Timeout</string>
+    <string name="help_mirror_latency_testing">Testing...</string>
+
 </resources>

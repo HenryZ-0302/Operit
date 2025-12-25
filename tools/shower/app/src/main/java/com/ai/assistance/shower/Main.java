@@ -403,11 +403,38 @@ public class Main {
     private void sendBinderToApp(IShowerService service) {
         try {
             Context context = FakeContext.get();
-            Intent intent = new Intent(ACTION_SHOWER_BINDER_READY);
-            intent.setPackage("com.ai.assistance.operit");
-            intent.putExtra(EXTRA_BINDER_CONTAINER, new ShowerBinderContainer(service.asBinder()));
-            context.sendBroadcast(intent);
-            logToFile("Sent SHOWER_BINDER_READY broadcast to com.ai.assistance.operit via Context.sendBroadcast", null);
+            Intent baseIntent = new Intent(ACTION_SHOWER_BINDER_READY);
+            baseIntent.putExtra(EXTRA_BINDER_CONTAINER, new ShowerBinderContainer(service.asBinder()));
+
+            PackageManager pm = context.getPackageManager();
+            java.util.List<android.content.pm.ResolveInfo> receivers = null;
+            if (pm != null) {
+                try {
+                    receivers = pm.queryBroadcastReceivers(baseIntent, 0);
+                } catch (Throwable t) {
+                    logToFile("queryBroadcastReceivers for SHOWER_BINDER_READY failed: " + t.getMessage(), t);
+                }
+            }
+
+            if (receivers == null || receivers.isEmpty()) {
+                // Fallback: best-effort implicit broadcast (may be ignored on some systems).
+                context.sendBroadcast(baseIntent);
+                logToFile("Sent SHOWER_BINDER_READY broadcast via Context.sendBroadcast (no explicit receivers found)", null);
+            } else {
+                for (android.content.pm.ResolveInfo ri : receivers) {
+                    if (ri.activityInfo == null) {
+                        continue;
+                    }
+                    android.content.ComponentName cn = new android.content.ComponentName(
+                            ri.activityInfo.packageName,
+                            ri.activityInfo.name
+                    );
+                    Intent intent = new Intent(baseIntent);
+                    intent.setComponent(cn);
+                    context.sendBroadcast(intent);
+                    logToFile("Sent SHOWER_BINDER_READY broadcast to " + cn.flattenToShortString(), null);
+                }
+            }
         } catch (Throwable t) {
             logToFile("Failed to send SHOWER_BINDER_READY broadcast: " + t.getMessage(), t);
         }

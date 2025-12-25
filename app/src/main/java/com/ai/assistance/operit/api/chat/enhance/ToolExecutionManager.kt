@@ -373,22 +373,32 @@ object ToolExecutionManager {
         packageManager: PackageManager,
         toolHandler: AIToolHandler
     ): Boolean {
-        if (toolName.contains(':')) {
-            val parts = toolName.split(':', limit = 2)
-            val packName = parts[0]
-
-            // 检查包是否可用但尚未激活
-            val isAvailable = packageManager.getAvailablePackages().containsKey(packName)
-            val isToolRegistered = toolHandler.getToolExecutor(toolName) != null
-
-            if (isAvailable && !isToolRegistered) {
-                AppLogger.d(TAG, "尝试自动激活工具包: $packName for tool $toolName")
-                // 调用 usePackage 来加载和注册工具
-                packageManager.usePackage(packName)
-                // 激活后，再次检查工具是否已注册
-                return toolHandler.getToolExecutor(toolName) != null
-            }
+        if (!toolName.contains(':')) {
+            return false
         }
+
+        val parts = toolName.split(':', limit = 2)
+        val packName = parts[0]
+
+        // 已经有执行器就不需要再激活
+        val isToolAlreadyRegistered = toolHandler.getToolExecutor(toolName) != null
+        if (isToolAlreadyRegistered) {
+            return true
+        }
+
+        // JS 工具包是否可用
+        val isJsPackageAvailable = packageManager.getAvailablePackages().containsKey(packName)
+        // MCP 服务器是否已注册
+        val isMcpServerAvailable = packageManager.getAvailableServerPackages().containsKey(packName)
+
+        if (isJsPackageAvailable || isMcpServerAvailable) {
+            AppLogger.d(TAG, "尝试自动激活工具包或MCP服务器: $packName for tool $toolName")
+            // 调用 usePackage 来加载和注册工具（对于 MCP 会转到 useMCPServer）
+            packageManager.usePackage(packName)
+            // 激活后，再次检查工具是否已注册
+            return toolHandler.getToolExecutor(toolName) != null
+        }
+
         return false
     }
 }

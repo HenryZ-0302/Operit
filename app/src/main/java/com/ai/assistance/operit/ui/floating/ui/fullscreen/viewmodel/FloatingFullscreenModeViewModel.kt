@@ -27,6 +27,7 @@ class FloatingFullscreenModeViewModel(
     var showBottomControls by mutableStateOf(true)
     var isEditMode by mutableStateOf(false)
     var editableText by mutableStateOf("")
+    var inputText by mutableStateOf("")
     var showDragHints by mutableStateOf(false)
     
     val isInitialLoad = mutableStateOf(true)
@@ -36,9 +37,12 @@ class FloatingFullscreenModeViewModel(
         context = context,
         coroutineScope = coroutineScope,
         onSpeechResult = { text, _ -> 
-            // 收到最终语音结果，发送消息
-            floatContext.onSendMessage?.invoke(text, PromptFunctionType.VOICE)
-            aiMessage = "思考中..."
+            // 收到最终语音结果后直接发送，不再写入底部输入框
+            val finalText = text.trim()
+            if (finalText.isNotEmpty()) {
+                floatContext.onSendMessage?.invoke(finalText, PromptFunctionType.VOICE)
+                aiMessage = "思考中..."
+            }
         },
         onStateChange = { msg -> aiMessage = msg }
     )
@@ -199,6 +203,15 @@ class FloatingFullscreenModeViewModel(
             floatContext.onSendMessage?.invoke(editableText, PromptFunctionType.VOICE)
             isEditMode = false
             editableText = ""
+            aiMessage = "思考中..."
+        }
+    }
+    
+    fun sendInputMessage() {
+        val text = inputText.trim()
+        if (text.isNotEmpty()) {
+            floatContext.onSendMessage?.invoke(text, PromptFunctionType.VOICE)
+            inputText = ""
             aiMessage = "思考中..."
         }
     }
