@@ -44,7 +44,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.hy.aetherai"
+        applicationId = "io.hy.aetherai"
         minSdk = 26
         targetSdk = 34
         versionCode = 33

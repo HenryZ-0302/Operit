@@ -16,7 +16,7 @@ import org.json.JSONObject
 class ScriptExecutionReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "ScriptExecutionReceiver"
-        const val ACTION_EXECUTE_JS = "com.hy.aetherai.EXECUTE_JS"
+        const val ACTION_EXECUTE_JS = "io.hy.aetherai.EXECUTE_JS"
         const val EXTRA_FILE_PATH = "file_path"
         const val EXTRA_FUNCTION_NAME = "function_name"
         const val EXTRA_PARAMS = "params"
