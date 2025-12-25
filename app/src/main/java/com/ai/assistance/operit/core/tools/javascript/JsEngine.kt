@@ -125,7 +125,7 @@ class JsEngine(private val context: Context) {
                     latch.countDown()
                 }
             }
-            latch.await(5, TimeUnit.SECONDS)
+            latch.await(10, TimeUnit.SECONDS)
         }
     }
 
@@ -635,19 +635,34 @@ class JsEngine(private val context: Context) {
             try {
                 webView?.evaluateJavascript(initScript) { result ->
                     AppLogger.d(TAG, "JS environment initialization completed: $result")
-                    jsEnvironmentInitialized = true
-                    initLatch.countDown()
+                    try {
+                        webView?.evaluateJavascript("typeof __handleAsync === 'function'") { checkResult ->
+                            val isHandleAsyncDefined = checkResult == "true"
+                            if (isHandleAsyncDefined) {
+                                jsEnvironmentInitialized = true
+                            } else {
+                                jsEnvironmentInitialized = false
+                                AppLogger.e(TAG, "__handleAsync is not defined after JS environment initialization. Result: $checkResult")
+                            }
+                            initLatch.countDown()
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.e(TAG, "Failed to verify __handleAsync after JS environment initialization: ${e.message}", e)
+                        jsEnvironmentInitialized = false
+                        initLatch.countDown()
+                    }
                 }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to initialize JS environment: ${e.message}", e)
+                jsEnvironmentInitialized = false
                 initLatch.countDown()
             }
         }
 
         // 等待初始化完成，使用超时避免无限等待
         try {
-            if (!initLatch.await(5, TimeUnit.SECONDS)) {
-                AppLogger.w(TAG, "JS environment initialization timeout after 5 seconds")
+            if (!initLatch.await(10, TimeUnit.SECONDS)) {
+                AppLogger.w(TAG, "JS environment initialization timeout after 10 seconds")
             }
         } catch (e: InterruptedException) {
             AppLogger.e(TAG, "JS environment initialization interrupted", e)
@@ -791,7 +806,15 @@ class JsEngine(private val context: Context) {
                 
                 if (functionFound) {
                     // 处理函数返回结果，特别是异步Promise
-                    if (!__handleAsync(functionResult)) {
+                    var handledAsync = false;
+                    try {
+                        if (typeof __handleAsync === 'function') {
+                            handledAsync = __handleAsync(functionResult);
+                        }
+                    } catch (e) {
+                        console.error("Error calling __handleAsync:", e);
+                    }
+                    if (!handledAsync) {
                         // 如果是同步结果且没有调用complete()，使用该结果
                         if (!window._hasCompleted) {
                             NativeInterface.setResult(JSON.stringify(functionResult));

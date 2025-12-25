@@ -876,7 +876,7 @@ open class OpenAIProvider(
      * 解析XML格式的tool调用，转换为OpenAI Tool Call格式
      * @return Pair<文本内容, tool_calls数组>
      */
-    fun parseXmlToolCalls(content: String): Pair<String, JSONArray?> {
+    open fun parseXmlToolCalls(content: String): Pair<String, JSONArray?> {
         val toolPattern =
             Regex("<tool\\s+name=\"([^\"]+)\">([\\s\\S]*?)</tool>", RegexOption.MULTILINE)
         val matches = toolPattern.findAll(content)

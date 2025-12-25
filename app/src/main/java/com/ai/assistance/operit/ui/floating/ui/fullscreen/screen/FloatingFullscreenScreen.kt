@@ -6,7 +6,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -14,7 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.ui.floating.FloatContext
+import com.ai.assistance.operit.ui.floating.FloatingMode
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.XmlTextProcessor
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.components.BottomControlBar
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.components.EditPanel
@@ -96,27 +102,80 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
             .background(
                 brush = Brush.verticalGradient(
                     colorStops = arrayOf(
+                        // 上半部分完全透明
                         0.0f to Color.Transparent,
-                        0.6f to Color.Black.copy(alpha = 0.7f),
-                        1.0f to Color.Black.copy(alpha = 0.9f)
+                        0.5f to Color.Transparent,
+                        // 从屏幕中间往下开始出现更暗一些的蓝绿色渐变（降低明度，不是加厚遮罩）
+                        0.75f to Color(0xFF42A5F5).copy(alpha = 0.45f),  // 深一点的蓝
+                        0.9f  to Color(0xFF26C6DA).copy(alpha = 0.45f),  // 深一点的蓝绿
+                        1.0f  to Color(0xFF66BB6A).copy(alpha = 0.45f)   // 深一点的绿色
                     )
                 )
             )
     ) {
-        // 顶部关闭按钮
-        IconButton(
-            onClick = { floatContext.onClose() },
+        // 顶部控制区域：返回窗口 / 语音模式 / 缩成语音球 / 关闭
+        Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(16.dp)
-                .size(42.dp)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "关闭悬浮窗",
-                tint = Color.White,
-                modifier = Modifier.size(28.dp)
-            )
+            // 返回窗口模式（或上一个模式）
+            IconButton(onClick = {
+                val targetMode =
+                    if (floatContext.previousMode == FloatingMode.FULLSCREEN ||
+                        floatContext.previousMode == FloatingMode.VOICE_BALL
+                    ) {
+                        FloatingMode.WINDOW
+                    } else {
+                        floatContext.previousMode
+                    }
+                floatContext.onModeChange(targetMode)
+            }) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "返回窗口模式",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            // 语音模式切换按钮：点击进入语音模式（中间显示头像和波浪），再次点击则退出
+            IconButton(onClick = {
+                if (viewModel.isWaveActive) {
+                    viewModel.exitWaveMode()
+                } else {
+                    viewModel.enterWaveMode()
+                }
+            }) {
+                Icon(
+                    imageVector = Icons.Default.Phone,
+                    contentDescription = "语音模式",
+                    tint = if (viewModel.isWaveActive) MaterialTheme.colorScheme.primary else Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // 缩小成语音球
+            IconButton(onClick = { floatContext.onModeChange(FloatingMode.VOICE_BALL) }) {
+                Icon(
+                    imageVector = Icons.Default.Chat,
+                    contentDescription = "缩小成语音球",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // 关闭悬浮窗
+            IconButton(onClick = { floatContext.onClose() }) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "关闭悬浮窗",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
         
         // 主内容区域
@@ -125,23 +184,25 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                 .fillMaxSize()
                 .padding(bottom = if (viewModel.showBottomControls) 120.dp else 32.dp)
         ) {
-            // 波浪可视化和头像
-            WaveVisualizerSection(
-                isWaveActive = viewModel.isWaveActive,
-                isRecording = viewModel.isRecording,
-                volumeLevelFlow = if (viewModel.isWaveActive && viewModel.isRecording) 
-                    viewModel.volumeLevelFlow else null,
-                aiAvatarUri = aiAvatarUri,
-                avatarShape = CircleShape,
-                onToggleActive = {
-                    if (viewModel.isWaveActive) {
-                        viewModel.exitWaveMode()
-                    } else {
-                        viewModel.enterWaveMode()
-                    }
-                },
-                modifier = Modifier.align(Alignment.Center)
-            )
+            // 波浪可视化和头像：仅在语音模式下显示
+            if (viewModel.isWaveActive) {
+                WaveVisualizerSection(
+                    isWaveActive = viewModel.isWaveActive,
+                    isRecording = viewModel.isRecording,
+                    volumeLevelFlow = if (viewModel.isWaveActive && viewModel.isRecording)
+                        viewModel.volumeLevelFlow else null,
+                    aiAvatarUri = aiAvatarUri,
+                    avatarShape = CircleShape,
+                    onToggleActive = {
+                        if (viewModel.isWaveActive) {
+                            viewModel.exitWaveMode()
+                        } else {
+                            viewModel.enterWaveMode()
+                        }
+                    },
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
             
             // 消息显示区域 - 根据模式切换位置
             AnimatedContent(
@@ -205,7 +266,10 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
             },
             onEnterEditMode = { text -> viewModel.enterEditMode(text) },
             onShowDragHintsChange = { viewModel.showDragHints = it },
-            userMessage = viewModel.userMessage,
+            userMessage = viewModel.inputText,
+            onUserMessageChange = { viewModel.inputText = it },
+            onSendClick = { viewModel.sendInputMessage() },
+            volumeLevel = volumeLevel,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
     }

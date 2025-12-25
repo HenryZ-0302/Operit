@@ -1249,6 +1249,16 @@ class EnhancedAIService private constructor(private val context: Context) {
      */
     private suspend fun getAvailableToolsForFunction(functionType: FunctionType): List<ToolPrompt>? {
         return try {
+            // 先读取全局工具和记忆开关
+            val enableTools = apiPreferences.enableToolsFlow.first()
+            val enableMemoryQuery = apiPreferences.enableMemoryQueryFlow.first()
+
+            // 如果同时关闭了普通工具和记忆相关工具，则完全不提供Tool Call工具
+            if (!enableTools && !enableMemoryQuery) {
+                AppLogger.d(TAG, "全局设置已禁用工具和记忆，本次调用不提供任何Tool Call工具")
+                return null
+            }
+
             // 获取对应功能类型的模型配置
             val config = multiServiceManager.getModelConfigForFunction(functionType)
             
@@ -1277,12 +1287,45 @@ class EnhancedAIService private constructor(private val context: Context) {
                     chatModelHasDirectImage = chatModelHasDirectImage
                 )
             }
-            
-            // 提取所有工具
-            val allTools = categories.flatMap { it.tools }
-            
-            AppLogger.d(TAG, "Tool Call已启用，提供 ${allTools.size} 个工具")
-            allTools
+
+            // 按类别拆分记忆工具和非记忆工具，以与 SystemPromptConfig 中的语义保持一致
+            val memoryCategoryName = if (isEnglish) {
+                "Memory and Memory Library Tools"
+            } else {
+                "记忆与记忆库工具"
+            }
+
+            val memoryTools = categories
+                .firstOrNull { it.categoryName == memoryCategoryName }
+                ?.tools
+                ?: emptyList()
+
+            val nonMemoryTools = categories
+                .filter { it.categoryName != memoryCategoryName }
+                .flatMap { it.tools }
+
+            // 根据开关组合最终可用工具：
+            // - enableTools && enableMemoryQuery      -> 所有工具
+            // - enableTools && !enableMemoryQuery     -> 仅非记忆工具
+            // - !enableTools && enableMemoryQuery     -> 仅记忆工具
+            val selectedTools = mutableListOf<ToolPrompt>()
+            if (enableTools) {
+                selectedTools.addAll(nonMemoryTools)
+            }
+            if (enableMemoryQuery) {
+                selectedTools.addAll(memoryTools)
+            }
+
+            if (selectedTools.isEmpty()) {
+                AppLogger.d(TAG, "根据当前工具/记忆开关，未选择任何Tool Call工具")
+                return null
+            }
+
+            AppLogger.d(
+                TAG,
+                "Tool Call已启用，提供 ${selectedTools.size} 个工具 (enableTools=$enableTools, enableMemoryQuery=$enableMemoryQuery)"
+            )
+            selectedTools
         } catch (e: Exception) {
             AppLogger.e(TAG, "获取工具列表失败", e)
             null
