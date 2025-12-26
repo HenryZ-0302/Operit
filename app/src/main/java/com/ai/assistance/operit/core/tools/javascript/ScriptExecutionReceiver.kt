@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.BuildConfig
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import java.io.File
@@ -16,7 +17,7 @@ import org.json.JSONObject
 class ScriptExecutionReceiver : BroadcastReceiver() {
     companion object {
         private const val TAG = "ScriptExecutionReceiver"
-        const val ACTION_EXECUTE_JS = "com.ai.assistance.operit.EXECUTE_JS"
+        val ACTION_EXECUTE_JS = "${BuildConfig.APPLICATION_ID}.EXECUTE_JS"
         const val EXTRA_FILE_PATH = "file_path"
         const val EXTRA_FUNCTION_NAME = "function_name"
         const val EXTRA_PARAMS = "params"

@@ -230,7 +230,7 @@
             android:name=".core.tools.javascript.ScriptExecutionReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.ai.assistance.operit.EXECUTE_JS" />
+                <action android:name="${applicationId}.EXECUTE_JS" />
             </intent-filter>
         </receiver>
         
@@ -258,7 +258,7 @@
             android:name=".core.tools.agent.ShowerBinderReceiver"
             android:exported="true">
             <intent-filter>
-                <action android:name="com.ai.assistance.operit.action.SHOWER_BINDER_READY" />
+                <action android:name="${applicationId}.action.SHOWER_BINDER_READY" />
             </intent-filter>
         </receiver>
         
@@ -279,7 +279,7 @@
             android:exported="true"
             android:enabled="true">
             <intent-filter>
-                <action android:name="com.ai.assistance.operit.TRIGGER_WORKFLOW" />
+                <action android:name="${applicationId}.TRIGGER_WORKFLOW" />
                 <action android:name="com.twofortyfouram.locale.intent.action.FIRE_SETTING" />
             </intent-filter>
         </receiver>

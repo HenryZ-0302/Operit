@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.BuildConfig
 import com.ai.assistance.operit.data.repository.WorkflowRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +20,7 @@ class WorkflowTaskerReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "WorkflowTaskerReceiver"
-        const val ACTION_TRIGGER_WORKFLOW = "com.ai.assistance.operit.TRIGGER_WORKFLOW"
+        val ACTION_TRIGGER_WORKFLOW = "${BuildConfig.APPLICATION_ID}.TRIGGER_WORKFLOW"
         
         /**
          * Creates an intent to trigger workflows based on intent data.
