@@ -42,11 +42,11 @@ object UIHierarchyManager {
     private const val BIND_SERVICE_TIMEOUT_MS = 3000L // 3秒超时
 
     // 新的无障碍服务提供者应用的包名
-    private const val PROVIDER_PACKAGE_NAME = "com.hy.aetherai.provider"
+    private const val PROVIDER_PACKAGE_NAME = "com.ai.assistance.operit.provider"
     // 无障碍服务提供者APK的文件名
     private const val PROVIDER_APK_NAME = "accessibility.apk"
     // 用于绑定的自定义Action，必须与服务提供者应用中的声明一致
-    private const val PROVIDER_ACTION = "com.hy.aetherai.provider.IAccessibilityProvider"
+    private const val PROVIDER_ACTION = "com.ai.assistance.operit.provider.IAccessibilityProvider"
     // TODO: 如果你不在Google Play上发布，可以将其更改为直接下载的URL
     private const val PROVIDER_MARKET_URL = "market://details?id=$PROVIDER_PACKAGE_NAME"
 

@@ -19,7 +19,7 @@ class WorkflowTaskerReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "WorkflowTaskerReceiver"
-        const val ACTION_TRIGGER_WORKFLOW = "com.hy.aetherai.TRIGGER_WORKFLOW"
+        const val ACTION_TRIGGER_WORKFLOW = "com.ai.assistance.operit.TRIGGER_WORKFLOW"
         
         /**
          * Creates an intent to trigger workflows based on intent data.

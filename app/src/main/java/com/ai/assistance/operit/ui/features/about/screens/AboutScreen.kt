@@ -45,7 +45,7 @@ import com.ai.assistance.operit.util.GithubReleaseUtil
 import kotlinx.coroutines.launch
 import com.ai.assistance.operit.ui.components.CustomScaffold
 
-// 已移除原作者的 GitHub 链接
+private const val GITHUB_PROJECT_URL = "https://github.com/AAswordman/Operit"
 
 @Composable
 fun HtmlText(
@@ -453,6 +453,48 @@ fun AboutScreen(
                     modifier = Modifier.padding(top = 4.dp, bottom = 20.dp)
                 )
 
+                Button(
+                    onClick = { checkForUpdates() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .alpha(buttonAlpha.value),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 1.dp, pressedElevation = 3.dp),
+                    enabled = updateStatus !is UpdateStatus.Checking
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (updateStatus is UpdateStatus.Checking) {
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Update,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = if (updateStatus is UpdateStatus.Checking)
+                                stringResource(id = R.string.checking_updates)
+                            else stringResource(id = R.string.check_for_updates),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 ElevatedCard(
@@ -483,8 +525,34 @@ fun AboutScreen(
                             icon = Icons.Rounded.Info,
                             title = stringResource(id = R.string.developer),
                             content = {
+                                HtmlText(
+                                    html = stringResource(id = R.string.about_developer),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        InfoItem(
+                            icon = Icons.Rounded.Info,
+                            title = stringResource(id = R.string.contact),
+                            content = {
                                 Text(
-                                    text = stringResource(id = R.string.about_developer),
+                                    text = stringResource(id = R.string.about_contact),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                        InfoItem(
+                            icon = Icons.Rounded.Info,
+                            title = stringResource(id = R.string.project_url),
+                            content = {
+                                HtmlText(
+                                    html = stringResource(id = R.string.about_website),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
@@ -498,6 +566,50 @@ fun AboutScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                ElevatedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB_PROJECT_URL)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        },
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = stringResource(R.string.github_star_description),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = stringResource(R.string.star_on_github),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
