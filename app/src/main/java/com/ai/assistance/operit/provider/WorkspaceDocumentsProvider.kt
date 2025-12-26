@@ -23,7 +23,7 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
         private const val TAG = "WorkspaceDocumentsProvider"
         
         // Authority需要与AndroidManifest中的声明一致
-        private const val AUTHORITY = "io.hy.aetherai.documents.workspace"
+        private const val AUTHORITY = "com.hy.aetherai.documents.workspace"
         
         // Root ID
         private const val ROOT_ID = "workspace_root"

@@ -76,19 +76,27 @@ jobs:
         ls -la ./app/src/main/jniLibs/ || echo "jniLibs dir not found"
         ls -la ./app/src/main/jniLibs/arm64-v8a/ 2>/dev/null | head -5 || echo "No arm64-v8a"
 
+    - name: Decode Keystore
+      run: |
+        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+
     - name: Create local.properties
       run: |
         echo "GITHUB_CLIENT_ID=${{ secrets.OAUTH_CLIENT_ID }}" > local.properties
         echo "sdk.dir=$ANDROID_HOME" >> local.properties
+        echo "RELEASE_STORE_FILE=${{ github.workspace }}/release.keystore" >> local.properties
+        echo "RELEASE_STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> local.properties
+        echo "RELEASE_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> local.properties
+        echo "RELEASE_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> local.properties
 
     - name: Grant execute permission for gradlew
       run: chmod +x ./gradlew
 
-    - name: Build Debug APK
-      run: ./gradlew assembleDebug --stacktrace
+    - name: Build Release APK
+      run: ./gradlew assembleRelease --stacktrace
 
-    - name: Upload Debug APK
+    - name: Upload Release APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
-        path: app/build/outputs/apk/debug/*.apk
+        name: app-release
+        path: app/build/outputs/apk/release/*.apk
