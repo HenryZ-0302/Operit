@@ -236,6 +236,14 @@ val presetTags = listOf(
         icon = Icons.Default.Psychology
     ),
     PresetTag(
+        name = "HTML外层包裹",
+        description = "输出 <font>/<detail> 等嵌入式 XML/HTML 时，外层必须包裹 <html>，且禁止使用 Markdown 代码块。",
+        promptContent = "当你需要在回复中输出嵌入式 XML/HTML（例如 <font>、<detail> 等标签）时，必须在最外层包裹一层 <html>...</html>。禁止使用任何 Markdown 代码块（```），不要把标签放进代码块里，直接输出纯文本的标签内容。示例：<font color=\"#FF0000\">文本</font> 应输出为 <html><font color=\"#FF0000\">文本</font></html>。",
+        tagType = TagType.FUNCTION,
+        category = "特殊功能",
+        icon = Icons.Default.Label
+    ),
+    PresetTag(
         name = "字数控制",
         description = "在被要求控制输出长度时，为核心内容编号并统计字数，方便精确评估。",
         promptContent = "当用户要求你控制输出内容的长度时，请对你生成的核心内容部分，为每个自然段开头添加【1】、【2】...这样的编号，并在每个自然段的末尾，用“（本段共xx字）”的格式标注该段的字数。这有助于用户精确评估你对字数要求的遵循情况。",
