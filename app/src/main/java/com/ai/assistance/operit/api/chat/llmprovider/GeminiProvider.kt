@@ -420,9 +420,10 @@ class GeminiProvider(
                     val partsArray = JSONArray()
                     // 先添加文本内容
                     if (textContent.isNotEmpty()) {
-                        partsArray.put(JSONObject().apply {
-                            put("text", textContent)
-                        })
+                        val messageParts = buildPartsArray(textContent)
+                        for (i in 0 until messageParts.length()) {
+                            partsArray.put(messageParts.getJSONObject(i))
+                        }
                     }
                     // 再添加functionCall
                     if (functionCall != null) {
@@ -453,9 +454,10 @@ class GeminiProvider(
                     }
                     // 再添加文本内容
                     if (textContent.isNotEmpty()) {
-                        partsArray.put(JSONObject().apply {
-                            put("text", textContent)
-                        })
+                        val messageParts = buildPartsArray(textContent)
+                        for (i in 0 until messageParts.length()) {
+                            partsArray.put(messageParts.getJSONObject(i))
+                        }
                     }
                     
                     // 如果没有任何内容，保留原始content
@@ -513,6 +515,51 @@ class GeminiProvider(
             // 消息长度在限制之内，直接打印
             AppLogger.d(tag, "$prefix$message")
         }
+    }
+
+    private fun sanitizeImageDataForLogging(json: JSONObject): JSONObject {
+        fun sanitizeObject(obj: JSONObject) {
+            fun sanitizeArray(arr: JSONArray) {
+                for (i in 0 until arr.length()) {
+                    val value = arr.get(i)
+                    when (value) {
+                        is JSONObject -> sanitizeObject(value)
+                        is JSONArray -> sanitizeArray(value)
+                        is String -> {
+                            if (value.startsWith("data:") && value.contains(";base64,")) {
+                                arr.put(i, "[image base64 omitted, length=${value.length}]")
+                            }
+                        }
+                    }
+                }
+            }
+
+            val maybeMimeType = obj.optString("mime_type", obj.optString("mimeType", ""))
+            if (maybeMimeType.startsWith("image/", ignoreCase = true) && obj.has("data")) {
+                val dataValue = obj.opt("data")
+                if (dataValue is String) {
+                    obj.put("data", "[image base64 omitted, length=${dataValue.length}]")
+                }
+            }
+
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val value = obj.get(key)
+                when (value) {
+                    is JSONObject -> sanitizeObject(value)
+                    is JSONArray -> sanitizeArray(value)
+                    is String -> {
+                        if (value.startsWith("data:") && value.contains(";base64,")) {
+                            obj.put(key, "[image base64 omitted, length=${value.length}]")
+                        }
+                    }
+                }
+            }
+        }
+
+        sanitizeObject(json)
+        return json
     }
 
     // 日志辅助方法
@@ -831,6 +878,7 @@ class GeminiProvider(
             val toolsArray = logJson.getJSONArray("tools")
             logJson.put("tools", "[${toolsArray.length()} tools omitted for brevity]")
         }
+        sanitizeImageDataForLogging(logJson)
         logLargeString(TAG, logJson.toString(4), "请求体JSON: ")
 
         return jsonString.toRequestBody(JSON)

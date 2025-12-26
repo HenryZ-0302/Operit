@@ -6,8 +6,10 @@ import com.ai.assistance.operit.core.tools.DirectoryListingData
 import com.ai.assistance.operit.core.tools.FileContentData
 import com.ai.assistance.operit.core.tools.BinaryFileContentData
 import com.ai.assistance.operit.core.tools.FileExistsData
+import com.ai.assistance.operit.core.tools.FileInfoData
 import com.ai.assistance.operit.core.tools.FileOperationData
 import com.ai.assistance.operit.core.tools.FilePartContentData
+import com.ai.assistance.operit.core.tools.FindFilesResultData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
@@ -84,7 +86,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             return ToolResult(
                 toolName = tool.name,
                 success = true,
-                result = DirectoryListingData(path, entries),
+                result = DirectoryListingData(path = path, entries = entries, env = "linux"),
                 error = ""
             )
         } catch (e: Exception) {
@@ -175,7 +177,8 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 result = FileContentData(
                     path = path,
                     content = content,
-                    size = fileSize
+                    size = fileSize,
+                    env = "linux"
                 ),
                 error = ""
             )
@@ -242,7 +245,8 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 result = BinaryFileContentData(
                     path = path,
                     contentBase64 = base64,
-                    size = size
+                    size = size,
+                    env = "linux"
                 ),
                 error = ""
             )
@@ -278,7 +282,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 return ToolResult(
                     toolName = tool.name,
                     success = true,
-                    result = FileExistsData(path = path, exists = false),
+                    result = FileExistsData(path = path, exists = false, env = "linux"),
                     error = ""
                 )
             }
@@ -293,7 +297,8 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     path = path,
                     exists = true,
                     isDirectory = isDirectory,
-                    size = size
+                    size = size,
+                    env = "linux"
                 ),
                 error = ""
             )
@@ -306,7 +311,8 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     path = path,
                     exists = false,
                     isDirectory = false,
-                    size = 0
+                    size = 0,
+                    env = "linux"
                 ),
                 error = "Error checking file existence: ${e.message}"
             )
@@ -377,7 +383,8 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     result = FileContentData(
                         path = path,
                         content = content + truncatedMsg,
-                        size = fileSize
+                        size = fileSize,
+                        env = "linux"
                     ),
                     error = ""
                 )
@@ -456,7 +463,8 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     totalParts = 1, // 保留兼容性，但不再使用
                     startLine = startLine - 1, // 转为0-based
                     endLine = endLine,
-                    totalLines = totalLines
+                    totalLines = totalLines,
+                    env = "linux"
                 ),
                 error = ""
             )
@@ -484,6 +492,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "write",
+                    env = "linux",
                     path = "",
                     successful = false,
                     details = "Path parameter is required"
@@ -501,6 +510,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     success = false,
                     result = FileOperationData(
                         operation = if (append) "append" else "write",
+                        env = "linux",
                         path = path,
                         successful = false,
                         details = result.message
@@ -515,6 +525,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = true,
                 result = FileOperationData(
                     operation = operation,
+                    env = "linux",
                     path = path,
                     successful = true,
                     details = result.message
@@ -530,6 +541,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = if (append) "append" else "write",
+                    env = "linux",
                     path = path,
                     successful = false,
                     details = errorMessage
@@ -551,6 +563,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "write_binary",
+                    env = "linux",
                     path = "",
                     successful = false,
                     details = "Path parameter is required"
@@ -565,6 +578,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "write_binary",
+                    env = "linux",
                     path = path,
                     successful = false,
                     details = "base64Content parameter is required"
@@ -584,6 +598,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     success = false,
                     result = FileOperationData(
                         operation = "write_binary",
+                        env = "linux",
                         path = path,
                         successful = false,
                         details = result.message
@@ -597,6 +612,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = true,
                 result = FileOperationData(
                     operation = "write_binary",
+                    env = "linux",
                     path = path,
                     successful = true,
                     details = result.message
@@ -612,6 +628,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "write_binary",
+                    env = "linux",
                     path = path,
                     successful = false,
                     details = errorMessage
@@ -633,6 +650,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "delete",
+                    env = "linux",
                     path = "",
                     successful = false,
                     details = "Path parameter is required"
@@ -648,6 +666,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     success = false,
                     result = FileOperationData(
                         operation = "delete",
+                        env = "linux",
                         path = path,
                         successful = false,
                         details = "Path does not exist: $path"
@@ -664,6 +683,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     success = false,
                     result = FileOperationData(
                         operation = "delete",
+                        env = "linux",
                         path = path,
                         successful = false,
                         details = result.message
@@ -677,6 +697,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = true,
                 result = FileOperationData(
                     operation = "delete",
+                    env = "linux",
                     path = path,
                     successful = true,
                     details = result.message
@@ -692,6 +713,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "delete",
+                    env = "linux",
                     path = path,
                     successful = false,
                     details = errorMessage
@@ -714,6 +736,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "move",
+                    env = "linux",
                     path = sourcePath,
                     successful = false,
                     details = "Both sourcePath and destPath parameters are required"
@@ -729,6 +752,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     success = false,
                     result = FileOperationData(
                         operation = "move",
+                        env = "linux",
                         path = sourcePath,
                         successful = false,
                         details = "Source path does not exist: $sourcePath"
@@ -745,6 +769,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     success = false,
                     result = FileOperationData(
                         operation = "move",
+                        env = "linux",
                         path = sourcePath,
                         successful = false,
                         details = result.message
@@ -758,6 +783,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = true,
                 result = FileOperationData(
                     operation = "move",
+                    env = "linux",
                     path = sourcePath,
                     successful = true,
                     details = result.message
@@ -773,6 +799,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "move",
+                    env = "linux",
                     path = sourcePath,
                     successful = false,
                     details = errorMessage
@@ -796,6 +823,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "copy",
+                    env = "linux",
                     path = sourcePath,
                     successful = false,
                     details = "Both sourcePath and destPath parameters are required"
@@ -813,6 +841,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     success = false,
                     result = FileOperationData(
                         operation = "copy",
+                        env = "linux",
                         path = sourcePath,
                         successful = false,
                         details = result.message
@@ -826,6 +855,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = true,
                 result = FileOperationData(
                     operation = "copy",
+                    env = "linux",
                     path = sourcePath,
                     successful = true,
                     details = result.message
@@ -841,6 +871,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "copy",
+                    env = "linux",
                     path = sourcePath,
                     successful = false,
                     details = errorMessage
@@ -862,6 +893,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "mkdir",
+                    env = "linux",
                     path = "",
                     successful = false,
                     details = "Path parameter is required"
@@ -879,6 +911,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     success = false,
                     result = FileOperationData(
                         operation = "mkdir",
+                        env = "linux",
                         path = path,
                         successful = false,
                         details = result.message
@@ -892,6 +925,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = true,
                 result = FileOperationData(
                     operation = "mkdir",
+                    env = "linux",
                     path = path,
                     successful = true,
                     details = result.message
@@ -907,6 +941,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 success = false,
                 result = FileOperationData(
                     operation = "mkdir",
+                    env = "linux",
                     path = path,
                     successful = false,
                     details = errorMessage
@@ -926,7 +961,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result = FindFilesResultData(path = basePath, pattern = pattern, files = emptyList(), env = "linux"),
                 error = "basePath parameter is required"
             )
         }
@@ -935,7 +970,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result = FindFilesResultData(path = basePath, pattern = pattern, files = emptyList(), env = "linux"),
                 error = "pattern parameter is required"
             )
         }
@@ -945,7 +980,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
-                    result = StringResultData(""),
+                    result = FindFilesResultData(path = basePath, pattern = pattern, files = emptyList(), env = "linux"),
                     error = "Base path does not exist: $basePath"
                 )
             }
@@ -957,16 +992,10 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 caseInsensitive = false
             )
 
-            val resultText = if (files.isEmpty()) {
-                "No files found matching pattern '$pattern' in $basePath"
-            } else {
-                "Found ${files.size} file(s):\n" + files.joinToString("\n")
-            }
-
             return ToolResult(
                 toolName = tool.name,
                 success = true,
-                result = StringResultData(resultText),
+                result = FindFilesResultData(path = basePath, pattern = pattern, files = files, env = "linux"),
                 error = ""
             )
         } catch (e: Exception) {
@@ -974,7 +1003,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result = FindFilesResultData(path = basePath, pattern = pattern, files = emptyList(), env = "linux"),
                 error = "Error finding files: ${e.message}"
             )
         }
@@ -989,7 +1018,18 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result = FileInfoData(
+                    path = "",
+                    exists = false,
+                    fileType = "",
+                    size = 0,
+                    permissions = "",
+                    owner = "",
+                    group = "",
+                    lastModified = "",
+                    rawStatOutput = "",
+                    env = "linux"
+                ),
                 error = "Path parameter is required"
             )
         }
@@ -1000,16 +1040,27 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 return ToolResult(
                     toolName = tool.name,
                     success = false,
-                    result = StringResultData(""),
+                    result = FileInfoData(
+                        path = path,
+                        exists = false,
+                        fileType = "",
+                        size = 0,
+                        permissions = "",
+                        owner = "",
+                        group = "",
+                        lastModified = "",
+                        rawStatOutput = "",
+                        env = "linux"
+                    ),
                     error = "File does not exist: $path"
                 )
             }
 
-            val infoText = buildString {
-                appendLine("File Information for: $path")
-                appendLine("Name: ${fileInfo.name}")
-                appendLine("Type: ${if (fileInfo.isDirectory) "Directory" else "File"}")
+            val fileType = if (fileInfo.isDirectory) "directory" else "file"
+            val rawInfo = buildString {
+                appendLine("File: $path")
                 appendLine("Size: ${fileInfo.size} bytes")
+                appendLine("Type: $fileType")
                 appendLine("Permissions: ${fileInfo.permissions}")
                 appendLine("Last Modified: ${fileInfo.lastModified}")
             }
@@ -1017,7 +1068,18 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             return ToolResult(
                 toolName = tool.name,
                 success = true,
-                result = StringResultData(infoText),
+                result = FileInfoData(
+                    path = path,
+                    exists = true,
+                    fileType = fileType,
+                    size = fileInfo.size,
+                    permissions = fileInfo.permissions,
+                    owner = "",
+                    group = "",
+                    lastModified = fileInfo.lastModified,
+                    rawStatOutput = rawInfo,
+                    env = "linux"
+                ),
                 error = ""
             )
         } catch (e: Exception) {
@@ -1025,7 +1087,18 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             return ToolResult(
                 toolName = tool.name,
                 success = false,
-                result = StringResultData(""),
+                result = FileInfoData(
+                    path = path,
+                    exists = false,
+                    fileType = "",
+                    size = 0,
+                    permissions = "",
+                    owner = "",
+                    group = "",
+                    lastModified = "",
+                    rawStatOutput = "",
+                    env = "linux"
+                ),
                 error = "Error getting file info: ${e.message}"
             )
         }
@@ -1108,7 +1181,18 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
         
         if (isFile) {
             // 文件模式：使用父类的实现（通过读取文件内容）
-            return grepContextInFile(path, intent, maxResults, tool.name)
+            val result = grepContextInFile(path, intent, maxResults, tool.name)
+            return if (result.success && result.result is com.ai.assistance.operit.core.tools.GrepResultData) {
+                val data = result.result as com.ai.assistance.operit.core.tools.GrepResultData
+                ToolResult(
+                    toolName = result.toolName,
+                    success = true,
+                    result = data.copy(env = "linux"),
+                    error = result.error
+                )
+            } else {
+                result
+            }
         }
         
         // 目录模式暂不支持（需要实现Linux版本的文件搜索和评分）

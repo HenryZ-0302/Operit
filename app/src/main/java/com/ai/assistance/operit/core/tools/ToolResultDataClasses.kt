@@ -1,6 +1,8 @@
 package com.ai.assistance.operit.core.tools
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -56,6 +58,7 @@ data class BinaryResultData(val value: ByteArray) : ToolResultData() {
 
 /** 文件分段读取结果数据 */
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class FilePartContentData(
         val path: String,
         val content: String,
@@ -63,12 +66,14 @@ data class FilePartContentData(
         val totalParts: Int,
         val startLine: Int,
         val endLine: Int,
-        val totalLines: Int
+        val totalLines: Int,
+        @EncodeDefault
+        val env: String = "android"
 ) : ToolResultData() {
     override fun toString(): String {
         val partInfo =
                 "Part ${partIndex + 1} of $totalParts (Lines ${startLine + 1}-$endLine of $totalLines)"
-        return "$partInfo\n\n$content"
+        return "[$env] $partInfo\n\n$content"
     }
 }
 
@@ -152,7 +157,13 @@ data class ConnectionResultData(
 
 /** Represents a directory listing result */
 @Serializable
-data class DirectoryListingData(val path: String, val entries: List<FileEntry>) : ToolResultData() {
+@OptIn(ExperimentalSerializationApi::class)
+data class DirectoryListingData(
+        val path: String,
+        val entries: List<FileEntry>,
+        @EncodeDefault
+        val env: String = "android"
+) : ToolResultData() {
     @Serializable
     data class FileEntry(
             val name: String,
@@ -164,7 +175,7 @@ data class DirectoryListingData(val path: String, val entries: List<FileEntry>) 
 
     override fun toString(): String {
         val sb = StringBuilder()
-        sb.appendLine("Directory listing for $path:")
+        sb.appendLine("[$env] Directory listing for $path:")
         entries.forEach { entry ->
             val typeIndicator = if (entry.isDirectory) "d" else "-"
             sb.appendLine(
@@ -179,45 +190,59 @@ data class DirectoryListingData(val path: String, val entries: List<FileEntry>) 
 
 /** Represents a file content result */
 @Serializable
-data class FileContentData(val path: String, val content: String, val size: Long) :
+@OptIn(ExperimentalSerializationApi::class)
+data class FileContentData(
+        val path: String,
+        val content: String,
+        val size: Long,
+        @EncodeDefault
+        val env: String = "android"
+) :
         ToolResultData() {
     override fun toString(): String {
-        return "Content of $path:\n$content"
+        return "[$env] Content of $path:\n$content"
     }
 }
 
 /** Represents a binary file content result (Base64 encoded) */
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class BinaryFileContentData(
         val path: String,
         val contentBase64: String,
-        val size: Long
+        val size: Long,
+        @EncodeDefault
+        val env: String = "android"
 ) : ToolResultData() {
     override fun toString(): String {
-        return "Binary content of $path (${size} bytes, base64 length=${contentBase64.length})"
+        return "[$env] Binary content of $path (${size} bytes, base64 length=${contentBase64.length})"
     }
 }
 
 /** Represents file existence check result */
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class FileExistsData(
         val path: String,
         val exists: Boolean,
         val isDirectory: Boolean = false,
-        val size: Long = 0
+        val size: Long = 0,
+        @EncodeDefault
+        val env: String = "android"
 ) : ToolResultData() {
     override fun toString(): String {
         val fileType = if (isDirectory) "Directory" else "File"
         return if (exists) {
-            "$fileType exists at path: $path (size: $size bytes)"
+            "[$env] $fileType exists at path: $path (size: $size bytes)"
         } else {
-            "No file or directory exists at path: $path"
+            "[$env] No file or directory exists at path: $path"
         }
     }
 }
 
 /** Represents detailed file information */
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class FileInfoData(
         val path: String,
         val exists: Boolean,
@@ -227,15 +252,17 @@ data class FileInfoData(
         val owner: String,
         val group: String,
         val lastModified: String,
-        val rawStatOutput: String
+        val rawStatOutput: String,
+        @EncodeDefault
+        val env: String = "android"
 ) : ToolResultData() {
     override fun toString(): String {
         if (!exists) {
-            return "File or directory does not exist at path: $path"
+            return "[$env] File or directory does not exist at path: $path"
         }
 
         val sb = StringBuilder()
-        sb.appendLine("File information for $path:")
+        sb.appendLine("[$env] File information for $path:")
         sb.appendLine("Type: $fileType")
         sb.appendLine("Size: $size bytes")
         sb.appendLine("Permissions: $permissions")
@@ -248,14 +275,17 @@ data class FileInfoData(
 
 /** Represents a file operation result */
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class FileOperationData(
         val operation: String,
+        @EncodeDefault
+        val env: String = "android",
         val path: String,
         val successful: Boolean,
         val details: String
 ) : ToolResultData() {
     override fun toString(): String {
-        return details
+        return "[$env] $details"
     }
 }
 
@@ -269,7 +299,7 @@ data class FileApplyResultData(
 ) : ToolResultData() {
     override fun toString(): String {
         val sb = StringBuilder()
-        sb.appendLine(operation.details)
+        sb.appendLine(operation.toString())
 
         // If diffContent is available, embed it in a custom XML-like tag for the renderer.
         if (diffContent != null) {
@@ -570,11 +600,18 @@ data class IntentResultData(
 
 /** 文件查找结果数据 */
 @Serializable
-data class FindFilesResultData(val path: String, val pattern: String, val files: List<String>) :
+@OptIn(ExperimentalSerializationApi::class)
+data class FindFilesResultData(
+        val path: String,
+        val pattern: String,
+        val files: List<String>,
+        @EncodeDefault
+        val env: String = "android"
+) :
         ToolResultData() {
     override fun toString(): String {
         val sb = StringBuilder()
-        sb.appendLine("文件查找结果:")
+        sb.appendLine("[$env] 文件查找结果:")
         sb.appendLine("搜索路径: $path")
         sb.appendLine("匹配模式: $pattern")
 
@@ -666,8 +703,6 @@ data class FFmpegResultData(
     }
 }
 
-
-
 /** 通知数据结构 */
 @Serializable
 data class NotificationData(val notifications: List<Notification>, val timestamp: Long) :
@@ -735,8 +770,6 @@ data class LocationData(
     }
 }
 
-
-
 /** Represents a simplified HTML node for computer desktop actions, focusing on interactability */
 @Serializable
 data class ComputerPageInfoNode(
@@ -759,7 +792,6 @@ data class ComputerPageInfoNode(
         return selfStr + childrenStr
     }
 }
-
 
 /** Represents the result of a computer desktop action */
 @Serializable
@@ -1038,12 +1070,15 @@ data class TerminalSessionCloseResultData(
 
 /** Grep代码搜索结果数据 */
 @Serializable
+@OptIn(ExperimentalSerializationApi::class)
 data class GrepResultData(
     val searchPath: String,
     val pattern: String,
     val matches: List<FileMatch>,
     val totalMatches: Int,
-    val filesSearched: Int
+    val filesSearched: Int,
+    @EncodeDefault
+    val env: String = "android"
 ) : ToolResultData() {
     
     @Serializable
@@ -1061,7 +1096,7 @@ data class GrepResultData(
     
     override fun toString(): String {
         val sb = StringBuilder()
-        sb.appendLine("Grep搜索结果:")
+        sb.appendLine("[$env] Grep搜索结果:")
         sb.appendLine("搜索路径: $searchPath")
         sb.appendLine("搜索模式: $pattern")
         sb.appendLine("匹配总数: $totalMatches (在 ${matches.size} 个文件中)")

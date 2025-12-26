@@ -2260,9 +2260,11 @@
     <string name="settings_part_size">Partial Read Line Count</string>
     <string name="settings_part_size_subtitle">Number of lines per section when reading files partially</string>
     <string name="settings_max_text_result">Max Text Result Length</string>
-    <string name="settings_max_text_result_subtitle">Maximum character limit for general text results</string>
+    <string name="settings_max_text_result_subtitle">Maximum character limit for generic text results</string>
     <string name="settings_max_http_response">Max HTTP Response Length</string>
     <string name="settings_max_http_response_subtitle">Maximum character limit for network request responses</string>
+    <string name="settings_max_image_history_user_turns">Keep Image History Turns</string>
+    <string name="settings_max_image_history_user_turns_subtitle">Only keep images from the last N user turns to avoid resending old images</string>
     <string name="settings_reset_truncation">Reset Truncation Settings</string>
     <string name="settings_reset_truncation_desc">Reset all truncation settings to default values</string>
     

@@ -45,6 +45,7 @@ object PathValidator {
                 success = false,
                 result = FileOperationData(
                     operation = toolName,
+                    env = "linux",
                     path = path,
                     successful = false,
                     details = "Invalid path: '$path'. Path must start with '/' or '~'."

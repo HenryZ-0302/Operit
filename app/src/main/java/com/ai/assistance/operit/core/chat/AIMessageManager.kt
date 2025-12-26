@@ -5,6 +5,7 @@ import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.plan.PlanModeManager
+import com.ai.assistance.operit.api.chat.llmprovider.ImageLinkParser
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.MemoryQueryResultData
 import com.ai.assistance.operit.data.model.AITool
@@ -15,6 +16,7 @@ import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.process.WorkspaceAttachmentProcessor
 import com.ai.assistance.operit.util.ImagePoolManager
+import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.util.stream.SharedStream
 import com.ai.assistance.operit.util.stream.share
 import kotlinx.coroutines.CoroutineScope
@@ -22,7 +24,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import com.ai.assistance.operit.data.model.InputProcessingState
 
 /**
  * 单例对象，负责管理与 EnhancedAIService 的所有通信。
@@ -158,6 +159,10 @@ object AIMessageManager {
      * @param enableThinking 是否启用思考过程。
      * @param thinkingGuidance 是否启用思考引导。
      * @param enableMemoryQuery 是否允许AI查询记忆。
+     * @param maxTokens 最大token数量。
+     * @param tokenUsageThreshold token使用阈值。
+     * @param onNonFatalError 非致命错误回调。
+     * @param onTokenLimitExceeded token限制超出回调。
      * @param characterName 角色名称，用于通知。
      * @param avatarUri 角色头像URI，用于通知。
      * @return 包含AI响应流的ChatMessage对象。
@@ -185,6 +190,16 @@ object AIMessageManager {
         val isDeepSearchEnabled = apiPreferences.enableAiPlanningFlow.first()
         
         return withContext(Dispatchers.IO) {
+            val maxImageHistoryUserTurns = apiPreferences.maxImageHistoryUserTurnsFlow.first()
+            val memoryForRequest = limitImageLinksInChatHistory(memory, maxImageHistoryUserTurns)
+            val beforeImageLinkCount = memory.count { (_, content) -> ImageLinkParser.hasImageLinks(content) }
+            val afterImageLinkCount = memoryForRequest.count { (_, content) -> ImageLinkParser.hasImageLinks(content) }
+            if (beforeImageLinkCount != afterImageLinkCount) {
+                AppLogger.d(
+                    TAG,
+                    "历史图片裁剪生效: limit=$maxImageHistoryUserTurns, before=$beforeImageLinkCount, after=$afterImageLinkCount"
+                )
+            }
             if (isDeepSearchEnabled) {
                 // 创建计划模式管理器
                 val planModeManager = PlanModeManager(context, enhancedAiService)
@@ -204,7 +219,7 @@ object AIMessageManager {
                     // 使用深度搜索模式
                     return@withContext planModeManager.executeDeepSearchMode(
                         userMessage = messageContent,
-                        chatHistory = memory,
+                        chatHistory = memoryForRequest,
                         workspacePath = workspacePath,
                         maxTokens = maxTokens,
                         tokenUsageThreshold = tokenUsageThreshold,
@@ -225,7 +240,7 @@ object AIMessageManager {
             // 使用普通模式
             enhancedAiService.sendMessage(
                 message = messageContent,
-                chatHistory = memory, // Correct parameter name is chatHistory
+                chatHistory = memoryForRequest, // Correct parameter name is chatHistory
                 workspacePath = workspacePath,
                 promptFunctionType = promptFunctionType,
                 enableThinking = enableThinking,
@@ -239,6 +254,30 @@ object AIMessageManager {
                 avatarUri = avatarUri,
                 stream = enableStream
             ).share(scope) // 使用.share()将其转换为共享流
+        }
+    }
+
+    private fun limitImageLinksInChatHistory(
+        history: List<Pair<String, String>>,
+        keepLastUserImageTurns: Int
+    ): List<Pair<String, String>> {
+        val limit = keepLastUserImageTurns.coerceAtLeast(0)
+        val totalUserTurns = history.count { (role, _) -> role == "user" }
+        val keepFromTurn = (totalUserTurns - limit).coerceAtLeast(0)
+
+        var currentUserTurnIndex = -1
+        return history.map { (role, content) ->
+            if (role == "user") {
+                currentUserTurnIndex += 1
+            }
+
+            val shouldKeepImages = limit > 0 && currentUserTurnIndex >= keepFromTurn
+            if (!shouldKeepImages && ImageLinkParser.hasImageLinks(content)) {
+                val removed = ImageLinkParser.removeImageLinks(content).trim()
+                role to (removed.ifBlank { "[图片已省略]" })
+            } else {
+                role to content
+            }
         }
     }
 

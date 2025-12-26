@@ -285,8 +285,18 @@ open class StandardSystemOperationTools(private val context: Context) {
             apps.forEach { appInfo ->
                 val isSystemApp = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
                 if (includeSystemApps || !isSystemApp) {
-                    val appName = appInfo.loadLabel(pm).toString()
                     val packageName = appInfo.packageName
+                    val appName =
+                            try {
+                                appInfo.loadLabel(pm).toString()
+                            } catch (e: Exception) {
+                                AppLogger.w(
+                                        TAG,
+                                        "Failed to load application label for $packageName",
+                                        e
+                                )
+                                packageName
+                            }
                     appDetails.add("$appName ($packageName)")
                 }
             }
