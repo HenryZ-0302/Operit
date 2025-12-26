@@ -42,3 +42,6 @@ gradle/gradle-8.7
 mnn/build/*
 mnn/build
 kls_database.db
+
+# APK files
+*.apk
