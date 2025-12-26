@@ -7,6 +7,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.BuildConfig
 import android.webkit.MimeTypeMap
 import java.io.File
 import java.io.FileNotFoundException
@@ -23,7 +24,7 @@ class WorkspaceDocumentsProvider : DocumentsProvider() {
         private const val TAG = "WorkspaceDocumentsProvider"
         
         // Authority需要与AndroidManifest中的声明一致
-        private const val AUTHORITY = "com.ai.assistance.operit.documents.workspace"
+        private val AUTHORITY = "${BuildConfig.APPLICATION_ID}.documents.workspace"
         
         // Root ID
         private const val ROOT_ID = "workspace_root"

@@ -137,7 +137,7 @@
         <!-- Workspace Documents Provider for SAF -->
         <provider
             android:name=".provider.WorkspaceDocumentsProvider"
-            android:authorities="com.ai.assistance.operit.documents.workspace"
+            android:authorities="${applicationId}.documents.workspace"
             android:exported="true"
             android:grantUriPermissions="true"
             android:permission="android.permission.MANAGE_DOCUMENTS">
