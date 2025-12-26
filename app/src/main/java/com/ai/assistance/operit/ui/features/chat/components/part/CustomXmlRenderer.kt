@@ -39,7 +39,7 @@ class CustomXmlRenderer(
 ) : XmlContentRenderer {
     // 定义渲染器能够处理的内置标签集合
     private val builtInTags =
-            setOf("think", "thinking", "search", "tool", "status", "tool_result", "html", "mood")
+            setOf("think", "thinking", "search", "tool", "status", "tool_result", "html", "mood", "font", "details", "detail")
 
     @Composable
     override fun RenderXmlContent(xmlContent: String, modifier: Modifier, textColor: Color) {
@@ -55,12 +55,20 @@ class CustomXmlRenderer(
             "status" -> stringResource(R.string.status_info_block)
             "html" -> stringResource(R.string.html_content_block)
             "mood" -> stringResource(R.string.mood_tag_block)
+            "font" -> stringResource(R.string.xml_block)
+            "details", "detail" -> stringResource(R.string.xml_block)
             else -> stringResource(R.string.tool_call_block)
         }
         
         // 用 Box 包裹所有内容，添加无障碍描述
-        Box(modifier = modifier.semantics { contentDescription = accessibilityDesc }) {
-            RenderXmlContentInternal(trimmedContent, tagName, textColor)
+        if (tagName == "think" || tagName == "thinking") {
+            Box(modifier = modifier) {
+                RenderXmlContentInternal(trimmedContent, tagName, textColor)
+            }
+        } else {
+            Box(modifier = modifier.semantics { contentDescription = accessibilityDesc }) {
+                RenderXmlContentInternal(trimmedContent, tagName, textColor)
+            }
         }
     }
     
@@ -111,6 +119,8 @@ class CustomXmlRenderer(
             "status" -> renderStatus(trimmedContent, Modifier, textColor)
             "html" -> renderHtmlContent(trimmedContent, Modifier, textColor)
             "mood" -> renderMoodTag(trimmedContent, Modifier, textColor)
+            "font" -> FontTagRenderer.Render(trimmedContent, Modifier, textColor)
+            "details", "detail" -> DetailsTagRenderer.Render(trimmedContent, Modifier, textColor)
             else -> fallback.RenderXmlContent(trimmedContent, Modifier, textColor)
         }
     }
@@ -267,6 +277,8 @@ class CustomXmlRenderer(
 
         var expanded by remember { mutableStateOf(false) }
 
+        val accessibilityDesc = stringResource(R.string.thinking_process_block)
+
         // 使用LaunchedEffect来初始化和同步状态，避免在快速重组时状态被意外重置
         LaunchedEffect(isThinkingInProgress, expandThinkingProcess) {
             expanded = if (isThinkingInProgress) {
@@ -278,7 +290,18 @@ class CustomXmlRenderer(
             }
         }
 
-        Column(modifier = modifier.fillMaxWidth().padding(horizontal = 0.dp, vertical = 4.dp)) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = 0.dp, vertical = 4.dp)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = if (expanded && thinkText.isNotBlank()) {
+                        "$accessibilityDesc\n$thinkText"
+                    } else {
+                        accessibilityDesc
+                    }
+                }
+        ) {
             Row(
                     modifier = Modifier.fillMaxWidth().clickable {
                         val newExpandedValue = !expanded
