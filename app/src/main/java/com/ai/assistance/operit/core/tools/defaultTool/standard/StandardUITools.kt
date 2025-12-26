@@ -49,10 +49,6 @@ import java.util.Locale
 /** Base class for UI automation tools - standard version does not support UI operations */
 open class StandardUITools(protected val context: Context) : ToolImplementations {
 
-    init {
-        scanAndAddInstalledApps(context)
-    }
-
     companion object {
         private const val TAG = "UITools"
         private const val COMMAND_TIMEOUT_SECONDS = 10L
@@ -267,7 +263,17 @@ open class StandardUITools(protected val context: Context) : ToolImplementations
                     val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
                     val newPackages = mutableMapOf<String, String>()
                     for (app in apps) {
-                        val appName = pm.getApplicationLabel(app).toString()
+                        val appName =
+                                try {
+                                    pm.getApplicationLabel(app).toString()
+                                } catch (e: Exception) {
+                                    AppLogger.w(
+                                            TAG,
+                                            "Failed to load application label for ${app.packageName}",
+                                            e
+                                    )
+                                    app.packageName
+                                }
                         if (appName.isNotBlank() && app.packageName.isNotBlank()) {
                             if (!APP_PACKAGES.containsKey(appName)) {
                                 newPackages[appName] = app.packageName

@@ -2191,7 +2191,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                 FindFilesResultData(
                     path = path,
                     pattern = pattern,
-                    files = emptyList()
+                    files = emptyList(),
+                    env = "android"
                 ),
                 error = "Path and pattern parameters are required"
             )
@@ -2208,7 +2209,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                     FindFilesResultData(
                         path = path,
                         pattern = pattern,
-                        files = emptyList()
+                        files = emptyList(),
+                        env = "android"
                     ),
                     error = "Path does not exist or is not a directory: $path"
                 )
@@ -2256,7 +2258,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                 FindFilesResultData(
                     path = path,
                     pattern = pattern,
-                    files = matchingFiles
+                    files = matchingFiles,
+                    env = "android"
                 ),
                 error = ""
             )
@@ -2269,7 +2272,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                 FindFilesResultData(
                     path = path,
                     pattern = pattern,
-                    files = emptyList()
+                    files = emptyList(),
+                    env = "android"
                 ),
                 error = "Error searching for files: ${e.message}"
             )
@@ -2371,7 +2375,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                     owner = "",
                     group = "",
                     lastModified = "",
-                    rawStatOutput = ""
+                    rawStatOutput = "",
+                    env = "android"
                 ),
                 error = "Path parameter is required"
             )
@@ -2394,7 +2399,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                         owner = "",
                         group = "",
                         lastModified = "",
-                        rawStatOutput = ""
+                        rawStatOutput = "",
+                        env = "android"
                     ),
                     error = "File or directory does not exist: $path"
                 )
@@ -2449,7 +2455,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                     owner = owner,
                     group = group,
                     lastModified = lastModified,
-                    rawStatOutput = rawInfo.toString()
+                    rawStatOutput = rawInfo.toString(),
+                    env = "android"
                 ),
                 error = ""
             )
@@ -2468,7 +2475,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                     owner = "",
                     group = "",
                     lastModified = "",
-                    rawStatOutput = ""
+                    rawStatOutput = "",
+                    env = "android"
                 ),
                 error = "Error getting file information: ${e.message}"
             )
@@ -3177,10 +3185,11 @@ open class StandardFileSystemTools(protected val context: Context) {
                     success = false,
                     result =
                     FileOperationData(
-                        "open",
-                        path,
-                        false,
-                        "File does not exist: $path"
+                        operation = "open",
+                        env = "android",
+                        path = path,
+                        successful = false,
+                        details = "File does not exist: $path"
                     ),
                     error = "File does not exist: $path"
                 )
@@ -3206,10 +3215,11 @@ open class StandardFileSystemTools(protected val context: Context) {
                 success = true,
                 result =
                 FileOperationData(
-                    "open",
-                    path,
-                    true,
-                    "Request to open file sent to system: $path"
+                    operation = "open",
+                    env = "android",
+                    path = path,
+                    successful = true,
+                    details = "Request to open file sent to system: $path"
                 ),
                 error = ""
             )
@@ -3220,10 +3230,11 @@ open class StandardFileSystemTools(protected val context: Context) {
                 success = false,
                 result =
                 FileOperationData(
-                    "open",
-                    path,
-                    false,
-                    "No application found to open this file type."
+                    operation = "open",
+                    env = "android",
+                    path = path,
+                    successful = false,
+                    details = "No application found to open this file type."
                 ),
                 error = "No application found to open this file type."
             )
@@ -3234,10 +3245,11 @@ open class StandardFileSystemTools(protected val context: Context) {
                 success = false,
                 result =
                 FileOperationData(
-                    "open",
-                    path,
-                    false,
-                    "Error opening file: ${e.message}"
+                    operation = "open",
+                    env = "android",
+                    path = path,
+                    successful = false,
+                    details = "Error opening file: ${e.message}"
                 ),
                 error = "Error opening file: ${e.message}"
             )
@@ -3938,10 +3950,11 @@ open class StandardFileSystemTools(protected val context: Context) {
                     success = false,
                     result =
                     FileOperationData(
-                        "share",
-                        path,
-                        false,
-                        "File does not exist: $path"
+                        operation = "share",
+                        env = "android",
+                        path = path,
+                        successful = false,
+                        details = "File does not exist: $path"
                     ),
                     error = "File does not exist: $path"
                 )
@@ -3972,10 +3985,11 @@ open class StandardFileSystemTools(protected val context: Context) {
                 success = true,
                 result =
                 FileOperationData(
-                    "share",
-                    path,
-                    true,
-                    "Share dialog for file opened: $path"
+                    operation = "share",
+                    env = "android",
+                    path = path,
+                    successful = true,
+                    details = "Share dialog for file opened: $path"
                 ),
                 error = ""
             )
@@ -3986,10 +4000,11 @@ open class StandardFileSystemTools(protected val context: Context) {
                 success = false,
                 result =
                 FileOperationData(
-                    "share",
-                    path,
-                    false,
-                    "No application found to share this file type."
+                    operation = "share",
+                    env = "android",
+                    path = path,
+                    successful = false,
+                    details = "No application found to share this file type."
                 ),
                 error = "No application found to share this file type."
             )
@@ -4000,10 +4015,11 @@ open class StandardFileSystemTools(protected val context: Context) {
                 success = false,
                 result =
                 FileOperationData(
-                    "share",
-                    path,
-                    false,
-                    "Error sharing file: ${e.message}"
+                    operation = "share",
+                    env = "android",
+                    path = path,
+                    successful = false,
+                    details = "Error sharing file: ${e.message}"
                 ),
                 error = "Error sharing file: ${e.message}"
             )
