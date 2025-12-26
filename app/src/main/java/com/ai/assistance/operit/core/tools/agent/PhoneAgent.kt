@@ -31,11 +31,13 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 
 /** Configuration for the PhoneAgent. */
 data class AgentConfig(
@@ -1152,11 +1154,24 @@ class ActionHandler(
         return 0
     }
 
-    private fun resolveAppPackageName(app: String): String {
-        return StandardUITools.APP_PACKAGES[app]
-            ?: StandardUITools.APP_PACKAGES[app.trim()]
-            ?: StandardUITools.APP_PACKAGES[app.trim().lowercase(Locale.getDefault())]
-            ?: app.trim()
+    private suspend fun resolveAppPackageName(app: String): String {
+        val trimmed = app.trim()
+        val lowered = trimmed.lowercase(Locale.getDefault())
+
+        fun lookup(): String? {
+            return StandardUITools.APP_PACKAGES[app]
+                ?: StandardUITools.APP_PACKAGES[trimmed]
+                ?: StandardUITools.APP_PACKAGES[lowered]
+        }
+
+        val directHit = lookup()
+        if (directHit != null) return directHit
+
+        withContext(Dispatchers.IO) {
+            StandardUITools.scanAndAddInstalledApps(context)
+        }
+
+        return lookup() ?: trimmed
     }
 }
 

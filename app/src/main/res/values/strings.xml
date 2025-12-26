@@ -2283,6 +2283,8 @@
     <string name="settings_max_text_result_subtitle">通用文本结果的最大字符数限制</string>
     <string name="settings_max_http_response">HTTP响应最大长度</string>
     <string name="settings_max_http_response_subtitle">网络请求响应的最大字符数限制</string>
+    <string name="settings_max_image_history_user_turns">历史图片保留回合数</string>
+    <string name="settings_max_image_history_user_turns_subtitle">仅保留最近 N 次用户对话中的图片，避免历史图片重复发送</string>
     <string name="settings_reset_truncation">重置截断设置</string>
     <string name="settings_reset_truncation_desc">重置所有截断设置为默认值</string>
     
