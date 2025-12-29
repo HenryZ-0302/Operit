@@ -152,6 +152,8 @@ private object PaintCache {
  * StaticLayout 缓存 - 避免重复创建相同的 StaticLayout
  * 使用 LRU 策略，最多缓存 100 个
  */
+private fun safeLayoutWidth(width: Int): Int = width.coerceAtLeast(1)
+
 private object LayoutCache {
     private data class LayoutKey(
         val text: String,
@@ -170,15 +172,16 @@ private object LayoutCache {
         color: Color,
         typeface: Typeface
     ): StaticLayout {
+        val safeWidth = safeLayoutWidth(width)
         val key = LayoutKey(
             text = text,
             colorArgb = color.toArgb(),
             textSize = paint.textSize,
-            width = width,
+            width = safeWidth,
             typeface = paint.typeface
         )
         
-        return cache.get(key) ?: createStaticLayout(text, paint, width).also {
+        return cache.get(key) ?: createStaticLayout(text, paint, safeWidth).also {
             cache.put(key, it)
         }
     }
@@ -188,8 +191,9 @@ private object LayoutCache {
     }
     
     private fun createStaticLayout(text: String, paint: TextPaint, width: Int): StaticLayout {
+        val safeWidth = safeLayoutWidth(width)
         return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+            StaticLayout.Builder.obtain(text, 0, text.length, paint, safeWidth)
                 .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
                 .setLineSpacing(0f, 1.3f)
                 .setIncludePad(false)
@@ -199,7 +203,7 @@ private object LayoutCache {
             StaticLayout(
                 text,
                 paint,
-                width,
+                safeWidth,
                 android.text.Layout.Alignment.ALIGN_NORMAL,
                 1.3f,
                 0f,
@@ -826,6 +830,9 @@ private fun calculateLayout(
     availableWidthPx: Int,
     isLastNode: Boolean = false
 ): LayoutResult {
+    if (availableWidthPx <= 0) return LayoutResult(0f, 0f, emptyList())
+
+    val safeAvailableWidthPx = safeLayoutWidth(availableWidthPx)
     val content = node.content
     val instructions = mutableListOf<DrawInstruction>()
     var currentY = 0f
@@ -880,14 +887,14 @@ private fun calculateLayout(
                     density = density,
                     fontSize = fontSize
                 )
-                createStaticLayout(spannable, textPaint, availableWidthPx)
+                createStaticLayout(spannable, textPaint, safeAvailableWidthPx)
             } else {
-                LayoutCache.getLayout(headerText, textPaint, availableWidthPx, textColor, boldTypeface)
+                LayoutCache.getLayout(headerText, textPaint, safeAvailableWidthPx, textColor, boldTypeface)
             }
             
             instructions.add(DrawInstruction.TextLayout(layout, 0f, currentY, layout.text))
             currentY += layout.height
-            maxWidth = maxOf(maxWidth, calculateActualWidth(layout, 0f, availableWidthPx))
+            maxWidth = maxOf(maxWidth, calculateActualWidth(layout, 0f, safeAvailableWidthPx))
             
             // 最后一个节点不添加底部间距
             if (!isLastNode) {
@@ -920,7 +927,7 @@ private fun calculateLayout(
             instructions.add(DrawInstruction.Text("$numberStr.", startPadding, markerY, boldPaint))
             
             // 使用 StaticLayout 绘制内容（支持自动换行）
-            val contentWidth = availableWidthPx - contentX.toInt()
+            val contentWidth = (safeAvailableWidthPx - contentX.toInt()).coerceAtLeast(1)
             
             val layout = if (node.children.isNotEmpty()) {
                 // 处理子节点列表，去除第一个子节点中的列表标记
@@ -947,7 +954,7 @@ private fun calculateLayout(
 
             instructions.add(DrawInstruction.TextLayout(layout, contentX, currentY, layout.text))
             currentY += layout.height
-            maxWidth = maxOf(maxWidth, calculateActualWidth(layout, contentX, availableWidthPx))
+            maxWidth = maxOf(maxWidth, calculateActualWidth(layout, contentX, safeAvailableWidthPx))
             
             // 最后一个节点不添加底部间距
             if (!isLastNode) {
@@ -979,7 +986,7 @@ private fun calculateLayout(
             instructions.add(DrawInstruction.Text("•", startPadding, markerY, boldPaint))
             
             // 使用 StaticLayout 绘制内容（支持自动换行）
-            val contentWidth = availableWidthPx - contentX.toInt()
+            val contentWidth = (safeAvailableWidthPx - contentX.toInt()).coerceAtLeast(1)
             
             val layout = if (node.children.isNotEmpty()) {
                 // 处理子节点列表，去除第一个子节点中的列表标记
@@ -1005,7 +1012,7 @@ private fun calculateLayout(
             }
             instructions.add(DrawInstruction.TextLayout(layout, contentX, currentY, layout.text))
             currentY += layout.height
-            maxWidth = maxOf(maxWidth, calculateActualWidth(layout, contentX, availableWidthPx))
+            maxWidth = maxOf(maxWidth, calculateActualWidth(layout, contentX, safeAvailableWidthPx))
             
             // 最后一个节点不添加底部间距
             if (!isLastNode) {
@@ -1027,14 +1034,14 @@ private fun calculateLayout(
                     density = density,
                     fontSize = bodyMediumSize
                 )
-                createStaticLayout(spannable, textPaint, availableWidthPx)
+                createStaticLayout(spannable, textPaint, safeAvailableWidthPx)
             } else {
-                LayoutCache.getLayout(content.trimAll(), textPaint, availableWidthPx, textColor, normalTypeface)
+                LayoutCache.getLayout(content.trimAll(), textPaint, safeAvailableWidthPx, textColor, normalTypeface)
             }
 
             instructions.add(DrawInstruction.TextLayout(layout, 0f, currentY, layout.text))
             currentY += layout.height
-            maxWidth = maxOf(maxWidth, calculateActualWidth(layout, 0f, availableWidthPx))
+            maxWidth = maxOf(maxWidth, calculateActualWidth(layout, 0f, safeAvailableWidthPx))
             
             // 最后一个节点不添加底部间距
             if (!isLastNode) {
@@ -1178,6 +1185,7 @@ private fun SingleTextCanvas(
 
     BoxWithConstraints(modifier = modifier) {
         val availableWidthPx = with(density) { maxWidth.toPx() }.toInt()
+        if (availableWidthPx <= 0) return@BoxWithConstraints
         val textSizePx = with(density) { fontSize.toPx() }
         
         val textPaint = remember(textColor, textSizePx, typeface) {
@@ -1236,8 +1244,9 @@ private fun extractLatexContent(content: String): String {
 }
 
 private fun createStaticLayout(text: CharSequence, paint: TextPaint, width: Int): StaticLayout {
+    val safeWidth = safeLayoutWidth(width)
     return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-        StaticLayout.Builder.obtain(text, 0, text.length, paint, width)
+        StaticLayout.Builder.obtain(text, 0, text.length, paint, safeWidth)
             .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
             .setLineSpacing(0f, 1.3f)
             .setIncludePad(false)
@@ -1247,7 +1256,7 @@ private fun createStaticLayout(text: CharSequence, paint: TextPaint, width: Int)
         StaticLayout(
             text,
             paint,
-            width,
+            safeWidth,
             android.text.Layout.Alignment.ALIGN_NORMAL,
             1.3f,
             0f,

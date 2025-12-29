@@ -122,6 +122,7 @@ private fun getOpenSourceLibraries(): List<OpenSourceLibrary> {
         // Terminal & Native
         OpenSourceLibrary("Code FA", "VS Code for Android (code-server based)", "BSD-3-Clause", "https://github.com/nightmare-space/code_lfa"),
         OpenSourceLibrary("DragonBones", "Popular 2D skeletal animation library", "MIT", "https://github.com/DragonBones/DragonBonesCPP"),
+        OpenSourceLibrary("scrcpy", "Display and control Android devices", "Apache-2.0", "https://github.com/Genymobile/scrcpy"),
 
         // Kotlin & Logging
         OpenSourceLibrary("java-diff-utils", "Diff library for Java", "Apache-2.0", "https://github.com/java-diff-utils/java-diff-utils"),

@@ -11,6 +11,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TextFieldValue.Companion
 import androidx.core.content.FileProvider
 import com.ai.assistance.operit.ui.features.chat.components.ChatStyle
 import androidx.lifecycle.ViewModel
@@ -22,6 +23,7 @@ import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.data.model.PromptFunctionType
@@ -688,6 +690,16 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 if (summaryMessage != null) {
                     // 插入总结消息
                     chatHistoryDelegate.addSummaryMessage(summaryMessage, insertPosition)
+
+                    // 插入总结后，重新计算窗口大小并保存
+                    val newHistoryForTokens =
+                        AIMessageManager.getMemoryFromMessages(chatHistoryDelegate.chatHistory.value)
+                    val chatService = enhancedAiService!!.getAIServiceForFunction(FunctionType.CHAT)
+                    val newWindowSize = chatService.calculateInputTokens("", newHistoryForTokens)
+                    val (inputTokens, outputTokens) = tokenStatsDelegate.getCumulativeTokenCounts()
+                    chatHistoryDelegate.saveCurrentChat(inputTokens, outputTokens, newWindowSize)
+                    tokenStatsDelegate.setTokenCounts(inputTokens, outputTokens, newWindowSize)
+
                     uiStateDelegate.showToast("总结已插入")
                 } else {
                     uiStateDelegate.showToast("生成总结失败")

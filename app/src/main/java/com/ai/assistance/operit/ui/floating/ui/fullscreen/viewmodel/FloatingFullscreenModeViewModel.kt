@@ -179,7 +179,6 @@ class FloatingFullscreenModeViewModel(
         startVoiceCapture()
         if (speechManager.isRecording) {
             isWaveActive = true
-            showBottomControls = false
         }
     }
     

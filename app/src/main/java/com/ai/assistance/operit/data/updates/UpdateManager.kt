@@ -316,65 +316,51 @@ class UpdateManager private constructor(private val context: Context) {
         AppLogger.d(TAG, "tryFetchLatestPatchUpdate(): fetched releases=${releases.size}")
         val currentBase = baseVersionOf(currentVersion)
 
-        val candidates = releases
-            .asSequence()
-            .filter { !it.draft }
-            .mapNotNull { r ->
-                val tag = r.tag_name
-                val version = tag.removePrefix("v")
+        for (r in releases) {
+            if (r.draft) continue
 
-                // Patch updates are only valid within the same base version (x.y.z).
-                // This prevents cases like 1.7.0+1 being offered 1.7.1+3 (should take 1.7.1 full APK first).
-                if (baseVersionOf(version) != currentBase) {
-                    return@mapNotNull null
-                }
+            val tag = r.tag_name
+            val version = tag.removePrefix("v")
 
-                val metaAsset =
-                    r.assets.firstOrNull { it.name.startsWith("patch_") && it.name.endsWith(".json") }
-                        ?: r.assets.firstOrNull { it.name.endsWith(".json") }
-                val patchAsset =
-                    r.assets.firstOrNull { it.name.startsWith("apkrawpatch_") && it.name.endsWith(".zip") }
-                        ?: r.assets.firstOrNull { it.name.endsWith(".zip") }
-                if (metaAsset == null || patchAsset == null) {
-                    AppLogger.d(
-                        TAG,
-                        "patch skip: tag=$tag version=$version hasPatch=${patchAsset != null} hasMeta=${metaAsset != null}"
-                    )
-                    return@mapNotNull null
-                }
+            // Patch updates are only valid within the same base version (x.y.z).
+            // This prevents cases like 1.7.0+1 being offered 1.7.1+3 (should take 1.7.1 full APK first).
+            if (baseVersionOf(version) != currentBase) {
+                continue
+            }
 
+            if (compareVersions(version, currentVersion) <= 0) {
+                break
+            }
+
+            val metaAsset =
+                r.assets.firstOrNull { it.name.startsWith("patch_") && it.name.endsWith(".json") }
+                    ?: r.assets.firstOrNull { it.name.endsWith(".json") }
+            val patchAsset =
+                r.assets.firstOrNull { it.name.startsWith("apkrawpatch_") && it.name.endsWith(".zip") }
+                    ?: r.assets.firstOrNull { it.name.endsWith(".zip") }
+            if (metaAsset == null || patchAsset == null) {
                 AppLogger.d(
                     TAG,
-                    "patch candidate: tag=$tag version=$version patch=${patchAsset.name} meta=${metaAsset.name}"
+                    "patch skip: tag=$tag version=$version hasPatch=${patchAsset != null} hasMeta=${metaAsset != null}"
                 )
-                Triple(version, r, Pair(patchAsset.browser_download_url, metaAsset.browser_download_url))
+                continue
             }
 
-        val best = candidates
-            .maxWithOrNull { a, b -> compareVersions(a.first, b.first) }
-            ?: run {
-                AppLogger.d(TAG, "tryFetchLatestPatchUpdate(): no valid patch candidates")
-                return null
-            }
-
-        AppLogger.d(TAG, "tryFetchLatestPatchUpdate(): bestPatchVersion=${best.first}")
-
-        if (compareVersions(best.first, currentVersion) <= 0) {
             AppLogger.d(
                 TAG,
-                "tryFetchLatestPatchUpdate(): best version not newer (best=${best.first}, current=$currentVersion)"
+                "patch candidate: tag=$tag version=$version patch=${patchAsset.name} meta=${metaAsset.name}"
             )
-            return null
+
+            return UpdateStatus.PatchAvailable(
+                newVersion = version,
+                updateUrl = r.html_url,
+                releaseNotes = r.body ?: "",
+                patchUrl = patchAsset.browser_download_url,
+                metaUrl = metaAsset.browser_download_url
+            )
         }
 
-        val release = best.second
-        val (patchUrl, metaUrl) = best.third
-        return UpdateStatus.PatchAvailable(
-            newVersion = best.first,
-            updateUrl = release.html_url,
-            releaseNotes = release.body ?: "",
-            patchUrl = patchUrl,
-            metaUrl = metaUrl
-        )
+        AppLogger.d(TAG, "tryFetchLatestPatchUpdate(): no valid patch candidates")
+        return null
     }
 }

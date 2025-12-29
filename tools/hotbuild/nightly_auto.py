@@ -193,6 +193,16 @@ def _find_latest_apk(apk_dir: Path) -> Path:
     return apks[0]
 
 
+def _rollback_to_apk(from_apk: Path, to_apk: Path) -> None:
+    if not from_apk.exists():
+        return
+    try:
+        shutil.copy2(from_apk, to_apk)
+        sys.stderr.write(f"rollback: restored {to_apk.name} from {from_apk.name}\n")
+    except Exception as e:
+        sys.stderr.write(f"rollback failed: {e}\n")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", default="AAswordman/OperitNightlyRelease")
@@ -205,6 +215,10 @@ def main() -> int:
     hotbuild_dir = Path(__file__).resolve().parent
     root_dir = (hotbuild_dir / ".." / "..").resolve()
     kts_path = (root_dir / "app" / "build.gradle.kts").resolve()
+
+    from_apk: Path | None = None
+    to_apk: Path | None = None
+    wrote_new_to_apk = False
 
     total = 6
     try:
@@ -248,6 +262,7 @@ def main() -> int:
             apk_out = _find_latest_apk(apk_dir)
 
         shutil.copy2(apk_out, to_apk)
+        wrote_new_to_apk = True
 
         _print_step(4, total, "fetch last published version from GitHub")
 
@@ -305,13 +320,19 @@ def main() -> int:
 
         rc = _run(cmd, cwd=hotbuild_dir)
         if rc != 0:
+            if wrote_new_to_apk and from_apk is not None and to_apk is not None:
+                _rollback_to_apk(from_apk, to_apk)
             return rc
 
         _print_step(6, total, "done")
         return 0
     except KeyboardInterrupt:
+        if wrote_new_to_apk and from_apk is not None and to_apk is not None:
+            _rollback_to_apk(from_apk, to_apk)
         return 130
     except Exception as e:
+        if wrote_new_to_apk and from_apk is not None and to_apk is not None:
+            _rollback_to_apk(from_apk, to_apk)
         sys.stderr.write(str(e) + "\n")
         return 2
 

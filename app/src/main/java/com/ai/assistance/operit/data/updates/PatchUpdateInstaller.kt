@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -177,32 +178,71 @@ object PatchUpdateInstaller {
         val api = GitHubApiService(context)
         val candidates = mutableListOf<PatchCandidate>()
 
+        val installedVersionName = getInstalledVersionName(context)
+        val installedBase = baseVersionOf(installedVersionName)
+        val hasInstalledVersion = installedVersionName.isNotBlank() && installedBase.isNotBlank()
+
+        var stop = false
+
         for (page in 1..5) {
             val res = api.getRepositoryReleases(owner = PATCH_OWNER, repo = PATCH_REPO, page = page, perPage = 30)
             val releases = res.getOrNull() ?: break
             if (releases.isEmpty()) break
 
-            releases.filter { !it.draft }.forEach { r ->
+            for (r in releases) {
+                if (r.draft) continue
                 val tag = r.tag_name
                 val version = tag.removePrefix("v")
+
+                if (hasInstalledVersion) {
+                    val base = baseVersionOf(version)
+                    if (base != installedBase) {
+                        continue
+                    }
+                    if (UpdateManager.compareVersions(version, installedVersionName) <= 0) {
+                        stop = true
+                        break
+                    }
+                }
+
+                val summary = r.body?.let { body -> runCatching { JSONObject(body) }.getOrNull() }
+
+                val summaryFormat = summary?.optString("format", "") ?: ""
+                val baseShaFromBody = summary?.optString("baseSha256", "") ?: ""
+                val targetShaFromBody = summary?.optString("targetSha256", "") ?: ""
+                val patchShaFromBody = summary?.optString("patchSha256", "") ?: ""
+                val metaFileName = summary?.optString("metaFile", "")?.takeIf { it.isNotBlank() }
+                val patchFileName = summary?.optString("patchFile", "")?.takeIf { it.isNotBlank() }
+
                 val metaAsset =
-                    r.assets.firstOrNull { it.name.startsWith("patch_") && it.name.endsWith(".json") }
+                    metaFileName?.let { n -> r.assets.firstOrNull { it.name == n } }
+                        ?: r.assets.firstOrNull { it.name.startsWith("patch_") && it.name.endsWith(".json") }
                         ?: r.assets.firstOrNull { it.name.endsWith(".json") }
                 val patchAsset =
-                    r.assets.firstOrNull { it.name.startsWith("apkrawpatch_") && it.name.endsWith(".zip") }
+                    patchFileName?.let { n -> r.assets.firstOrNull { it.name == n } }
+                        ?: r.assets.firstOrNull { it.name.startsWith("apkrawpatch_") && it.name.endsWith(".zip") }
                         ?: r.assets.firstOrNull { it.name.endsWith(".zip") }
 
-                if (metaAsset == null || patchAsset == null) return@forEach
+                if (metaAsset == null || patchAsset == null) continue
+
+                val baseSha = if (summaryFormat == "apkraw-1") baseShaFromBody else ""
+                val targetSha = if (summaryFormat == "apkraw-1") targetShaFromBody else ""
+                val patchSha = if (summaryFormat == "apkraw-1") patchShaFromBody else ""
 
                 candidates.add(
                     PatchCandidate(
                         version = version,
                         tag = tag,
                         metaUrl = metaAsset.browser_download_url,
-                        patchUrl = patchAsset.browser_download_url
+                        patchUrl = patchAsset.browser_download_url,
+                        baseSha256 = baseSha,
+                        targetSha256 = targetSha,
+                        patchSha256 = patchSha
                     )
                 )
             }
+
+            if (stop) break
         }
 
         val workDir = File(context.cacheDir, "patch_update").apply { mkdirs() }
@@ -238,25 +278,44 @@ object PatchUpdateInstaller {
         }
 
         while (true) {
-            val applicable = mutableListOf<Pair<PatchCandidate, JSONObject>>()
-            for (c in candidates) {
-                val metaJson = runCatching { getMeta(c) }.getOrNull() ?: continue
-                val format = metaJson.optString("format", "")
-                if (format != "apkraw-1") continue
-                val baseSha = metaJson.optString("baseSha256", "")
-                if (baseSha.equals(currentSha, ignoreCase = true)) {
-                    applicable.add(c to metaJson)
+            val applicableByBodySha = candidates
+                .asSequence()
+                .filter { it.baseSha256.isNotBlank() }
+                .filter { it.baseSha256.equals(currentSha, ignoreCase = true) }
+                .toList()
+
+            val chosenAndMeta: Pair<PatchCandidate, JSONObject>? =
+                if (applicableByBodySha.isNotEmpty()) {
+                    val sorted = applicableByBodySha.sortedWith { a, b ->
+                        UpdateManager.compareVersions(b.version, a.version)
+                    }
+                    var found: Pair<PatchCandidate, JSONObject>? = null
+                    for (c in sorted) {
+                        val m = runCatching { getMeta(c) }.getOrNull() ?: continue
+                        found = c to m
+                        break
+                    }
+                    found
+                } else {
+                    val unknown = candidates.filter { it.baseSha256.isBlank() }
+                    val applicable = mutableListOf<Pair<PatchCandidate, JSONObject>>()
+                    for (c in unknown) {
+                        val m = runCatching { getMeta(c) }.getOrNull() ?: continue
+                        val format = m.optString("format", "")
+                        if (format != "apkraw-1") continue
+                        val baseSha = m.optString("baseSha256", "")
+                        if (baseSha.equals(currentSha, ignoreCase = true)) {
+                            applicable.add(c to m)
+                        }
+                    }
+                    applicable.maxWithOrNull { a, b ->
+                        UpdateManager.compareVersions(a.first.version, b.first.version)
+                    }
                 }
-            }
 
-            if (applicable.isEmpty()) break
+            val chosen = chosenAndMeta?.first ?: break
+            val metaJson = chosenAndMeta.second
 
-            val best = applicable.maxWithOrNull { a, b ->
-                UpdateManager.compareVersions(a.first.version, b.first.version)
-            } ?: break
-
-            val chosen = best.first
-            val metaJson = best.second
             val patchFile = File(workDir, "patch_${applied}.zip")
 
             val format = metaJson.optString("format", "")
@@ -375,8 +434,32 @@ object PatchUpdateInstaller {
         val version: String,
         val tag: String,
         val metaUrl: String,
-        val patchUrl: String
+        val patchUrl: String,
+        val baseSha256: String,
+        val targetSha256: String,
+        val patchSha256: String
     )
+
+    private fun baseVersionOf(version: String): String {
+        if (version.isBlank()) return ""
+        return version.substringBefore('+')
+    }
+
+    private fun getInstalledVersionName(context: Context): String {
+        return try {
+            val pm = context.packageManager
+            val pkg = context.packageName
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(pkg, 0)
+            }
+            info.versionName ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
 
     fun installApk(context: Context, apkFile: File) {
         val apkUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

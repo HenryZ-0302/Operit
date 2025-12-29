@@ -6,6 +6,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -19,22 +21,24 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.ui.floating.FloatContext
@@ -45,6 +49,7 @@ import com.ai.assistance.operit.ui.floating.ui.fullscreen.components.EditPanel
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.components.MessageDisplay
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.components.WaveVisualizerSection
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.viewmodel.rememberFloatingFullscreenModeViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -67,6 +72,41 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
     val volumeLevel by viewModel.volumeLevelFlow.collectAsState()
     
     val speed = 1.2f
+    
+    var pendingSpeechPreview by remember { mutableStateOf<String?>(null) }
+    var lastUserMessageTimestampBeforeSpeech by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(viewModel.isRecording, viewModel.userMessage) {
+        if (viewModel.isRecording && viewModel.userMessage.isNotBlank()) {
+            pendingSpeechPreview = viewModel.userMessage
+        }
+    }
+
+    LaunchedEffect(viewModel.isRecording) {
+        if (viewModel.isRecording) {
+            lastUserMessageTimestampBeforeSpeech = floatContext.messages.lastOrNull { it.sender == "user" }?.timestamp
+        }
+    }
+
+    LaunchedEffect(viewModel.isRecording) {
+        if (!viewModel.isRecording && pendingSpeechPreview != null) {
+            val snapshot = pendingSpeechPreview
+            delay(1500)
+            if (pendingSpeechPreview == snapshot) {
+                pendingSpeechPreview = null
+            }
+        }
+    }
+
+    LaunchedEffect(floatContext.messages.lastOrNull()?.timestamp, viewModel.isRecording) {
+        if (viewModel.isRecording) return@LaunchedEffect
+        if (pendingSpeechPreview == null) return@LaunchedEffect
+        val lastUser = floatContext.messages.lastOrNull { it.sender == "user" } ?: return@LaunchedEffect
+        val beforeTs = lastUserMessageTimestampBeforeSpeech
+        if (beforeTs != null && lastUser.timestamp != beforeTs) {
+            pendingSpeechPreview = null
+        }
+    }
     
     // 监听语音识别结果
     LaunchedEffect(Unit) {
@@ -141,22 +181,6 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                 )
             }
 
-            // 语音模式切换按钮：点击进入语音模式（中间显示头像和波浪），再次点击则退出
-            IconButton(onClick = {
-                if (viewModel.isWaveActive) {
-                    viewModel.exitWaveMode()
-                } else {
-                    viewModel.enterWaveMode()
-                }
-            }) {
-                Icon(
-                    imageVector = Icons.Default.Phone,
-                    contentDescription = "语音模式",
-                    tint = if (viewModel.isWaveActive) MaterialTheme.colorScheme.primary else Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
             // 缩小成语音球
             IconButton(onClick = { floatContext.onModeChange(FloatingMode.VOICE_BALL) }) {
                 Icon(
@@ -179,10 +203,11 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
         }
         
         // 主内容区域
+        val isBottomBarVisible = viewModel.showBottomControls && !viewModel.isEditMode && !viewModel.isWaveActive
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = if (viewModel.showBottomControls) 120.dp else 32.dp)
+                .padding(bottom = if (isBottomBarVisible) 120.dp else 32.dp)
         ) {
             // 波浪可视化和头像：仅在语音模式下显示
             if (viewModel.isWaveActive) {
@@ -200,7 +225,23 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                             viewModel.enterWaveMode()
                         }
                     },
-                    modifier = Modifier.align(Alignment.Center)
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .zIndex(1f)
+                )
+
+                // 语音态：头像区域提供一个最高层的点击出口，确保“点头像退出语音态”不被其它层拦截
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(140.dp)
+                        .zIndex(2f)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            viewModel.exitWaveMode()
+                        }
                 )
             }
             
@@ -220,21 +261,22 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                         Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .padding(horizontal = 32.dp)
-                            .padding(bottom = 64.dp)
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 32.dp)
                     } else {
                         // 正常模式：文本在波浪下方
                         Modifier
                             .align(Alignment.Center)
-                            .offset(y = 80.dp)
+                            .offset(y = 72.dp)
                             .fillMaxWidth()
-                            .padding(top = 240.dp, bottom = 120.dp) // Timon: 依照顶部和底部组件距离估算
-                            .padding(horizontal = 32.dp)
+                            .padding(top = 120.dp, bottom = 60.dp) // Timon: 依照顶部和底部组件距离估算
+                            .padding(horizontal = 16.dp)
                     }
 
                     MessageDisplay(
-                        userMessage = viewModel.userMessage,
-                        aiMessage = viewModel.aiMessage,
+                        messages = floatContext.messages,
+                        speechPreviewText = if (viewModel.isRecording) viewModel.userMessage else (pendingSpeechPreview ?: ""),
+                        showSpeechOverlay = viewModel.isRecording || pendingSpeechPreview != null,
                         modifier = modifier
                     )
                 }
@@ -253,16 +295,20 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
         
         // 底部控制栏
         BottomControlBar(
-            visible = viewModel.showBottomControls && !viewModel.isEditMode,
+            visible = isBottomBarVisible,
             isRecording = viewModel.isRecording,
             isProcessingSpeech = viewModel.isProcessingSpeech,
             showDragHints = viewModel.showDragHints,
             floatContext = floatContext,
             onStartVoiceCapture = { viewModel.startVoiceCapture() },
             onStopVoiceCapture = { isCancel -> viewModel.stopVoiceCapture(isCancel) },
-            onEnterWaveMode = { 
-                viewModel.isWaveActive = true
-                viewModel.showBottomControls = false
+            isWaveActive = viewModel.isWaveActive,
+            onToggleWaveMode = {
+                if (viewModel.isWaveActive) {
+                    viewModel.exitWaveMode()
+                } else {
+                    viewModel.enterWaveMode()
+                }
             },
             onEnterEditMode = { text -> viewModel.enterEditMode(text) },
             onShowDragHintsChange = { viewModel.showDragHints = it },
