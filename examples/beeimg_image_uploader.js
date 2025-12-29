@@ -1,7 +1,7 @@
 /* METADATA
 {
     "name": "beeimg_image_uploader_v2",
-    "description": "BeeIMG工具将本地图片上传到图床并返回图片url，配合图片生成工具实现图生图。 。",
+    "description": "BeeIMG（https://beeimg.com/）工具将本地图片上传到图床并返回图片url，配合图片生成工具实现图生图（图生图务必开启）。",
     "env": [
         "BEEIMG_API_KEY"
     ],
