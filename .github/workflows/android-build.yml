@@ -33,7 +33,7 @@ jobs:
     - name: Create local.properties
       run: |
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-        echo "RELEASE_STORE_FILE=app/release.jks" >> local.properties
+        echo "RELEASE_STORE_FILE=release.jks" >> local.properties
         echo "RELEASE_STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> local.properties
         echo "RELEASE_KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> local.properties
         echo "RELEASE_KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> local.properties
