@@ -31,8 +31,7 @@ android {
         if (releaseKeystorePath != null &&
             releaseStorePassword != null &&
             releaseKeyAlias != null &&
-            releaseKeyPassword != null &&
-            File(releaseKeystorePath).exists()
+            releaseKeyPassword != null
         ) {
             create("release") {
                 storeFile = file(releaseKeystorePath)
