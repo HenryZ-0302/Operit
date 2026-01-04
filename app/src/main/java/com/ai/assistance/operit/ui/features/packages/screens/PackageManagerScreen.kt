@@ -618,7 +618,7 @@ fun PackageManagerScreen(
             if (showDetails && selectedPackage != null) {
                 PackageDetailsDialog(
                     packageName = selectedPackage!!,
-                    packageDescription = availablePackages.value[selectedPackage]?.description
+                    packageDescription = availablePackages.value[selectedPackage]?.description?.resolve(context)
                         ?: "",
                     packageManager = packageManager,
                     onRunScript = { tool ->
@@ -768,6 +768,7 @@ private fun PackageListItemWithTag(
     onPackageClick: () -> Unit,
     onToggleImport: (Boolean) -> Unit
 ) {
+    val context = LocalContext.current
     Surface(
         onClick = onPackageClick,
         modifier = Modifier.fillMaxWidth(),
@@ -829,9 +830,10 @@ private fun PackageListItemWithTag(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (toolPackage?.description?.isNotBlank() == true) {
+                    val description = toolPackage?.description?.resolve(context).orEmpty()
+                    if (description.isNotBlank()) {
                         Text(
-                            text = toolPackage.description,
+                            text = description,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,

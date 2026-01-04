@@ -154,6 +154,8 @@ declare global {
         [key: string]: string | number | boolean | object;
     }
 
+    type LocalizedText = string | { [lang: string]: string };
+
     interface ToolConfig {
         type?: string;
         name: string;

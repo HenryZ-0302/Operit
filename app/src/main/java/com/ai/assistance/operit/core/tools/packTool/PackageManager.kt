@@ -656,17 +656,17 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
 
         sb.appendLine("Using package: ${toolPackage.name}")
         sb.appendLine("Use Time: ${java.time.LocalDateTime.now()}")
-        sb.appendLine("Description: ${toolPackage.description}")
+        sb.appendLine("Description: ${toolPackage.description.resolve(context)}")
         sb.appendLine()
         sb.appendLine("Available tools in this package:")
 
         toolPackage.tools.forEach { tool ->
-            sb.appendLine("- ${toolPackage.name}:${tool.name}: ${tool.description}")
+            sb.appendLine("- ${toolPackage.name}:${tool.name}: ${tool.description.resolve(context)}")
             if (tool.parameters.isNotEmpty()) {
                 sb.appendLine("  Parameters:")
                 tool.parameters.forEach { param ->
                     val requiredText = if (param.required) "(required)" else "(optional)"
-                    sb.appendLine("  - ${param.name} ${requiredText}: ${param.description}")
+                    sb.appendLine("  - ${param.name} ${requiredText}: ${param.description.resolve(context)}")
                 }
             }
             sb.appendLine()
@@ -890,18 +890,18 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
 
         sb.appendLine("正在使用MCP服务器: $serverName")
         sb.appendLine("使用时间: ${java.time.LocalDateTime.now()}")
-        sb.appendLine("描述: ${toolPackage.description}")
+        sb.appendLine("描述: ${toolPackage.description.resolve(context)}")
         sb.appendLine()
         sb.appendLine("可用工具列表:")
 
         toolPackage.tools.forEach { tool ->
             // 使用 serverName:toolName 格式
-            sb.appendLine("- $serverName:${tool.name}: ${tool.description}")
+            sb.appendLine("- $serverName:${tool.name}: ${tool.description.resolve(context)}")
             if (tool.parameters.isNotEmpty()) {
                 sb.appendLine("  参数:")
                 tool.parameters.forEach { param ->
                     val requiredText = if (param.required) "(必需)" else "(可选)"
-                    sb.appendLine("  - ${param.name} ${requiredText}: ${param.description}")
+                    sb.appendLine("  - ${param.name} ${requiredText}: ${param.description.resolve(context)}")
                 }
             }
             sb.appendLine()
@@ -1006,14 +1006,14 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
 
             ToolPrompt(
                 name = packageTool.name,
-                description = packageTool.description,
+                description = packageTool.description.resolve(context),
                 parameters = parametersString
             )
         }
 
         return PackageToolPromptCategory(
             packageName = toolPackage.name,
-            packageDescription = toolPackage.description,
+            packageDescription = toolPackage.description.resolve(context),
             tools = toolPrompts
         )
     }

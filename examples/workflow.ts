@@ -1,7 +1,8 @@
 /* METADATA
 {
   name: "workflow"
-  description: '''
+  description: {
+    zh: '''
 工作流管理工具，提供工作流的创建、查询、更新、删除和触发执行能力。
 
 本工具的核心目标：让 AI 能够“自主创建/修改工作流”，并正确理解：
@@ -13,13 +14,27 @@
 重要：create_workflow/update_workflow 的 nodes/connections 参数类型是 string（JSON 数组字符串）。
 本示例封装允许你直接传对象数组，封装层会自动 JSON.stringify。
 '''
+    en: '''
+Workflow management tools that support creating, querying, updating, deleting, and triggering workflow execution.
+
+The core goal of this package is to enable the AI to autonomously create/modify workflows and correctly understand:
+- Node types (trigger/execute/condition/logic/extract)
+- Trigger node types (manual/schedule/tasker/intent) and their configurations
+- Parameter references (ParameterValue: static values vs. references to another node output)
+- The meaning of connection "condition" (true/false/regex)
+
+Important: for create_workflow/update_workflow, the nodes/connections parameters are strings (JSON array strings).
+This example wrapper lets you pass object arrays directly; it will JSON.stringify automatically.
+'''
+  }
 
   enabledByDefault: true
 
   tools: [
     {
       name: "usage_advice"
-      description: '''
+      description: {
+        zh: '''
 工作流工具使用建议（给 AI）：
 
 - 推荐流程：
@@ -68,26 +83,77 @@
   - intent：
     - action: "com.example.MY_ACTION"  (当收到该 action 的 Intent 则触发)
 '''
+        en: '''
+Workflow tool usage advice (for the AI):
+
+- Recommended flow:
+  1) Call get_all_workflows to find the candidate workflow_id.
+  2) Call get_workflow to retrieve the full nodes/connections structure.
+-  3) If you want to replace nodes/connections entirely: build the full new arrays and use update_workflow once to overwrite.
+-  4) If you only want incremental changes: prefer patch_workflow (node_patches/connection_patches).
+
+- Node and connection IDs:
+  - Node id can be omitted (server will generate it), but if you need to create connections, strongly recommend explicitly setting node ids in nodes.
+  - In connections, source/target can be provided as:
+    - sourceNodeId/targetNodeId (recommended)
+    - or source/target/from/to
+    - or sourceIndex/targetIndex (index within nodes array)
+    - or sourceNodeName/targetNodeName (not recommended: duplicates are ambiguous)
+
+- Connection condition (core):
+  - For ConditionNode / LogicNode:
+    - empty condition: defaults to true branch (equivalent to "true")
+    - condition = "false": false branch
+    - other string: treated as a Regex to match the source node output string
+  - For non-Condition/Logic nodes:
+    - empty condition: means "proceed if the source node executed successfully" (sequential dependency)
+
+- Parameter references (ParameterValue):
+  - Static value: write a string/number/boolean directly (treated as StaticValue)
+  - Reference another node output: write an object { nodeId: "<node-id>" }
+    - compatible fields: nodeId / ref / refNodeId
+
+- Trigger node types (TriggerNode.triggerType):
+  - manual: manual trigger (tap "trigger workflow" in UI)
+  - schedule: scheduled trigger (WorkManager)
+  - tasker: triggered by Tasker events
+  - intent: triggered by Android broadcast intents
+
+  Trigger configuration TriggerNode.triggerConfig (note: all values are strings):
+  - schedule:
+    - schedule_type: interval | specific_time | cron
+    - interval_ms: "900000" (15 minutes)
+    - specific_time: "2026-01-04 10:30" (format depends on implementation)
+    - cron_expression: "15 * * * *" (simplified cron)
+    - repeat: "true"/"false"
+    - enabled: "true"/"false"
+  - tasker:
+    - command: "start_meeting" (triggered when Tasker params contains this string)
+  - intent:
+    - action: "com.example.MY_ACTION" (triggered when receiving this action)
+'''
+      }
       parameters: []
     }
 
     {
       name: "get_all_workflows"
-      description: "获取所有工作流列表（只含概要信息：ID/名称/启用/统计等）。"
+      description: { zh: "获取所有工作流列表（只含概要信息：ID/名称/启用/统计等）。", en: "List all workflows (summary only: id/name/enabled/stats, etc.)." }
       parameters: []
     }
 
     {
       name: "get_workflow"
-      description: "获取指定工作流完整详情（nodes + connections）。"
+      description: { zh: "获取指定工作流完整详情（nodes + connections）。", en: "Get full details of a specific workflow (nodes + connections)." }
       parameters: [
-        { name: "workflow_id", description: "工作流 ID", type: "string", required: true }
+        { name: "workflow_id", description: { zh: "工作流 ID", en: "Workflow ID" }, type: "string", required: true }
       ]
     }
 
     {
       name: "create_workflow"
-      description: '''
+      description: {
+        zh: '''
 创建工作流。
 
 参数说明：
@@ -114,37 +180,75 @@ Extract 节点：
 - expression: REGEX 表达式 或 JSONPath
 - group/defaultValue 可选
 '''
+        en: '''
+Create a workflow.
+
+Parameter notes:
+- nodes: JSON array string (recommended: pass object arrays and let the wrapper stringify)
+- connections: JSON array string (same as above)
+
+Node types (node.type):
+- trigger / execute / condition / logic / extract
+
+Execute node:
+- actionType: tool name (e.g. "visit_web" / "list_files" / "get_system_setting" ...)
+- actionConfig: tool parameter object, supports ParameterValue (static value / node reference)
+
+Condition node:
+- left/right: ParameterValue
+- operator: EQ/NE/GT/GTE/LT/LTE/CONTAINS/NOT_CONTAINS/IN/NOT_IN
+
+Logic node:
+- operator: AND/OR
+
+Extract node:
+- source: ParameterValue
+- mode: REGEX/JSON
+- expression: regex expression or JSONPath
+- group/defaultValue are optional
+'''
+      }
       parameters: [
-        { name: "name", description: "工作流名称", type: "string", required: true }
-        { name: "description", description: "工作流描述（可选）", type: "string", required: false }
-        { name: "nodes", description: "可选，节点 JSON 数组字符串（或直接传节点数组，由封装 stringify）", type: "string", required: false }
-        { name: "connections", description: "可选，连线 JSON 数组字符串（或直接传连线数组，由封装 stringify）", type: "string", required: false }
-        { name: "enabled", description: "可选，是否启用（默认 true）", type: "boolean", required: false }
+        { name: "name", description: { zh: "工作流名称", en: "Workflow name" }, type: "string", required: true }
+        { name: "description", description: { zh: "工作流描述（可选）", en: "Workflow description (optional)" }, type: "string", required: false }
+        { name: "nodes", description: { zh: "可选，节点 JSON 数组字符串（或直接传节点数组，由封装 stringify）", en: "Optional. Nodes JSON array string (or pass an array and the wrapper will stringify)." }, type: "string", required: false }
+        { name: "connections", description: { zh: "可选，连线 JSON 数组字符串（或直接传连线数组，由封装 stringify）", en: "Optional. Connections JSON array string (or pass an array and the wrapper will stringify)." }, type: "string", required: false }
+        { name: "enabled", description: { zh: "可选，是否启用（默认 true）", en: "Optional. Whether to enable (default: true)." }, type: "boolean", required: false }
       ]
     }
 
     {
       name: "update_workflow"
-      description: '''
+      description: {
+        zh: '''
 更新工作流。
 
 注意：update_workflow 的 nodes / connections 是“整体覆盖”。
 - 若你只改其中一部分，推荐使用 patch_workflow。
 - 或者：get_workflow 取回旧结构 -> 本地构造新数组（保留未改部分）-> update_workflow 一次性传回。
 '''
+        en: '''
+Update a workflow.
+
+Note: nodes/connections in update_workflow are full overwrites.
+- If you only change part of them, prefer patch_workflow.
+- Or: call get_workflow to fetch the old structure -> build new arrays locally (keeping unchanged parts) -> call update_workflow once.
+'''
+      }
       parameters: [
-        { name: "workflow_id", description: "工作流 ID", type: "string", required: true }
-        { name: "name", description: "可选，新名称", type: "string", required: false }
-        { name: "description", description: "可选，新描述", type: "string", required: false }
-        { name: "nodes", description: "可选，节点 JSON 数组字符串（整体覆盖）", type: "string", required: false }
-        { name: "connections", description: "可选，连线 JSON 数组字符串（整体覆盖）", type: "string", required: false }
-        { name: "enabled", description: "可选，是否启用", type: "boolean", required: false }
+        { name: "workflow_id", description: { zh: "工作流 ID", en: "Workflow ID" }, type: "string", required: true }
+        { name: "name", description: { zh: "可选，新名称", en: "Optional. New name." }, type: "string", required: false }
+        { name: "description", description: { zh: "可选，新描述", en: "Optional. New description." }, type: "string", required: false }
+        { name: "nodes", description: { zh: "可选，节点 JSON 数组字符串（整体覆盖）", en: "Optional. Nodes JSON array string (full overwrite)." }, type: "string", required: false }
+        { name: "connections", description: { zh: "可选，连线 JSON 数组字符串（整体覆盖）", en: "Optional. Connections JSON array string (full overwrite)." }, type: "string", required: false }
+        { name: "enabled", description: { zh: "可选，是否启用", en: "Optional. Whether to enable." }, type: "boolean", required: false }
       ]
     }
 
     {
       name: "patch_workflow"
-      description: '''
+      description: {
+        zh: '''
 差异更新工作流（增量 patch）。
 
 使用 node_patches / connection_patches 传入 JSON 数组字符串：
@@ -157,29 +261,43 @@ Extract 节点：
 - update：必须提供 id 或 node.id/connection.id
 - remove：必须提供 id
 '''
+        en: '''
+Patch a workflow (incremental update).
+
+Use node_patches / connection_patches as JSON array strings:
+- op: add | update | remove
+- id: optional
+- node / connection: object
+
+Notes:
+- add: must provide node/connection
+- update: must provide id OR node.id/connection.id
+- remove: must provide id
+'''
+      }
       parameters: [
-        { name: "workflow_id", description: "工作流 ID", type: "string", required: true }
-        { name: "name", description: "可选，新名称", type: "string", required: false }
-        { name: "description", description: "可选，新描述", type: "string", required: false }
-        { name: "enabled", description: "可选，是否启用", type: "boolean", required: false }
-        { name: "node_patches", description: "可选，节点 patch JSON 数组字符串", type: "string", required: false }
-        { name: "connection_patches", description: "可选，连线 patch JSON 数组字符串", type: "string", required: false }
+        { name: "workflow_id", description: { zh: "工作流 ID", en: "Workflow ID" }, type: "string", required: true }
+        { name: "name", description: { zh: "可选，新名称", en: "Optional. New name." }, type: "string", required: false }
+        { name: "description", description: { zh: "可选，新描述", en: "Optional. New description." }, type: "string", required: false }
+        { name: "enabled", description: { zh: "可选，是否启用", en: "Optional. Whether to enable." }, type: "boolean", required: false }
+        { name: "node_patches", description: { zh: "可选，节点 patch JSON 数组字符串", en: "Optional. Node patch JSON array string." }, type: "string", required: false }
+        { name: "connection_patches", description: { zh: "可选，连线 patch JSON 数组字符串", en: "Optional. Connection patch JSON array string." }, type: "string", required: false }
       ]
     }
 
     {
       name: "delete_workflow"
-      description: "删除指定工作流。"
+      description: { zh: "删除指定工作流。", en: "Delete a specific workflow." }
       parameters: [
-        { name: "workflow_id", description: "工作流 ID", type: "string", required: true }
+        { name: "workflow_id", description: { zh: "工作流 ID", en: "Workflow ID" }, type: "string", required: true }
       ]
     }
 
     {
       name: "trigger_workflow"
-      description: "触发指定工作流执行（相当于 UI 手动触发）。"
+      description: { zh: "触发指定工作流执行（相当于 UI 手动触发）。", en: "Trigger execution of a workflow (equivalent to manual trigger in UI)." }
       parameters: [
-        { name: "workflow_id", description: "工作流 ID", type: "string", required: true }
+        { name: "workflow_id", description: { zh: "工作流 ID", en: "Workflow ID" }, type: "string", required: true }
       ]
     }
   ]
