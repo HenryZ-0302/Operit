@@ -19,3 +19,4 @@ various_output.js
 various_search.js
 workflow.js
 xai_draw.js
+openai_draw.js

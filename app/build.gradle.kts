@@ -287,8 +287,6 @@ dependencies {
     // ObjectBox
     implementation(libs.objectbox.kotlin)
     kapt(libs.objectbox.processor)
-
-    // Archive/compression libraries
     implementation(libs.commons.compress.v2)
     implementation(libs.junrar)
 
@@ -406,6 +404,12 @@ dependencies {
             force("io.ktor:ktor-client-core:2.3.5") 
             force("io.ktor:ktor-client-cio:2.3.5")
             force("io.ktor:ktor-serialization-kotlinx-json:2.3.5")
+            force("org.jetbrains.kotlin:kotlin-bom:1.9.22")
+            force("org.jetbrains.kotlin:kotlin-stdlib:1.9.22")
+            force("org.jetbrains.kotlin:kotlin-stdlib-common:1.9.22")
+            force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.22")
+            force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22")
+            force("org.jetbrains.kotlin:kotlin-reflect:1.9.22")
             // Force BouncyCastle to use jdk18on version to avoid duplicate classes
             force("org.bouncycastle:bcprov-jdk18on:1.78")
         }

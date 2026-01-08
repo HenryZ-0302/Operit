@@ -34,6 +34,7 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
     }
 
     private var recognizer: SherpaNcnn? = null
+    private var vad: OnnxSileroVad? = null
     private var audioRecord: AudioRecord? = null
     private var recordingJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
@@ -254,6 +255,21 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
                     val audioBuffer = ShortArray(bufferSize)
                     var lastText = ""
 
+                    val vadInstance = try {
+                        (vad ?: OnnxSileroVad(context = context, speechDurationMs = 0)).also { created ->
+                            vad = created
+                            created.reset()
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.w(TAG, "Failed to initialize Silero VAD, falling back to non-VAD mode", e)
+                        null
+                    }
+
+                    val vadFrameSize = 512
+                    val vadFrame = ShortArray(vadFrameSize)
+                    var vadFramePos = 0
+                    var vadSpeechActive = false
+
                     while (isActive &&
                             _recognitionState.value == SpeechService.RecognitionState.RECOGNIZING) {
                         val ret = audioRecord?.read(audioBuffer, 0, audioBuffer.size) ?: 0
@@ -261,32 +277,88 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
                             // 计算并更新音量级别
                             val volumeLevel = calculateVolumeLevel(audioBuffer, ret)
                             _volumeLevelFlow.value = volumeLevel
-                            
-                            val samples = FloatArray(ret) { i -> audioBuffer[i] / 32768.0f }
-                            recognizer?.let {
-                                it.acceptSamples(samples)
-                                while (it.isReady()) {
-                                    it.decode()
-                                }
-                                val isEndpoint = it.isEndpoint()
-                                val text = it.text
 
-                                if (text.isNotBlank() && lastText != text) {
-                                    lastText = text
-                                    _recognitionResult.value =
-                                            SpeechService.RecognitionResult(
-                                                    text = text,
-                                                    isFinal = isEndpoint
-                                            )
-                                }
+                            recognizer?.let { recognizerInstance ->
+                                if (vadInstance == null) {
+                                    val samples = FloatArray(ret) { i -> audioBuffer[i] / 32768.0f }
+                                    recognizerInstance.acceptSamples(samples)
+                                    while (recognizerInstance.isReady()) {
+                                        recognizerInstance.decode()
+                                    }
 
-                                if (isEndpoint) {
-                                    it.reset(false)
-                                    // If not in continuous mode, stop after first endpoint
-                                    if (!continuousMode) {
-                                        _recognitionState.value =
-                                                SpeechService.RecognitionState.IDLE
-                                        return@launch
+                                    val isEndpoint = recognizerInstance.isEndpoint()
+                                    val text = recognizerInstance.text
+
+                                    if (text.isNotBlank()) {
+                                        if (isEndpoint) {
+                                            lastText = text
+                                            _recognitionResult.value =
+                                                SpeechService.RecognitionResult(text = text, isFinal = true)
+                                        } else if (partialResults && lastText != text) {
+                                            lastText = text
+                                            _recognitionResult.value =
+                                                SpeechService.RecognitionResult(text = text, isFinal = false)
+                                        }
+                                    }
+
+                                    if (isEndpoint) {
+                                        recognizerInstance.reset(false)
+                                        if (!continuousMode) {
+                                            _recognitionState.value = SpeechService.RecognitionState.IDLE
+                                            return@launch
+                                        }
+                                    }
+                                } else {
+                                    var idx = 0
+                                    while (idx < ret) {
+                                        val toCopy = minOf(vadFrameSize - vadFramePos, ret - idx)
+                                        java.lang.System.arraycopy(audioBuffer, idx, vadFrame, vadFramePos, toCopy)
+                                        vadFramePos += toCopy
+                                        idx += toCopy
+
+                                        if (vadFramePos == vadFrameSize) {
+                                            val isSpeech = vadInstance.isSpeech(vadFrame)
+
+                                            if (isSpeech) {
+                                                vadSpeechActive = true
+
+                                                val frameSamples = FloatArray(vadFrameSize) { i -> vadFrame[i] / 32768.0f }
+                                                recognizerInstance.acceptSamples(frameSamples)
+                                                while (recognizerInstance.isReady()) {
+                                                    recognizerInstance.decode()
+                                                }
+
+                                                val text = recognizerInstance.text
+                                                if (partialResults && text.isNotBlank() && lastText != text) {
+                                                    lastText = text
+                                                    _recognitionResult.value =
+                                                        SpeechService.RecognitionResult(text = text, isFinal = false)
+                                                }
+                                            } else if (vadSpeechActive) {
+                                                recognizerInstance.inputFinished()
+                                                while (recognizerInstance.isReady()) {
+                                                    recognizerInstance.decode()
+                                                }
+
+                                                val finalText = recognizerInstance.text
+                                                if (finalText.isNotBlank()) {
+                                                    lastText = finalText
+                                                    _recognitionResult.value =
+                                                        SpeechService.RecognitionResult(text = finalText, isFinal = true)
+                                                }
+
+                                                recognizerInstance.reset(false)
+                                                vadInstance.reset()
+                                                vadSpeechActive = false
+
+                                                if (!continuousMode) {
+                                                    _recognitionState.value = SpeechService.RecognitionState.IDLE
+                                                    return@launch
+                                                }
+                                            }
+
+                                            vadFramePos = 0
+                                        }
                                     }
                                 }
                             }
@@ -337,6 +409,10 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
         _volumeLevelFlow.value = 0f // 重置音量
         // 同步清空识别文本，避免下次订阅拿到旧文本
         _recognitionResult.value = SpeechService.RecognitionResult(text = "", isFinal = false, confidence = 0f)
+        try {
+            vad?.reset()
+        } catch (_: Exception) {
+        }
     }
 
     override fun shutdown() {
@@ -345,6 +421,11 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
             withContext(Dispatchers.IO) {
                 // 不直接调用finalize方法，而是让GC自然处理
                 recognizer = null
+                try {
+                    vad?.close()
+                } catch (_: Exception) {
+                }
+                vad = null
             }
             _isInitialized.value = false
             _recognitionState.value = SpeechService.RecognitionState.UNINITIALIZED
