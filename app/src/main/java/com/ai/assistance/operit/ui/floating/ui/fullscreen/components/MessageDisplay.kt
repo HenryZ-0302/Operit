@@ -42,11 +42,10 @@ fun MessageDisplay(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
-    val displayMessages = remember(messages) {
+    val displayMessages =
         messages
             .filter { it.sender != "think" }
             .asReversed()
-    }
 
     LaunchedEffect(displayMessages.size) {
         if (displayMessages.isNotEmpty()) {
@@ -61,7 +60,7 @@ fun MessageDisplay(
     val systemMessageColor = MaterialTheme.colorScheme.surfaceVariant
     val systemTextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-    val listAlpha by animateFloatAsState(targetValue = if (showSpeechOverlay) 0f else 1f)
+    val listAlpha by animateFloatAsState(targetValue = 1f)
 
     Box(modifier = modifier) {
         LazyColumn(

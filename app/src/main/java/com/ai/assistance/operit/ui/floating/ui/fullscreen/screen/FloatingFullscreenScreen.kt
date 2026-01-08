@@ -11,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -119,6 +120,10 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
     // 初始化
     LaunchedEffect(Unit) {
         viewModel.initialize()
+        val service = floatContext.chatService
+        if (service?.consumeAutoEnterVoiceChat() == true) {
+            viewModel.enterWaveMode(wakeLaunched = service.isWakeLaunched())
+        }
     }
     
     // 监听最新的AI消息
@@ -168,6 +173,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
         Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
+                .zIndex(10f)
                 .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -238,7 +244,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                     modifier = Modifier
                         .align(Alignment.Center)
                         .size(140.dp)
-                        .zIndex(2f)
+                        .zIndex(4f)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -256,7 +262,9 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                     fadeOut(animationSpec = tween(300))
                 },
                 label = "MessageTransition",
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(3f)
             ) { targetIsWaveActive ->
                 Box(modifier = Modifier.fillMaxSize()) {
                     val modifier = if (targetIsWaveActive) {
@@ -264,6 +272,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                         Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
+                            .fillMaxHeight(0.42f)
                             .padding(horizontal = 16.dp)
                             .padding(bottom = 32.dp)
                     } else {

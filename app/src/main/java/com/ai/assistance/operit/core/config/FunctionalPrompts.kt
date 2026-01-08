@@ -393,78 +393,57 @@ object FunctionalPrompts {
         return uiAutomationAgentPrompt(useEnglish).replace("{{current_date}}", currentDate)
     }
 
-    fun grepContextInitialPrompt(intent: String, displayPath: String, filePattern: String, useEnglish: Boolean): String {
-        return if (useEnglish) {
-            """
- You are a code search assistant. You need to generate regular expressions for the grep_code tool.
-
- Intent: $intent
- Search path: $displayPath
- File filter: $filePattern
-
- Requirements:
- 1) Output strict JSON only. Do not output any other text.
- 2) Generate 8 queries. Each query must be a regex string.
-
- Output format: {"queries":["...", "...", "...", "...", "...", "...", "...", "..."]}
- """.trimIndent()
-        } else {
-            """
- 你是一个代码检索助手。你需要为 grep_code 工具生成用于搜索的正则表达式。
-
- 用户意图：$intent
- 搜索路径：$displayPath
- 文件过滤：$filePattern
-
- 要求：
- 1) 输出严格 JSON，不要输出任何其他文字。
- 2) 生成 8 个 queries，每个 query 是一个正则表达式字符串。
-
- 输出格式：{"queries":["...", "...", "...", "...", "...", "...", "...", "..."]}
- """.trimIndent()
-        }
-    }
-
-    fun grepContextRefinePrompt(
+    fun grepContextRefineWithReadPrompt(
         intent: String,
         displayPath: String,
         filePattern: String,
         lastRoundDigest: String,
+        maxRead: Int,
         useEnglish: Boolean
     ): String {
         return if (useEnglish) {
             """
- You are a code search assistant. Based on the previous grep_code matches, improve the search queries.
+ You are a code search assistant.
+ Based on the previous grep_code matches, decide:
+ 1) which candidates should be inspected with read_file_part (by id), and
+ 2) improved regex queries for the next grep_code round.
 
  Intent: $intent
  Search path: $displayPath
  File filter: $filePattern
 
- Previous round digest:
+ Previous round digest (each starts with #id):
  $lastRoundDigest
 
  Requirements:
  1) Output strict JSON only. Do not output any other text.
- 2) Generate 8 queries. Make them more relevant to matched files/symbols and avoid repeating the previous round.
+ 2) Generate up to 8 queries. Each query must be a regex string.
+ 3) Optionally choose up to $maxRead candidate ids to read using read_file_part. If no read is needed, output an empty array.
+ 4) Do NOT output placeholder queries like "..." or "…". If you cannot propose concrete regex queries, output an empty queries array.
 
- Output format: {"queries":["...", "...", "...", "...", "...", "...", "...", "..."]}
+ Output must be a JSON object with keys "queries" (array of regex strings) and "read" (array of candidate ids).
  """.trimIndent()
         } else {
             """
- 你是一个代码检索助手。你需要根据上一轮 grep_code 的命中结果，进一步改进搜索 query。
+ 你是一个代码检索助手。
+ 你需要根据上一轮 grep_code 的命中结果，决定：
+ 1) 是否需要用 read_file_part 进一步读取候选片段（通过候选 #id 选择），以及
+ 2) 下一轮 grep_code 要使用的正则 queries。
 
  用户意图：$intent
  搜索路径：$displayPath
  文件过滤：$filePattern
 
- 上一轮命中摘要：
+ 上一轮命中摘要（每条以 #id 开头）：
  $lastRoundDigest
 
  要求：
  1) 输出严格 JSON，不要输出任何其他文字。
- 2) 生成 8 个 queries，尽量与已命中的文件/符号更相关，避免与上一轮重复。
+ 2) 生成最多 8 个 queries，每个 query 是一个正则表达式字符串。
+ 3) 可选地选择最多 $maxRead 个候选 id 用于 read_file_part；如果不需要读取，read 输出空数组。
+ 4) 不要输出类似 "..." / "…" 这种占位符作为 query；如果无法给出具体正则，queries 输出空数组。
 
- 输出格式：{"queries":["...", "...", "...", "...", "...", "...", "...", "..."]}
+ 输出必须是一个 JSON 对象，包含 "queries"（正则字符串数组）和 "read"（候选 id 数组）两个字段。
  """.trimIndent()
         }
     }

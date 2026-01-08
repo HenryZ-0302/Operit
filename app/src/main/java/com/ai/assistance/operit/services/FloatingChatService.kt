@@ -89,8 +89,24 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         @Volatile
         private var instance: FloatingChatService? = null
 
+        const val EXTRA_AUTO_ENTER_VOICE_CHAT = "AUTO_ENTER_VOICE_CHAT"
+        const val EXTRA_WAKE_LAUNCHED = "WAKE_LAUNCHED"
+
         fun getInstance(): FloatingChatService? = instance
     }
+
+    private val autoEnterVoiceChat = mutableStateOf(false)
+    private val wakeLaunched = mutableStateOf(false)
+
+    fun consumeAutoEnterVoiceChat(): Boolean {
+        val value = autoEnterVoiceChat.value
+        if (value) {
+            autoEnterVoiceChat.value = false
+        }
+        return value
+    }
+
+    fun isWakeLaunched(): Boolean = wakeLaunched.value
 
     inner class LocalBinder : Binder() {
         private var closeCallback: (() -> Unit)? = null
@@ -337,6 +353,13 @@ class FloatingChatService : Service(), FloatingWindowCallback {
                 } catch (e: IllegalArgumentException) {
                     AppLogger.w(TAG, "Invalid mode name in intent: $modeName")
                 }
+            }
+
+            if (intent?.getBooleanExtra(EXTRA_AUTO_ENTER_VOICE_CHAT, false) == true) {
+                autoEnterVoiceChat.value = true
+            }
+            if (intent?.hasExtra(EXTRA_WAKE_LAUNCHED) == true) {
+                wakeLaunched.value = intent.getBooleanExtra(EXTRA_WAKE_LAUNCHED, false)
             }
 
             if (intent?.hasExtra("CHAT_MESSAGES") == true) {

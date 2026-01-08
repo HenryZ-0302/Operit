@@ -228,7 +228,7 @@ class SpeechInteractionManager(
         if (text.isBlank()) return
         coroutineScope.launch {
             try {
-                voiceService.speak(text, interrupt, 1.2f, 1.0f)
+                voiceService.speak(text, interrupt, 1.35f, 1.0f)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "TTS Error", e)
             }

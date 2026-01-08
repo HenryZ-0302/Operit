@@ -200,11 +200,25 @@ open class StandardFileSystemTools(protected val context: Context) {
         return ids
     }
 
+    protected fun parseReadIdsFromModelOutput(text: String): List<Int> {
+        val obj = extractFirstJsonObject(text) ?: return emptyList()
+        val arr = obj.optJSONArray("read") ?: return emptyList()
+        val ids = mutableListOf<Int>()
+        for (i in 0 until arr.length()) {
+            val v = arr.optInt(i, -1)
+            if (v >= 0) ids.add(v)
+        }
+        return ids
+    }
+
     protected fun normalizeQueries(queries: List<String>): List<String> {
         val seen = LinkedHashSet<String>()
         for (q in queries) {
             val trimmed = q.trim()
             if (trimmed.isNotBlank()) {
+                val isDotPlaceholder = trimmed.length >= 3 && trimmed.all { it == '.' }
+                val isEllipsisPlaceholder = trimmed.all { it == '…' }
+                if (isDotPlaceholder || isEllipsisPlaceholder) continue
                 seen.add(trimmed)
             }
         }
@@ -230,6 +244,62 @@ open class StandardFileSystemTools(protected val context: Context) {
             sb.append(limited).append("\n\n")
         }
         return sb.toString().trim()
+    }
+
+    protected suspend fun enrichCandidatesWithReadContext(
+        candidates: List<GrepContextCandidate>,
+        environment: String?,
+        readContextLines: Int,
+        maxCandidatesToRead: Int,
+        selectedCandidateIndexes: List<Int>? = null
+    ): List<GrepContextCandidate> {
+        if (candidates.isEmpty()) return candidates
+
+        val indexesToRead =
+            if (selectedCandidateIndexes == null) {
+                (0 until minOf(maxCandidatesToRead, candidates.size)).toList()
+            } else {
+                selectedCandidateIndexes
+                    .asSequence()
+                    .distinct()
+                    .filter { it >= 0 && it < candidates.size }
+                    .take(maxCandidatesToRead)
+                    .toList()
+            }
+
+        if (indexesToRead.isEmpty()) return candidates
+
+        val indexSet = indexesToRead.toHashSet()
+        val enriched = ArrayList<GrepContextCandidate>(candidates.size)
+
+        for ((idx, c) in candidates.withIndex()) {
+            if (!indexSet.contains(idx)) {
+                enriched.add(c)
+                continue
+            }
+
+            val startLine = maxOf(1, c.lineNumber - readContextLines)
+            val endLine = c.lineNumber + readContextLines
+            val params = mutableListOf(
+                ToolParameter("path", c.filePath),
+                ToolParameter("start_line", startLine.toString()),
+                ToolParameter("end_line", endLine.toString())
+            )
+            if (!environment.isNullOrBlank()) {
+                params.add(ToolParameter("environment", environment))
+            }
+
+            val readRes = readFilePart(AITool(name = "read_file_part", parameters = params))
+            val snippet = (readRes.result as? FilePartContentData)?.content
+
+            if (readRes.success && !snippet.isNullOrBlank()) {
+                enriched.add(c.copy(matchContext = snippet))
+            } else {
+                enriched.add(c)
+            }
+        }
+
+        return enriched
     }
 
     protected suspend fun runGrepCodeBatch(
@@ -338,30 +408,14 @@ open class StandardFileSystemTools(protected val context: Context) {
 
             val useEnglish = LocaleUtils.getCurrentLanguage(context).lowercase().startsWith("en")
 
-            val initialPrompt =
-                FunctionalPrompts.grepContextInitialPrompt(
-                    intent = intent,
-                    displayPath = displayPath,
-                    filePattern = filePattern,
-                    useEnglish = useEnglish
-                )
-
             val fallback = listOf(intent.take(60)).filter { it.isNotBlank() }
-            ToolProgressBus.update(toolName, 0.05f, "Generating search queries...")
-            AppLogger.d(TAG, "grep_context: Generating initial queries for path=$displayPath filePattern=$filePattern")
-            val initialQueryStart = System.currentTimeMillis()
-            val initialRaw = runGrepModel(initialPrompt)
-            var queries = normalizeQueries(parseQueryListFromModelOutput(initialRaw, fallback)).take(8)
+            var queries = normalizeQueries(fallback).take(8)
             if (queries.isEmpty()) queries = fallback
-
-            val initialQueryElapsed = System.currentTimeMillis() - initialQueryStart
-            AppLogger.d(
-                TAG,
-                "grep_context: Initial query generation completed in ${initialQueryElapsed}ms. queries=${queries.joinToString(" | ") { it.take(60) }}"
-            )
+            ToolProgressBus.update(toolName, 0.05f, "Starting search rounds...")
 
             val allCandidates = mutableListOf<GrepContextCandidate>()
             var filesSearched = 0
+            val overallDedup = HashSet<String>()
 
             val perRoundSearchSpan = 0.2f
             val perRoundRefineSpan = 0.05f
@@ -382,38 +436,79 @@ open class StandardFileSystemTools(protected val context: Context) {
                         progressSpan = perRoundSearchSpan,
                         progressMessage = "Searching (round $round/3)"
                     )
-
                 filesSearched = maxOf(filesSearched, batchFilesSearched)
-                allCandidates.addAll(batchCandidates)
+
+                var storedBatchCandidates = batchCandidates
+
+                val digestCandidates = storedBatchCandidates.take(24)
+                val digest = buildCandidateDigestForModel(digestCandidates, 800)
+
+                val planPrompt =
+                    FunctionalPrompts.grepContextRefineWithReadPrompt(
+                        intent = intent,
+                        displayPath = displayPath,
+                        filePattern = filePattern,
+                        lastRoundDigest = digest,
+                        maxRead = 8,
+                        useEnglish = useEnglish
+                    )
+
+                ToolProgressBus.update(toolName, roundBase + perRoundSearchSpan, "Planning next steps (round $round/3)...")
+                val planStart = System.currentTimeMillis()
+                val planRaw = runGrepModel(planPrompt)
+                val plannedQueries = normalizeQueries(parseQueryListFromModelOutput(planRaw, queries)).take(8)
+                val readIds = parseReadIdsFromModelOutput(planRaw)
+                    .distinct()
+                    .filter { it >= 0 && it < digestCandidates.size }
+                    .take(8)
+
+                if (readIds.isNotEmpty()) {
+                    ToolProgressBus.update(toolName, roundBase + perRoundSearchSpan, "Reading selected snippets (round $round/3)...")
+                    val enrichedDigestCandidates =
+                        enrichCandidatesWithReadContext(
+                            candidates = digestCandidates,
+                            environment = environment,
+                            readContextLines = 25,
+                            maxCandidatesToRead = 8,
+                            selectedCandidateIndexes = readIds
+                        )
+
+                    val contextByKey = HashMap<String, String>()
+                    for (id in readIds) {
+                        val c = enrichedDigestCandidates.getOrNull(id) ?: continue
+                        val ctx = c.matchContext ?: continue
+                        contextByKey["${c.filePath}#${c.lineNumber}"] = ctx
+                    }
+
+                    storedBatchCandidates =
+                        storedBatchCandidates.map { c ->
+                            val key = "${c.filePath}#${c.lineNumber}"
+                            val ctx = contextByKey[key]
+                            if (!ctx.isNullOrBlank()) c.copy(matchContext = ctx) else c
+                        }
+                }
+
+                val planElapsed = System.currentTimeMillis() - planStart
+                if (round < 3 && plannedQueries.isNotEmpty()) {
+                    queries = plannedQueries
+                }
+                ToolProgressBus.update(toolName, roundBase + perRoundSearchSpan + perRoundRefineSpan, "Prepared next steps")
+                AppLogger.d(
+                    TAG,
+                    "grep_context: Plan after round $round/3 completed in ${planElapsed}ms. nextQueries=${plannedQueries.joinToString(" | ") { it.take(60) }} readIds=${readIds.joinToString(",") }"
+                )
+
+                storedBatchCandidates.forEach { c ->
+                    val key = "${c.filePath}#${c.lineNumber}"
+                    if (overallDedup.add(key)) {
+                        allCandidates.add(c)
+                    }
+                }
 
                 AppLogger.d(
                     TAG,
                     "grep_context: Round $round/3 finished. batchCandidates=${batchCandidates.size} totalCandidates=${allCandidates.size} filesSearched=$filesSearched"
                 )
-
-                if (round < 3) {
-                    val digest = buildCandidateDigestForModel(batchCandidates.take(24), 800)
-                    val refinePrompt =
-                        FunctionalPrompts.grepContextRefinePrompt(
-                            intent = intent,
-                            displayPath = displayPath,
-                            filePattern = filePattern,
-                            lastRoundDigest = digest,
-                            useEnglish = useEnglish
-                        )
-                    ToolProgressBus.update(toolName, roundBase + perRoundSearchSpan, "Refining queries (round $round/3)...")
-                    val refineStart = System.currentTimeMillis()
-                    val refinedRaw = runGrepModel(refinePrompt)
-                    val refined = normalizeQueries(parseQueryListFromModelOutput(refinedRaw, queries)).take(8)
-                    queries = refined.ifEmpty { queries }
-
-                    val refineElapsed = System.currentTimeMillis() - refineStart
-                    ToolProgressBus.update(toolName, roundBase + perRoundSearchSpan + perRoundRefineSpan, "Refined queries for next round")
-                    AppLogger.d(
-                        TAG,
-                        "grep_context: Refine after round $round/3 completed in ${refineElapsed}ms. queries=${queries.joinToString(" | ") { it.take(60) }}"
-                    )
-                }
             }
 
             if (allCandidates.isEmpty()) {

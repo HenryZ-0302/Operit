@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.*
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.PromptFunctionType
+import com.ai.assistance.operit.data.preferences.WakeWordPreferences
 import com.ai.assistance.operit.ui.floating.FloatContext
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.XmlTextProcessor
 import com.ai.assistance.operit.ui.floating.voice.SpeechInteractionManager
@@ -11,7 +12,13 @@ import com.ai.assistance.operit.util.stream.Stream
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "FloatingFullscreenViewModel"
 
@@ -40,6 +47,14 @@ class FloatingFullscreenModeViewModel(
      private var aiStreamJob: Job? = null
      private var activeAiStreamIdentity: Int? = null
      private var activeAiMessageTimestamp: Long? = null
+
+    private val wakePrefs by lazy { WakeWordPreferences(context.applicationContext) }
+    private var inactivityTimeoutSeconds: Int = WakeWordPreferences.DEFAULT_VOICE_CALL_INACTIVITY_TIMEOUT_SECONDS
+    private var prefsJob: Job? = null
+    private var inactivityJob: Job? = null
+    private var lastVoiceActivityAtMs: Long = 0L
+
+    private var wakeEnterJob: Job? = null
     
     // ===== 语音交互管理器 =====
     val speechManager = SpeechInteractionManager(
@@ -179,20 +194,75 @@ class FloatingFullscreenModeViewModel(
         speechManager.stopListening(isCancel)
     }
 
-    fun enterWaveMode() {
-        startVoiceCapture()
-        if (speechManager.isRecording) {
+    fun enterWaveMode(wakeLaunched: Boolean = false) {
+        wakeEnterJob?.cancel()
+        wakeEnterJob = coroutineScope.launch {
+            // 语音态 UI 先切换出来（唤醒场景更符合预期）
             isWaveActive = true
+
+            playWakeGreetingIfNeeded(wakeLaunched)
+
+            startVoiceCapture()
+            if (speechManager.isRecording) {
+                lastVoiceActivityAtMs = System.currentTimeMillis()
+                startInactivityMonitor()
+            } else {
+                isWaveActive = false
+                showBottomControls = true
+            }
         }
     }
     
     fun exitWaveMode() {
+        wakeEnterJob?.cancel()
+        wakeEnterJob = null
         stopVoiceCapture(true)
+        coroutineScope.launch { speechManager.voiceService.stop() }
         isWaveActive = false
         showBottomControls = true
+        inactivityJob?.cancel()
+        inactivityJob = null
+    }
+
+    private suspend fun playWakeGreetingIfNeeded(wakeLaunched: Boolean) {
+        if (!wakeLaunched) return
+
+        val enabled = wakePrefs.wakeGreetingEnabledFlow.first()
+        if (!enabled) return
+
+        val text =
+            wakePrefs.wakeGreetingTextFlow.first().trim().ifBlank {
+                WakeWordPreferences.DEFAULT_WAKE_GREETING_TEXT
+            }
+        if (text.isBlank()) return
+
+        // 先朗读问候语，再开始录音；等待 TTS 结束，避免把 TTS 录进去。
+        speechManager.speak(text, interrupt = true)
+
+        val voiceService = speechManager.voiceService
+        val estimatedMs = (600L + text.length * 220L).coerceIn(800L, 6000L)
+
+        val started = withTimeoutOrNull(1500L) {
+            voiceService.speakingStateFlow.filter { it }.first()
+        }
+
+        if (started != null) {
+            withTimeoutOrNull(estimatedMs + 2500L) {
+                voiceService.speakingStateFlow.filter { speaking -> !speaking }.first()
+            }
+        } else {
+            // 某些实现可能不会及时发 speaking=true，这里用估时兜底
+            delay(estimatedMs)
+        }
+
+        // 留一点间隔，减少回声/尾音被录入
+        delay(250L)
     }
 
     fun handleRecognitionResult(resultText: String, isFinal: Boolean) {
+        if (isWaveActive && resultText.isNotBlank()) {
+            lastVoiceActivityAtMs = System.currentTimeMillis()
+        }
         // 委托给 Manager 处理，波浪模式下启用自动静默发送
         speechManager.handleRecognitionResult(resultText, isFinal, autoSendSilence = isWaveActive)
     }
@@ -201,6 +271,12 @@ class FloatingFullscreenModeViewModel(
 
     suspend fun initialize() {
         speechManager.initialize()
+        prefsJob?.cancel()
+        prefsJob = coroutineScope.launch {
+            wakePrefs.voiceCallInactivityTimeoutSecondsFlow.collectLatest { seconds ->
+                inactivityTimeoutSeconds = seconds.coerceIn(1, 600)
+            }
+        }
         isInitialLoad.value = true
         isWaveActive = false
         showBottomControls = true
@@ -220,9 +296,46 @@ class FloatingFullscreenModeViewModel(
         speechManager.releaseFocus(view)
         speechManager.cleanup()
 
+        prefsJob?.cancel()
+        prefsJob = null
+        inactivityJob?.cancel()
+        inactivityJob = null
+
          aiStreamJob?.cancel()
          aiStreamJob = null
          activeAiStreamIdentity = null
+
+        wakeEnterJob?.cancel()
+        wakeEnterJob = null
+    }
+
+    private fun startInactivityMonitor() {
+        inactivityJob?.cancel()
+        inactivityJob = coroutineScope.launch {
+            while (isActive && isWaveActive) {
+                val timeoutMs = inactivityTimeoutSeconds.toLong() * 1000L
+                val elapsed = System.currentTimeMillis() - lastVoiceActivityAtMs
+                val remaining = timeoutMs - elapsed
+                if (remaining <= 0L) {
+                    // 如果 AI 正在朗读，不要在朗读过程中退出/关闭。
+                    // 等朗读结束后再重新评估 remaining。
+                    val voiceService = speechManager.voiceService
+                    if (voiceService.isSpeaking) {
+                        withTimeoutOrNull(20_000L) {
+                            voiceService.speakingStateFlow.filter { speaking -> !speaking }.first()
+                        }
+                        // 朗读结束后继续循环重新评估（可能用户已插话更新 lastVoiceActivityAtMs）
+                        continue
+                    }
+                    exitWaveMode()
+                    if (floatContext.chatService?.isWakeLaunched() == true) {
+                        floatContext.onClose()
+                    }
+                    return@launch
+                }
+                delay(minOf(remaining, 500L))
+            }
+        }
     }
 
     // ===== 编辑模式 =====
