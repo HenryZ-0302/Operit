@@ -83,6 +83,9 @@ class AIForegroundService : Service() {
             "com.ai.assistance.operit.action.SET_WAKE_LISTENING_SUSPENDED_FOR_IME"
         private const val EXTRA_IME_VISIBLE = "extra_ime_visible"
 
+        const val ACTION_PREPARE_WAKE_HANDOFF =
+            "com.ai.assistance.operit.action.PREPARE_WAKE_HANDOFF"
+
         @Volatile
         private var lastRequestedImeVisible: Boolean = false
 
@@ -283,6 +286,15 @@ class AIForegroundService : Service() {
 
     private var lastWakeTriggerAtMs: Long = 0L
 
+    @Volatile
+    private var pendingWakeTriggeredAtMs: Long = 0L
+
+    @Volatile
+    private var wakeHandoffPending: Boolean = false
+
+    @Volatile
+    private var wakeStopInProgress: Boolean = false
+
     private var lastSpeechWorkflowCheckAtMs: Long = 0L
 
     override fun onCreate() {
@@ -418,6 +430,38 @@ class AIForegroundService : Service() {
         if (intent?.action == ACTION_SET_WAKE_LISTENING_SUSPENDED_FOR_IME) {
             val imeVisible = intent.getBooleanExtra(EXTRA_IME_VISIBLE, false)
             updateWakeListeningSuspendedForIme(imeVisible)
+            return START_NOT_STICKY
+        }
+
+        if (intent?.action == ACTION_PREPARE_WAKE_HANDOFF) {
+            val now = System.currentTimeMillis()
+            val triggeredAt = pendingWakeTriggeredAtMs
+            if (triggeredAt > 0L && wakeHandoffPending) {
+                val elapsedMs = (now - triggeredAt).coerceAtLeast(0L)
+                val dynamicMarginMs = (elapsedMs / 4L).coerceIn(150L, 650L)
+                val windowMs = (elapsedMs + dynamicMarginMs).coerceIn(200L, 2500L)
+                AppLogger.d(
+                    TAG,
+                    "Wake handoff prepare: elapsedMs=$elapsedMs, marginMs=$dynamicMarginMs, captureWindowMs=$windowMs"
+                )
+                SpeechPrerollStore.capturePending(windowMs = windowMs.toInt())
+                SpeechPrerollStore.armPending()
+
+                if (!wakeStopInProgress) {
+                    wakeStopInProgress = true
+                    serviceScope.launch {
+                        try {
+                            stopWakeListening()
+                        } finally {
+                            wakeStopInProgress = false
+                            wakeHandoffPending = false
+                            pendingWakeTriggeredAtMs = 0L
+                        }
+                    }
+                }
+            } else {
+                AppLogger.d(TAG, "Wake handoff prepare ignored: pending=$wakeHandoffPending, triggeredAt=$triggeredAt")
+            }
             return START_NOT_STICKY
         }
 
@@ -711,6 +755,10 @@ class AIForegroundService : Service() {
                         "唤醒识别输出(${if (result.isFinal) "final" else "partial"}): '$text'"
                     )
 
+                    if (wakeHandoffPending) {
+                        return@collectLatest
+                    }
+
                     try {
                         val now = System.currentTimeMillis()
                         val shouldCheckWorkflows = result.isFinal || now - lastSpeechWorkflowCheckAtMs >= 350L
@@ -726,13 +774,16 @@ class AIForegroundService : Service() {
                         val now = System.currentTimeMillis()
                         if (now - lastWakeTriggerAtMs < 3000L) return@collectLatest
                         lastWakeTriggerAtMs = now
+                        pendingWakeTriggeredAtMs = now
+                        wakeHandoffPending = true
+                        wakeStopInProgress = false
 
                         AppLogger.d(TAG, "命中唤醒词: '$currentWakePhrase' in '$text'")
-                        SpeechPrerollStore.capturePending(windowMs = 1600)
-                        SpeechPrerollStore.armPending()
+                        SpeechPrerollStore.setPendingWakePhrase(
+                            phrase = currentWakePhrase,
+                            regexEnabled = wakePhraseRegexEnabled,
+                        )
                         triggerWakeLaunch()
-
-                        stopWakeListening()
                         scheduleWakeResume()
                     }
                 }
@@ -775,6 +826,14 @@ class AIForegroundService : Service() {
                 }
 
                 AppLogger.d(TAG, "检测到悬浮窗已关闭，准备恢复唤醒监听")
+
+                if (wakeHandoffPending) {
+                    AppLogger.d(TAG, "Wake handoff aborted, clearing pending state")
+                    wakeHandoffPending = false
+                    wakeStopInProgress = false
+                    pendingWakeTriggeredAtMs = 0L
+                    SpeechPrerollStore.clearPendingWakePhrase()
+                }
 
                 if (wakeListeningEnabled && !wakeListeningSuspendedForIme && !wakeListeningSuspendedForExternalRecording) {
                     startWakeListening()

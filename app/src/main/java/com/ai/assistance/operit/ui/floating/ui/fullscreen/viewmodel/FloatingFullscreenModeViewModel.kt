@@ -445,17 +445,27 @@ class FloatingFullscreenModeViewModel(
 
         val attachmentDelegate = floatContext.chatService?.getChatCore()?.getAttachmentDelegate() ?: return
 
-        val screenEnabled = wakePrefs.voiceAutoAttachScreenEnabledFlow.first()
-        val notificationsEnabled = wakePrefs.voiceAutoAttachNotificationsEnabledFlow.first()
-        val screenKeyword = wakePrefs.voiceAutoAttachScreenKeywordFlow.first().trim()
-        val notificationsKeyword = wakePrefs.voiceAutoAttachNotificationsKeywordFlow.first().trim()
+        val items = wakePrefs.voiceAutoAttachItemsFlow.first()
+        items
+            .asSequence()
+            .filter { it.enabled }
+            .forEach { item ->
+                val keywordConfig = item.keywords.trim()
+                if (keywordConfig.isBlank()) return@forEach
+                if (!matchesAnyKeyword(text, keywordConfig)) return@forEach
 
-        if (screenEnabled && matchesAnyKeyword(text, screenKeyword)) {
-            attachmentDelegate.captureScreenContent()
-        }
-        if (notificationsEnabled && matchesAnyKeyword(text, notificationsKeyword)) {
-            attachmentDelegate.captureNotifications()
-        }
+                when (item.type) {
+                    WakeWordPreferences.VoiceAutoAttachType.SCREEN_OCR -> {
+                        attachmentDelegate.captureScreenContent()
+                    }
+                    WakeWordPreferences.VoiceAutoAttachType.NOTIFICATIONS -> {
+                        attachmentDelegate.captureNotifications()
+                    }
+                    WakeWordPreferences.VoiceAutoAttachType.LOCATION -> {
+                        attachmentDelegate.captureLocation()
+                    }
+                }
+            }
     }
 
     private fun matchesAnyKeyword(text: String, keywordConfig: String): Boolean {

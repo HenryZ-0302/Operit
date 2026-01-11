@@ -2,6 +2,11 @@ package com.ai.assistance.operit.api.speech
 
 import com.ai.assistance.operit.util.AppLogger
 
+data class WakePhraseSnapshot(
+    val phrase: String,
+    val regexEnabled: Boolean,
+)
+
 object SpeechPrerollStore {
     private const val TAG = "SpeechPrerollStore"
 
@@ -19,6 +24,10 @@ object SpeechPrerollStore {
     private var pending: ShortArray? = null
     private var pendingCapturedAtMs: Long = 0L
     private var pendingArmed: Boolean = false
+
+    private var pendingWakePhrase: String? = null
+    private var pendingWakePhraseRegexEnabled: Boolean = false
+    private var pendingWakePhraseAtMs: Long = 0L
 
     fun appendPcm(pcm: ShortArray, length: Int) {
         if (length <= 0) return
@@ -76,10 +85,12 @@ object SpeechPrerollStore {
             val p = pending ?: return null
             if (now - pendingCapturedAtMs > maxAgeMs) {
                 pending = null
+                pendingCapturedAtMs = 0L
                 pendingArmed = false
                 return null
             }
             pending = null
+            pendingCapturedAtMs = 0L
             pendingArmed = false
             return p
         }
@@ -91,6 +102,41 @@ object SpeechPrerollStore {
         }
     }
 
+    fun setPendingWakePhrase(phrase: String, regexEnabled: Boolean) {
+        val now = System.currentTimeMillis()
+        synchronized(lock) {
+            pendingWakePhrase = phrase
+            pendingWakePhraseRegexEnabled = regexEnabled
+            pendingWakePhraseAtMs = now
+        }
+    }
+
+    fun consumePendingWakePhrase(maxAgeMs: Long = 10_000L): WakePhraseSnapshot? {
+        val now = System.currentTimeMillis()
+        synchronized(lock) {
+            val phrase = pendingWakePhrase ?: return null
+            if (now - pendingWakePhraseAtMs > maxAgeMs) {
+                pendingWakePhrase = null
+                pendingWakePhraseAtMs = 0L
+                pendingWakePhraseRegexEnabled = false
+                return null
+            }
+            pendingWakePhrase = null
+            pendingWakePhraseAtMs = 0L
+            val regexEnabled = pendingWakePhraseRegexEnabled
+            pendingWakePhraseRegexEnabled = false
+            return WakePhraseSnapshot(phrase = phrase, regexEnabled = regexEnabled)
+        }
+    }
+
+    fun clearPendingWakePhrase() {
+        synchronized(lock) {
+            pendingWakePhrase = null
+            pendingWakePhraseRegexEnabled = false
+            pendingWakePhraseAtMs = 0L
+        }
+    }
+
     fun clear() {
         synchronized(lock) {
             writePos = 0
@@ -98,6 +144,9 @@ object SpeechPrerollStore {
             pending = null
             pendingCapturedAtMs = 0L
             pendingArmed = false
+            pendingWakePhrase = null
+            pendingWakePhraseRegexEnabled = false
+            pendingWakePhraseAtMs = 0L
         }
     }
 }

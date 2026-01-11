@@ -10,6 +10,10 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 private val Context.wakeWordPreferencesDataStore: DataStore<Preferences> by
     preferencesDataStore(name = "wake_word_preferences")
@@ -17,6 +21,12 @@ private val Context.wakeWordPreferencesDataStore: DataStore<Preferences> by
 class WakeWordPreferences(private val context: Context) {
 
     private val dataStore = context.wakeWordPreferencesDataStore
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        explicitNulls = false
+    }
 
     companion object {
         private val KEY_ALWAYS_LISTENING_ENABLED = booleanPreferencesKey("always_listening_enabled")
@@ -28,12 +38,7 @@ class WakeWordPreferences(private val context: Context) {
         private val KEY_WAKE_GREETING_TEXT = stringPreferencesKey("wake_greeting_text")
 
         private val KEY_VOICE_AUTO_ATTACH_ENABLED = booleanPreferencesKey("voice_auto_attach_enabled")
-        private val KEY_VOICE_AUTO_ATTACH_SCREEN_ENABLED = booleanPreferencesKey("voice_auto_attach_screen_enabled")
-        private val KEY_VOICE_AUTO_ATTACH_NOTIFICATIONS_ENABLED =
-            booleanPreferencesKey("voice_auto_attach_notifications_enabled")
-        private val KEY_VOICE_AUTO_ATTACH_SCREEN_KEYWORD = stringPreferencesKey("voice_auto_attach_screen_keyword")
-        private val KEY_VOICE_AUTO_ATTACH_NOTIFICATIONS_KEYWORD =
-            stringPreferencesKey("voice_auto_attach_notifications_keyword")
+        private val KEY_VOICE_AUTO_ATTACH_ITEMS_JSON = stringPreferencesKey("voice_auto_attach_items_json")
 
         const val DEFAULT_WAKE_PHRASE = "小欧"
         const val DEFAULT_WAKE_PHRASE_REGEX_ENABLED = false
@@ -43,11 +48,45 @@ class WakeWordPreferences(private val context: Context) {
         const val DEFAULT_WAKE_GREETING_TEXT = "我在"
 
         const val DEFAULT_VOICE_AUTO_ATTACH_ENABLED = true
-        const val DEFAULT_VOICE_AUTO_ATTACH_SCREEN_ENABLED = true
-        const val DEFAULT_VOICE_AUTO_ATTACH_NOTIFICATIONS_ENABLED = true
-        const val DEFAULT_VOICE_AUTO_ATTACH_SCREEN_KEYWORD = "屏幕"
-        const val DEFAULT_VOICE_AUTO_ATTACH_NOTIFICATIONS_KEYWORD = "通知"
+
+        val DEFAULT_VOICE_AUTO_ATTACH_ITEMS: List<VoiceAutoAttachItem> =
+            listOf(
+                VoiceAutoAttachItem(
+                    id = "screen_ocr",
+                    type = VoiceAutoAttachType.SCREEN_OCR,
+                    enabled = true,
+                    keywords = "屏幕"
+                ),
+                VoiceAutoAttachItem(
+                    id = "notifications",
+                    type = VoiceAutoAttachType.NOTIFICATIONS,
+                    enabled = true,
+                    keywords = "通知"
+                ),
+                VoiceAutoAttachItem(
+                    id = "location",
+                    type = VoiceAutoAttachType.LOCATION,
+                    enabled = true,
+                    keywords = "哪个地方"
+                )
+            )
     }
+
+    @Serializable
+    enum class VoiceAutoAttachType {
+        SCREEN_OCR,
+        NOTIFICATIONS,
+        LOCATION
+    }
+
+    @Serializable
+    data class VoiceAutoAttachItem(
+        val id: String,
+        val type: VoiceAutoAttachType,
+        val enabled: Boolean = true,
+        val keywords: String = "",
+        val params: Map<String, String> = emptyMap()
+    )
 
     val alwaysListeningEnabledFlow: Flow<Boolean> =
         dataStore.data.map { prefs ->
@@ -85,26 +124,15 @@ class WakeWordPreferences(private val context: Context) {
             prefs[KEY_VOICE_AUTO_ATTACH_ENABLED] ?: DEFAULT_VOICE_AUTO_ATTACH_ENABLED
         }
 
-    val voiceAutoAttachScreenEnabledFlow: Flow<Boolean> =
+    val voiceAutoAttachItemsFlow: Flow<List<VoiceAutoAttachItem>> =
         dataStore.data.map { prefs ->
-            prefs[KEY_VOICE_AUTO_ATTACH_SCREEN_ENABLED] ?: DEFAULT_VOICE_AUTO_ATTACH_SCREEN_ENABLED
-        }
-
-    val voiceAutoAttachNotificationsEnabledFlow: Flow<Boolean> =
-        dataStore.data.map { prefs ->
-            prefs[KEY_VOICE_AUTO_ATTACH_NOTIFICATIONS_ENABLED]
-                ?: DEFAULT_VOICE_AUTO_ATTACH_NOTIFICATIONS_ENABLED
-        }
-
-    val voiceAutoAttachScreenKeywordFlow: Flow<String> =
-        dataStore.data.map { prefs ->
-            prefs[KEY_VOICE_AUTO_ATTACH_SCREEN_KEYWORD] ?: DEFAULT_VOICE_AUTO_ATTACH_SCREEN_KEYWORD
-        }
-
-    val voiceAutoAttachNotificationsKeywordFlow: Flow<String> =
-        dataStore.data.map { prefs ->
-            prefs[KEY_VOICE_AUTO_ATTACH_NOTIFICATIONS_KEYWORD]
-                ?: DEFAULT_VOICE_AUTO_ATTACH_NOTIFICATIONS_KEYWORD
+            val raw = prefs[KEY_VOICE_AUTO_ATTACH_ITEMS_JSON]
+            if (raw.isNullOrBlank()) {
+                DEFAULT_VOICE_AUTO_ATTACH_ITEMS
+            } else {
+                runCatching { json.decodeFromString<List<VoiceAutoAttachItem>>(raw) }
+                    .getOrDefault(DEFAULT_VOICE_AUTO_ATTACH_ITEMS)
+            }
         }
 
     suspend fun saveAlwaysListeningEnabled(enabled: Boolean) {
@@ -149,27 +177,10 @@ class WakeWordPreferences(private val context: Context) {
         }
     }
 
-    suspend fun saveVoiceAutoAttachScreenEnabled(enabled: Boolean) {
+    suspend fun saveVoiceAutoAttachItems(items: List<VoiceAutoAttachItem>) {
+        val raw = json.encodeToString(items)
         dataStore.edit { prefs ->
-            prefs[KEY_VOICE_AUTO_ATTACH_SCREEN_ENABLED] = enabled
-        }
-    }
-
-    suspend fun saveVoiceAutoAttachNotificationsEnabled(enabled: Boolean) {
-        dataStore.edit { prefs ->
-            prefs[KEY_VOICE_AUTO_ATTACH_NOTIFICATIONS_ENABLED] = enabled
-        }
-    }
-
-    suspend fun saveVoiceAutoAttachScreenKeyword(keyword: String) {
-        dataStore.edit { prefs ->
-            prefs[KEY_VOICE_AUTO_ATTACH_SCREEN_KEYWORD] = keyword
-        }
-    }
-
-    suspend fun saveVoiceAutoAttachNotificationsKeyword(keyword: String) {
-        dataStore.edit { prefs ->
-            prefs[KEY_VOICE_AUTO_ATTACH_NOTIFICATIONS_KEYWORD] = keyword
+            prefs[KEY_VOICE_AUTO_ATTACH_ITEMS_JSON] = raw
         }
     }
 }

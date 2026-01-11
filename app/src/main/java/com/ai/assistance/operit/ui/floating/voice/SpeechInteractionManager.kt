@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.ui.floating.voice
 
+import android.content.Intent
 import android.content.Context
 import android.content.Context.INPUT_METHOD_SERVICE
 import com.ai.assistance.operit.util.AppLogger
@@ -8,6 +9,9 @@ import android.view.inputmethod.InputMethodManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.ai.assistance.operit.api.chat.AIForegroundService
+import com.ai.assistance.operit.api.speech.SpeechPrerollStore
+import com.ai.assistance.operit.api.speech.WakePhraseSnapshot
 import com.ai.assistance.operit.api.speech.SpeechServiceFactory
 import com.ai.assistance.operit.api.voice.VoiceServiceFactory
 import com.ai.assistance.operit.util.TtsCleaner
@@ -42,6 +46,8 @@ class SpeechInteractionManager(
         private set
     private var accumulatedText = ""
     private var latestPartialText = ""
+
+    private var wakePhraseSnapshot: WakePhraseSnapshot? = null
 
     // 任务控制
     private var timeoutJob: Job? = null
@@ -83,6 +89,7 @@ class SpeechInteractionManager(
         userMessage = ""
         accumulatedText = ""
         latestPartialText = ""
+        wakePhraseSnapshot = null
         timeoutJob?.cancel()
         silenceTimeoutJob?.cancel()
     }
@@ -124,15 +131,48 @@ class SpeechInteractionManager(
         userMessage = ""
         accumulatedText = ""
         latestPartialText = ""
+        wakePhraseSnapshot = SpeechPrerollStore.consumePendingWakePhrase()
         onStateChange("正在聆听...")
 
         // 启动监听
         coroutineScope.launch {
-            speechService.startRecognition(
-                languageCode = "zh-CN",
-                continuousMode = true,
-                partialResults = true
-            )
+            try {
+                try {
+                    context.startService(Intent(context, AIForegroundService::class.java).apply {
+                        action = AIForegroundService.ACTION_PREPARE_WAKE_HANDOFF
+                    })
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Failed to request wake handoff prepare", e)
+                }
+
+                var ok = false
+                var attempt = 0
+                while (!ok && attempt < 4) {
+                    if (attempt > 0) {
+                        delay(120)
+                    } else {
+                        delay(80)
+                    }
+                    ok = speechService.startRecognition(
+                        languageCode = "zh-CN",
+                        continuousMode = true,
+                        partialResults = true
+                    )
+                    attempt++
+                }
+
+                if (!ok) {
+                    isRecording = false
+                    isProcessingSpeech = false
+                    onStateChange("长按麦克风")
+                    onStartFailure?.invoke("启动录音失败")
+                }
+            } catch (e: Exception) {
+                isRecording = false
+                isProcessingSpeech = false
+                onStateChange("长按麦克风")
+                onStartFailure?.invoke(e.message ?: "启动录音失败")
+            }
         }
 
         // 监听结果流 (假设这是 ViewModel 或者外部调用者通过 collectLatest 连接到 handleRecognitionResult)
@@ -164,16 +204,17 @@ class SpeechInteractionManager(
 
     // 处理识别结果
     fun handleRecognitionResult(resultText: String, isFinal: Boolean, autoSendSilence: Boolean = false) {
+        val effectiveText = stripWakePhrasePrefixIfNeeded(resultText)
         if (isRecording) {
-            if (resultText.isNotBlank()) {
+            if (effectiveText.isNotBlank()) {
                 // Barge-in
                 if (userMessage.isBlank()) coroutineScope.launch { voiceService.stop() }
 
                 // 处理增量
-                if (latestPartialText.isNotEmpty() && !resultText.startsWith(latestPartialText)) {
+                if (latestPartialText.isNotEmpty() && !effectiveText.startsWith(latestPartialText)) {
                     accumulatedText += (if (accumulatedText.isNotEmpty()) "。" else "") + latestPartialText
                 }
-                latestPartialText = resultText
+                latestPartialText = effectiveText
 
                 // 静默检测
                 if (autoSendSilence) {
@@ -189,8 +230,43 @@ class SpeechInteractionManager(
             
         } else if (isProcessingSpeech && isFinal) {
             timeoutJob?.cancel()
-            accumulatedText += (if (accumulatedText.isNotEmpty() && resultText.isNotBlank()) "。" else "") + resultText
+            accumulatedText += (if (accumulatedText.isNotEmpty() && effectiveText.isNotBlank()) "。" else "") + effectiveText
             finalizeSpeechInput()
+        }
+    }
+
+    private fun stripWakePhrasePrefixIfNeeded(text: String): String {
+        val snapshot = wakePhraseSnapshot ?: return text
+        if (text.isBlank()) return text
+
+        val leadingRegex = Regex("^[\\s\\p{Punct}，。！？；：、“”‘’【】（）()\\[\\]{}<>《》]+")
+        val leadingMatch = leadingRegex.find(text)
+        val startIdx = leadingMatch?.value?.length ?: 0
+        val trimmed = text.substring(startIdx)
+
+        if (trimmed.isBlank()) return text
+
+        if (snapshot.regexEnabled) {
+            return try {
+                val m = Regex(snapshot.phrase).find(trimmed)
+                if (m != null && m.range.first == 0) {
+                    val remainder = trimmed.substring(m.value.length)
+                    remainder.replaceFirst(leadingRegex, "")
+                } else {
+                    text
+                }
+            } catch (_: Exception) {
+                text
+            }
+        }
+
+        val phrase = snapshot.phrase
+        if (phrase.isBlank()) return text
+        return if (trimmed.startsWith(phrase)) {
+            val remainder = trimmed.substring(phrase.length)
+            remainder.replaceFirst(leadingRegex, "")
+        } else {
+            text
         }
     }
 

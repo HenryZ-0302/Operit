@@ -588,6 +588,11 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             releaseWakeLock()
 
             try {
+                chatCore.cancelCurrentMessage()
+            } catch (_: Exception) {
+            }
+
+            try {
                 runBlocking(Dispatchers.IO) {
                     try {
                         SpeechServiceFactory.getInstance(applicationContext).cancelRecognition()
@@ -616,6 +621,10 @@ class FloatingChatService : Service(), FloatingWindowCallback {
 
     override fun onClose() {
         AppLogger.d(TAG, "Close request from window manager")
+        try {
+            chatCore.cancelCurrentMessage()
+        } catch (_: Exception) {
+        }
         try {
             serviceScope.launch(Dispatchers.IO) {
                 try {

@@ -25,6 +25,7 @@ temp
 .env
 .env.*
 !.env.*.example
+tools/github/.env
 
 app/src/main/assets/pets
 

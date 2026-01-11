@@ -11,6 +11,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,9 +21,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AudioFile
@@ -62,6 +67,7 @@ import java.io.File
 import androidx.core.content.FileProvider
 
 /** 简约风格的附件选择器组件 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AttachmentSelectorPanel(
         visible: Boolean,
@@ -170,97 +176,156 @@ fun AttachmentSelectorPanel(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 第一行选项
-                Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 照片选项
-                    AttachmentOption(
-                            icon = Icons.Default.Image,
-                            label = context.getString(R.string.attachment_photo),
-                            onClick = { imagePickerLauncher.launch("image/*") }
-                    )
+                val panelItems =
+                        listOf(
+                                AttachmentPanelItem(
+                                        icon = Icons.Default.Image,
+                                        label = context.getString(R.string.attachment_photo),
+                                        onClick = { imagePickerLauncher.launch("image/*") }
+                                ),
+                                AttachmentPanelItem(
+                                        icon = Icons.Default.PhotoCamera,
+                                        label = context.getString(R.string.attachment_camera),
+                                        onClick = {
+                                            val uri = getTmpFileUri(context)
+                                            tempCameraUri = uri
+                                            takePictureLauncher.launch(uri)
+                                        }
+                                ),
+                                AttachmentPanelItem(
+                                        icon = Icons.Default.Memory,
+                                        label = context.getString(R.string.attachment_memory),
+                                        onClick = {
+                                            onAttachMemory()
+                                            onDismiss()
+                                        }
+                                ),
+                                AttachmentPanelItem(
+                                        icon = Icons.Default.AudioFile,
+                                        label = context.getString(R.string.attachment_audio),
+                                        onClick = { imagePickerLauncher.launch("audio/*") }
+                                ),
+                                AttachmentPanelItem(
+                                        icon = Icons.Default.Description,
+                                        label = context.getString(R.string.attachment_file),
+                                        onClick = { filePickerLauncher.launch("*/*") }
+                                ),
+                                AttachmentPanelItem(
+                                        icon = Icons.Default.ScreenshotMonitor,
+                                        label = context.getString(R.string.attachment_screen_content),
+                                        onClick = {
+                                            onAttachScreenContent()
+                                            onDismiss()
+                                        }
+                                ),
+                                AttachmentPanelItem(
+                                        icon = Icons.Default.Notifications,
+                                        label = context.getString(R.string.attachment_notifications),
+                                        onClick = {
+                                            onAttachNotifications()
+                                            onDismiss()
+                                        }
+                                ),
+                                AttachmentPanelItem(
+                                        icon = Icons.Default.LocationOn,
+                                        label = context.getString(R.string.attachment_location),
+                                        onClick = {
+                                            onAttachLocation()
+                                            onDismiss()
+                                        }
+                                )
+                        )
 
-                    // 拍照选项
-                    AttachmentOption(
-                            icon = Icons.Default.PhotoCamera,
-                            label = context.getString(R.string.attachment_camera),
-                            onClick = {
-                                val uri = getTmpFileUri(context)
-                                tempCameraUri = uri
-                                takePictureLauncher.launch(uri)
+                val pages = panelItems.chunked(8).ifEmpty { listOf(emptyList()) }
+                val pagerState = rememberPagerState(pageCount = { pages.size })
+
+                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth()) { pageIndex ->
+                    val pageItems = pages[pageIndex]
+                    val paddedItems = pageItems + List(8 - pageItems.size) { null }
+
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        // 第一行选项
+                        Row(
+                                modifier =
+                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                                                .heightIn(min = 96.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            paddedItems.take(4).forEach { item ->
+                                if (item == null) {
+                                    AttachmentOptionPlaceholder()
+                                } else {
+                                    AttachmentOption(
+                                            icon = item.icon,
+                                            label = item.label,
+                                            onClick = item.onClick
+                                    )
+                                }
                             }
-                    )
+                        }
 
-                    // 记忆选项
-                    AttachmentOption(
-                            icon = Icons.Default.Memory,
-                            label = context.getString(R.string.attachment_memory),
-                            onClick = { 
-                                onAttachMemory()
-                                onDismiss()
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // 第二行选项
+                        Row(
+                                modifier =
+                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                                                .heightIn(min = 96.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            paddedItems.drop(4).take(4).forEach { item ->
+                                if (item == null) {
+                                    AttachmentOptionPlaceholder()
+                                } else {
+                                    AttachmentOption(
+                                            icon = item.icon,
+                                            label = item.label,
+                                            onClick = item.onClick
+                                    )
+                                }
                             }
-                    )
-
-                    // 音频选项
-                    AttachmentOption(
-                            icon = Icons.Default.AudioFile,
-                            label = context.getString(R.string.attachment_audio),
-                            onClick = { imagePickerLauncher.launch("audio/*") }
-                    )
+                        }
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 第二行选项
-                Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 文件选项
-                    AttachmentOption(
-                        icon = Icons.Default.Description,
-                        label = context.getString(R.string.attachment_file),
-                        onClick = { filePickerLauncher.launch("*/*") }
-                    )
-
-                    // 屏幕内容选项
-                    AttachmentOption(
-                            icon = Icons.Default.ScreenshotMonitor,
-                            label = context.getString(R.string.attachment_screen_content),
-                            onClick = {
-                                onAttachScreenContent()
-                                onDismiss()
-                            }
-                    )
-
-                    // 当前通知选项
-                    AttachmentOption(
-                            icon = Icons.Default.Notifications,
-                            label = context.getString(R.string.attachment_notifications),
-                            onClick = {
-                                onAttachNotifications()
-                                onDismiss()
-                            }
-                    )
-
-                    // 当前位置选项
-                    AttachmentOption(
-                            icon = Icons.Default.LocationOn,
-                            label = context.getString(R.string.attachment_location),
-                            onClick = {
-                                onAttachLocation()
-                                onDismiss()
-                            }
-                    )
+                if (pages.size > 1) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        repeat(pages.size) { index ->
+                            val selected = index == pagerState.currentPage
+                            Box(
+                                    modifier =
+                                            Modifier.padding(horizontal = 4.dp)
+                                                    .size(if (selected) 7.dp else 6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(
+                                                            if (selected)
+                                                                MaterialTheme.colorScheme.primary
+                                                            else
+                                                                MaterialTheme.colorScheme.onSurface.copy(
+                                                                        alpha = 0.2f
+                                                                )
+                                                    )
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
+
+private data class AttachmentPanelItem(
+        val icon: ImageVector,
+        val label: String,
+        val onClick: () -> Unit
+)
 
 // 添加Uri转换为文件路径的工具函数
 private suspend fun getFilePathFromUri(context: Context, uri: Uri): String? = withContext(Dispatchers.IO) {
@@ -340,4 +405,9 @@ private fun AttachmentOption(icon: ImageVector, label: String, onClick: () -> Un
                 overflow = TextOverflow.Ellipsis
         )
     }
+}
+
+@Composable
+private fun AttachmentOptionPlaceholder() {
+    Spacer(modifier = Modifier.width(70.dp).padding(horizontal = 8.dp, vertical = 8.dp))
 }

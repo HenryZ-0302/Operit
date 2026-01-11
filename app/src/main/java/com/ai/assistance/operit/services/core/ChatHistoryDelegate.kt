@@ -9,6 +9,7 @@ import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import java.time.LocalDateTime
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,8 @@ class ChatHistoryDelegate(
     private val isInitialized = AtomicBoolean(false)
     private val historyUpdateMutex = Mutex()
     private val allowAddMessage = AtomicBoolean(true) // 控制是否允许添加消息，切换对话时设为false
+
+    private var pendingPersistChatOrderJob: Job? = null
 
     // This is no longer needed here as summary logic is moved.
     // private val apiPreferences = ApiPreferences(context)
@@ -676,8 +679,14 @@ class ChatHistoryDelegate(
                 // Update UI immediately
                 _chatHistories.value = updatedList
 
-                // Persist changes
-                chatHistoryManager.updateChatOrderAndGroup(updatedList)
+                // Persist changes (debounced) to avoid emitting intermediate ordering states.
+                // Drag-and-drop reordering can trigger many moves; persisting each move causes
+                // Room Flow to emit multiple intermediate lists, leading to visible jumping.
+                pendingPersistChatOrderJob?.cancel()
+                pendingPersistChatOrderJob = coroutineScope.launch {
+                    delay(350)
+                    chatHistoryManager.updateChatOrderAndGroup(updatedList)
+                }
 
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to update chat order and group", e)

@@ -15,6 +15,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
@@ -55,10 +57,7 @@ fun AssistantConfigScreen() {
     val wakeGreetingEnabled by wakePrefs.wakeGreetingEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_WAKE_GREETING_ENABLED)
     val wakeGreetingText by wakePrefs.wakeGreetingTextFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_WAKE_GREETING_TEXT)
     val voiceAutoAttachEnabled by wakePrefs.voiceAutoAttachEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_ENABLED)
-    val voiceAutoAttachScreenEnabled by wakePrefs.voiceAutoAttachScreenEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_SCREEN_ENABLED)
-    val voiceAutoAttachNotificationsEnabled by wakePrefs.voiceAutoAttachNotificationsEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_NOTIFICATIONS_ENABLED)
-    val voiceAutoAttachScreenKeyword by wakePrefs.voiceAutoAttachScreenKeywordFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_SCREEN_KEYWORD)
-    val voiceAutoAttachNotificationsKeyword by wakePrefs.voiceAutoAttachNotificationsKeywordFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_NOTIFICATIONS_KEYWORD)
+    val voiceAutoAttachItems by wakePrefs.voiceAutoAttachItemsFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_ITEMS)
     val coroutineScope = rememberCoroutineScope()
 
     val requestMicPermissionLauncher =
@@ -82,8 +81,6 @@ fun AssistantConfigScreen() {
     var wakePhraseInput by remember { mutableStateOf("") }
     var inactivityTimeoutInput by remember { mutableStateOf("") }
     var wakeGreetingTextInput by remember { mutableStateOf("") }
-    var voiceAutoAttachScreenKeywordInput by remember { mutableStateOf("") }
-    var voiceAutoAttachNotificationsKeywordInput by remember { mutableStateOf("") }
 
     var voiceWakeupExpanded by rememberSaveable { mutableStateOf(true) }
 
@@ -102,18 +99,6 @@ fun AssistantConfigScreen() {
     LaunchedEffect(wakeGreetingText) {
         if (wakeGreetingTextInput.isBlank()) {
             wakeGreetingTextInput = wakeGreetingText
-        }
-    }
-
-    LaunchedEffect(voiceAutoAttachScreenKeyword) {
-        if (voiceAutoAttachScreenKeywordInput.isBlank()) {
-            voiceAutoAttachScreenKeywordInput = voiceAutoAttachScreenKeyword
-        }
-    }
-
-    LaunchedEffect(voiceAutoAttachNotificationsKeyword) {
-        if (voiceAutoAttachNotificationsKeywordInput.isBlank()) {
-            voiceAutoAttachNotificationsKeywordInput = voiceAutoAttachNotificationsKeyword
         }
     }
 
@@ -379,69 +364,44 @@ fun AssistantConfigScreen() {
                             }
                         )
 
-                        CompactSwitchRow(
-                            title = stringResource(R.string.voice_keyword_attachments_screen_title),
-                            description = stringResource(R.string.voice_keyword_attachments_screen_desc),
-                            checked = voiceAutoAttachEnabled && voiceAutoAttachScreenEnabled,
-                            enabled = voiceAutoAttachEnabled,
-                            onCheckedChange = { enabled ->
-                                coroutineScope.launch {
-                                    wakePrefs.saveVoiceAutoAttachScreenEnabled(enabled)
-                                }
+                        if (voiceAutoAttachEnabled) {
+                            voiceAutoAttachItems.forEach { item ->
+                                VoiceAutoAttachItemEditor(
+                                    item = item,
+                                    onItemChange = { updated ->
+                                        val newItems = voiceAutoAttachItems.map { if (it.id == updated.id) updated else it }
+                                        coroutineScope.launch {
+                                            wakePrefs.saveVoiceAutoAttachItems(newItems)
+                                        }
+                                    },
+                                    onDelete = {
+                                        val newItems = voiceAutoAttachItems.filterNot { it.id == item.id }
+                                        coroutineScope.launch {
+                                            wakePrefs.saveVoiceAutoAttachItems(newItems)
+                                        }
+                                    }
+                                )
                             }
-                        )
 
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = voiceAutoAttachScreenKeywordInput,
-                            onValueChange = { newValue ->
-                                voiceAutoAttachScreenKeywordInput = newValue
-                                coroutineScope.launch {
-                                    wakePrefs.saveVoiceAutoAttachScreenKeyword(newValue)
+                            FilledTonalButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    val newItem = WakeWordPreferences.VoiceAutoAttachItem(
+                                        id = "item_${System.currentTimeMillis()}",
+                                        type = WakeWordPreferences.VoiceAutoAttachType.SCREEN_OCR,
+                                        enabled = true,
+                                        keywords = ""
+                                    )
+                                    coroutineScope.launch {
+                                        wakePrefs.saveVoiceAutoAttachItems(voiceAutoAttachItems + newItem)
+                                    }
                                 }
-                            },
-                            singleLine = true,
-                            enabled = voiceAutoAttachEnabled && voiceAutoAttachScreenEnabled,
-                            label = { Text(stringResource(R.string.voice_keyword_attachments_screen_keyword_label)) },
-                            supportingText = { Text(stringResource(R.string.voice_keyword_attachments_keyword_supporting)) },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent
-                            )
-                        )
-
-                        CompactSwitchRow(
-                            title = stringResource(R.string.voice_keyword_attachments_notifications_title),
-                            description = stringResource(R.string.voice_keyword_attachments_notifications_desc),
-                            checked = voiceAutoAttachEnabled && voiceAutoAttachNotificationsEnabled,
-                            enabled = voiceAutoAttachEnabled,
-                            onCheckedChange = { enabled ->
-                                coroutineScope.launch {
-                                    wakePrefs.saveVoiceAutoAttachNotificationsEnabled(enabled)
-                                }
+                            ) {
+                                Icon(imageVector = Icons.Filled.Add, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(text = "添加附件项")
                             }
-                        )
-
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = voiceAutoAttachNotificationsKeywordInput,
-                            onValueChange = { newValue ->
-                                voiceAutoAttachNotificationsKeywordInput = newValue
-                                coroutineScope.launch {
-                                    wakePrefs.saveVoiceAutoAttachNotificationsKeyword(newValue)
-                                }
-                            },
-                            singleLine = true,
-                            enabled = voiceAutoAttachEnabled && voiceAutoAttachNotificationsEnabled,
-                            label = { Text(stringResource(R.string.voice_keyword_attachments_notifications_keyword_label)) },
-                            supportingText = { Text(stringResource(R.string.voice_keyword_attachments_keyword_supporting)) },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent
-                            )
-                        )
+                        }
                     }
                 }
 
@@ -503,5 +463,107 @@ private fun CompactSwitchRow(
             }
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VoiceAutoAttachItemEditor(
+    item: WakeWordPreferences.VoiceAutoAttachItem,
+    onItemChange: (WakeWordPreferences.VoiceAutoAttachItem) -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = voiceAutoAttachTypeLabel(item.type),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = item.enabled,
+                        onCheckedChange = { onItemChange(item.copy(enabled = it)) }
+                    )
+                    IconButton(onClick = onDelete) {
+                        Icon(imageVector = Icons.Filled.Delete, contentDescription = null)
+                    }
+                }
+            }
+
+            var typeExpanded by remember(item.id) { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = typeExpanded,
+                onExpandedChange = { typeExpanded = it }
+            ) {
+                OutlinedTextField(
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth(),
+                    value = voiceAutoAttachTypeLabel(item.type),
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text(text = "类型") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent
+                    )
+                )
+
+                ExposedDropdownMenu(
+                    expanded = typeExpanded,
+                    onDismissRequest = { typeExpanded = false }
+                ) {
+                    WakeWordPreferences.VoiceAutoAttachType.entries.forEach { t ->
+                        DropdownMenuItem(
+                            text = { Text(text = voiceAutoAttachTypeLabel(t)) },
+                            onClick = {
+                                typeExpanded = false
+                                onItemChange(item.copy(type = t))
+                            }
+                        )
+                    }
+                }
+            }
+
+            OutlinedTextField(
+                modifier = Modifier.fillMaxWidth(),
+                value = item.keywords,
+                onValueChange = { onItemChange(item.copy(keywords = it)) },
+                singleLine = true,
+                label = { Text(text = "关键词") },
+                supportingText = { Text(text = stringResource(R.string.voice_keyword_attachments_keyword_supporting)) },
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
+                )
+            )
+        }
+    }
+}
+
+private fun voiceAutoAttachTypeLabel(type: WakeWordPreferences.VoiceAutoAttachType): String {
+    return when (type) {
+        WakeWordPreferences.VoiceAutoAttachType.SCREEN_OCR -> "屏幕内容"
+        WakeWordPreferences.VoiceAutoAttachType.NOTIFICATIONS -> "通知"
+        WakeWordPreferences.VoiceAutoAttachType.LOCATION -> "位置"
     }
 }
