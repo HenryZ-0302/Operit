@@ -43,6 +43,14 @@ class SkillMarketViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
+
+    private val _hasMore = MutableStateFlow(true)
+    val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
+
+    private var currentPage: Int = 1
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -150,6 +158,7 @@ class SkillMarketViewModel(
         private const val MARKET_REPO_OWNER = "AAswordman"
         private const val MARKET_REPO_NAME = "OperitSkillMarket"
         private const val SKILL_LABEL = "skill-plugin"
+        private const val MARKET_PAGE_SIZE = 50
     }
 
     fun onSearchQueryChanged(query: String) {
@@ -220,8 +229,11 @@ class SkillMarketViewModel(
     fun loadSkillMarketData() {
         viewModelScope.launch {
             _isLoading.value = true
+            _isLoadingMore.value = false
             _errorMessage.value = null
             _isRateLimitError.value = false
+            _hasMore.value = true
+            currentPage = 1
 
             val isLoggedIn = try {
                 githubAuth.isLoggedIn()
@@ -235,17 +247,20 @@ class SkillMarketViewModel(
                     repo = MARKET_REPO_NAME,
                     state = "open",
                     labels = SKILL_LABEL,
-                    perPage = 50
+                    page = 1,
+                    perPage = MARKET_PAGE_SIZE
                 )
 
                 result.fold(
                     onSuccess = { issues ->
                         _skillIssues.value = issues
+                        _hasMore.value = issues.size >= MARKET_PAGE_SIZE
                     },
                     onFailure = { error ->
                         val msg = error.message ?: "未知错误"
                         _errorMessage.value = "加载Skill市场失败: $msg"
                         _skillIssues.value = emptyList()
+                        _hasMore.value = false
 
                         if (msg.contains("403") || msg.contains("rate") || msg.contains("Rate")) {
                             _isRateLimitError.value = !isLoggedIn
@@ -260,6 +275,63 @@ class SkillMarketViewModel(
                 AppLogger.e(TAG, "Exception while loading skill market data", e)
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    fun loadMoreSkillMarketData() {
+        viewModelScope.launch {
+            if (_isLoading.value || _isLoadingMore.value || !_hasMore.value) return@launch
+
+            _isLoadingMore.value = true
+            _errorMessage.value = null
+            _isRateLimitError.value = false
+
+            val isLoggedIn = try {
+                githubAuth.isLoggedIn()
+            } catch (_: Exception) {
+                false
+            }
+
+            val nextPage = currentPage + 1
+
+            try {
+                val result = githubApiService.getRepositoryIssues(
+                    owner = MARKET_REPO_OWNER,
+                    repo = MARKET_REPO_NAME,
+                    state = "open",
+                    labels = SKILL_LABEL,
+                    page = nextPage,
+                    perPage = MARKET_PAGE_SIZE
+                )
+
+                result.fold(
+                    onSuccess = { issues ->
+                        if (issues.isEmpty()) {
+                            _hasMore.value = false
+                            return@fold
+                        }
+
+                        currentPage = nextPage
+                        _skillIssues.value = (_skillIssues.value + issues).distinctBy { it.id }
+                        _hasMore.value = issues.size >= MARKET_PAGE_SIZE
+                    },
+                    onFailure = { error ->
+                        val msg = error.message ?: "未知错误"
+                        _errorMessage.value = "加载更多失败: $msg"
+
+                        if (msg.contains("403") || msg.contains("rate") || msg.contains("Rate")) {
+                            _isRateLimitError.value = !isLoggedIn
+                        }
+
+                        AppLogger.e(TAG, "Failed to load more skill market data", error)
+                    }
+                )
+            } catch (e: Exception) {
+                _errorMessage.value = "网络错误: ${e.message}"
+                AppLogger.e(TAG, "Exception while loading more skill market data", e)
+            } finally {
+                _isLoadingMore.value = false
             }
         }
     }

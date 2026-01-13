@@ -28,6 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.ContentValues
+import android.content.Context
+import android.media.MediaScannerConnection
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.widget.Toast
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.CharacterCard
@@ -42,13 +48,28 @@ import com.canhub.cropper.CropImageContract
 import com.canhub.cropper.CropImageContractOptions
 import com.canhub.cropper.CropImageOptions
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import android.net.Uri
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.toArgb
 import com.ai.assistance.operit.ui.features.settings.components.CharacterCardDialog
 import com.ai.assistance.operit.ui.common.rememberLocal
+import com.ai.assistance.operit.util.ColorQrCodeUtil
+import com.ai.assistance.operit.util.AppLogger
+import java.io.File
+import java.io.FileOutputStream
+import androidx.core.content.FileProvider
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -96,6 +117,14 @@ fun ModelPromptsSettingsScreen(
     var showImportErrorMessage by remember { mutableStateOf(false) }
     var importErrorMessage by remember { mutableStateOf("") }
     var showChatManagementPrompt by remember { mutableStateOf(false) }
+
+    var showColorQrExportDialog by remember { mutableStateOf(false) }
+    var exportCharacterCardId by remember { mutableStateOf("") }
+    var exportCharacterCardName by remember { mutableStateOf("") }
+    var exportColorCount by remember { mutableStateOf(8) }
+    var exportQrBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var exportErrorMessage by remember { mutableStateOf("") }
+    var isExportGenerating by remember { mutableStateOf(false) }
 
     // Avatar picker and cropper launcher
     val cropAvatarLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
@@ -203,6 +232,133 @@ fun ModelPromptsSettingsScreen(
                 }
             }
         }
+    }
+
+    suspend fun handleColorQrImportFromUri(imageUri: Uri) {
+        try {
+            val bitmap = withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(imageUri).use { inputStream ->
+                    requireNotNull(inputStream) { "无法读取图片" }
+                    BitmapFactory.decodeStream(inputStream) ?: throw Exception("无法解析图片")
+                }
+            }
+
+            AppLogger.d(
+                "ColorQrImport",
+                "Start import uri=$imageUri bitmap=${bitmap.width}x${bitmap.height}"
+            )
+
+            fun formatThrowable(t: Throwable): String {
+                val primary = t.message?.takeIf { it.isNotBlank() }
+                val cause = t.cause?.message?.takeIf { it.isNotBlank() && it != primary }
+                return buildString {
+                    append(t::class.java.simpleName)
+                    if (primary != null) append(": ").append(primary)
+                    if (cause != null) append(" (cause: ").append(cause).append(")")
+                }
+            }
+
+            val jsonContent = withContext(Dispatchers.Default) {
+                var lastError: Throwable? = null
+
+                val cropped = ColorQrCodeUtil.cropToQrRegion(bitmap)
+                val baseCandidates = if (cropped != null) listOf(cropped, bitmap) else listOf(bitmap)
+                AppLogger.d(
+                    "ColorQrImport",
+                    "Candidates=${baseCandidates.size} cropped=${cropped != null}"
+                )
+
+                for ((baseIndex, base) in baseCandidates.withIndex()) {
+                    val maxDim = maxOf(base.width, base.height)
+                    val scales = if (maxDim <= 900) {
+                        floatArrayOf(1.0f, 1.5f, 2.0f, 0.75f, 0.5f)
+                    } else {
+                        floatArrayOf(1.0f, 1.25f, 1.5f, 0.75f, 0.5f, 0.35f)
+                    }
+
+                    AppLogger.d(
+                        "ColorQrImport",
+                        "Base[$baseIndex]=${base.width}x${base.height} scales=${scales.joinToString() }"
+                    )
+
+                    for (s in scales) {
+                        try {
+                            val scaled = if (s == 1.0f) {
+                                base
+                            } else {
+                                val w = (base.width * s).toInt().coerceAtLeast(64)
+                                val h = (base.height * s).toInt().coerceAtLeast(64)
+                                Bitmap.createScaledBitmap(base, w, h, false)
+                            }
+
+                            val roi = ColorQrCodeUtil.cropToQrRegion(scaled) ?: scaled
+                            AppLogger.d(
+                                "ColorQrImport",
+                                "Try base[$baseIndex] scale=$s scaled=${scaled.width}x${scaled.height} roi=${roi.width}x${roi.height}"
+                            )
+                            return@withContext ColorQrCodeUtil.decodeToString(roi)
+                        } catch (t: Throwable) {
+                            lastError = t
+                            AppLogger.w(
+                                "ColorQrImport",
+                                "Fail base[$baseIndex] scale=$s: ${formatThrowable(t)}"
+                            )
+                        }
+                    }
+                }
+                throw (lastError ?: Exception("无法识别彩色多维码"))
+            }
+
+            val result = characterCardManager.createCharacterCardFromTavernJson(jsonContent)
+            result.onSuccess {
+                showImportSuccessMessage = true
+                refreshTrigger++
+            }.onFailure { exception ->
+                importErrorMessage = exception.message ?: context.getString(R.string.unknown_error)
+                showImportErrorMessage = true
+            }
+        } catch (e: Exception) {
+            AppLogger.e("ColorQrImport", "Import failed", e)
+            val msg = e.message ?: e::class.java.simpleName
+            val causeMsg = e.cause?.message
+            importErrorMessage = context.getString(
+                R.string.file_read_error,
+                if (causeMsg.isNullOrBlank() || causeMsg == msg) msg else "$msg (cause: $causeMsg)"
+            )
+            showImportErrorMessage = true
+        }
+    }
+
+    val colorQrImagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { imageUri ->
+            scope.launch {
+                handleColorQrImportFromUri(imageUri)
+            }
+        }
+    }
+
+    var tempColorQrCameraUri by remember { mutableStateOf<Uri?>(null) }
+    val takeColorQrPictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            tempColorQrCameraUri?.let { imageUri ->
+                scope.launch {
+                    handleColorQrImportFromUri(imageUri)
+                }
+            }
+        }
+    }
+
+    fun getTmpCameraUri(context: Context): Uri {
+        val authority = "${context.applicationContext.packageName}.fileprovider"
+        val tmpFile = File.createTempFile("color_qr_", ".jpg", context.cacheDir).apply {
+            createNewFile()
+            deleteOnExit()
+        }
+        return FileProvider.getUriForFile(context, authority, tmpFile)
     }
 
     // 标签相关状态
@@ -453,6 +609,22 @@ fun ModelPromptsSettingsScreen(
                         onNavigateToPersonaGeneration = onNavigateToPersonaGeneration,
                         onImportTavernCard = {
                             filePickerLauncher.launch("*/*")
+                        },
+                        onImportColorQrCode = {
+                            colorQrImagePickerLauncher.launch("image/*")
+                        },
+                        onScanColorQrCode = {
+                            val uri = getTmpCameraUri(context)
+                            tempColorQrCameraUri = uri
+                            takeColorQrPictureLauncher.launch(uri)
+                        },
+                        onExportCharacterCard = { cardId, cardName ->
+                            exportCharacterCardId = cardId
+                            exportCharacterCardName = cardName
+                            exportColorCount = 8
+                            exportQrBitmap = null
+                            exportErrorMessage = ""
+                            showColorQrExportDialog = true
                         }
                     )
                     1 -> TagTab(
@@ -865,6 +1037,142 @@ fun ModelPromptsSettingsScreen(
         )
     }
 
+    if (showColorQrExportDialog) {
+        LaunchedEffect(exportCharacterCardId, exportColorCount) {
+            if (exportCharacterCardId.isBlank()) return@LaunchedEffect
+            isExportGenerating = true
+            exportErrorMessage = ""
+            exportQrBitmap = null
+
+            val jsonResult = characterCardManager.exportCharacterCardToTavernJson(exportCharacterCardId)
+            jsonResult.onSuccess { json ->
+                try {
+                    exportQrBitmap = withContext(Dispatchers.Default) {
+                        ColorQrCodeUtil.generate(
+                            text = json,
+                            colorCount = exportColorCount,
+                            moduleSizePx = 10,
+                            marginModules = 4
+                        )
+                    }
+                } catch (e: Exception) {
+                    exportErrorMessage = e.message ?: context.getString(R.string.unknown_error)
+                }
+            }.onFailure { e ->
+                exportErrorMessage = e.message ?: context.getString(R.string.unknown_error)
+            }
+            isExportGenerating = false
+        }
+
+        AlertDialog(
+            onDismissRequest = {
+                showColorQrExportDialog = false
+                exportCharacterCardId = ""
+                exportCharacterCardName = ""
+                exportQrBitmap = null
+                exportErrorMessage = ""
+                isExportGenerating = false
+            },
+            title = { Text(stringResource(R.string.export)) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = exportCharacterCardName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val options = listOf(2, 4, 8, 16)
+                        options.forEach { count ->
+                            val selected = exportColorCount == count
+                            val onClick = {
+                                exportColorCount = count
+                            }
+                            if (selected) {
+                                Button(
+                                    onClick = onClick,
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text("${count}色", fontSize = 12.sp)
+                                }
+                            } else {
+                                OutlinedButton(
+                                    onClick = onClick,
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text("${count}色", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    when {
+                        isExportGenerating -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Text(stringResource(R.string.processing), fontSize = 12.sp)
+                            }
+                        }
+                        exportErrorMessage.isNotBlank() -> {
+                            Text(
+                                text = exportErrorMessage,
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                        }
+                        exportQrBitmap != null -> {
+                            Image(
+                                bitmap = exportQrBitmap!!.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .size(260.dp)
+                                    .align(Alignment.CenterHorizontally)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val bmp = exportQrBitmap
+                        if (bmp == null) {
+                            Toast.makeText(context, context.getString(R.string.image_load_failed), Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        scope.launch {
+                            val fileName = "character_card_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.png"
+                            val ok = saveBitmapToGallery(context, bmp, fileName)
+                            Toast.makeText(
+                                context,
+                                if (ok) context.getString(R.string.image_saved) else context.getString(R.string.save_failed),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    enabled = exportQrBitmap != null && !isExportGenerating
+                ) {
+                    Text(stringResource(R.string.save_image))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showColorQrExportDialog = false }) {
+                    Text(stringResource(R.string.close))
+                }
+            }
+        )
+    }
+
     // 手动添加标签成功的高亮提示（底部显著提示，1.5s 自动消失）
     if (showTagSavedHighlight) {
         LaunchedEffect(Unit) {
@@ -917,7 +1225,10 @@ fun CharacterCardTab(
     onResetDefaultCharacterCard: () -> Unit,
     onSetActiveCharacterCard: (String) -> Unit,
     onNavigateToPersonaGeneration: () -> Unit,
-    onImportTavernCard: () -> Unit
+    onImportTavernCard: () -> Unit,
+    onImportColorQrCode: () -> Unit,
+    onScanColorQrCode: () -> Unit,
+    onExportCharacterCard: (String, String) -> Unit
 ) {
     val sortOptionNameState = rememberLocal(
         key = "ModelPromptsSettingsScreen.CharacterCardTab.sortOption",
@@ -959,15 +1270,6 @@ fun CharacterCardTab(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
-
-                    Button(
-                        onClick = onAddCharacterCard,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(R.string.create_new), fontSize = 13.sp)
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -978,63 +1280,119 @@ fun CharacterCardTab(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
+                    var importMenuExpanded by remember { mutableStateOf(false) }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        IconButton(
+                            onClick = onAddCharacterCard,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = stringResource(R.string.create_new),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        IconButton(
                             onClick = onNavigateToPersonaGeneration,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.ai_creation), fontSize = 12.sp)
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = stringResource(R.string.ai_creation),
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
 
-                        OutlinedButton(
-                            onClick = onImportTavernCard,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(stringResource(R.string.import_tavern_card), fontSize = 12.sp)
+                        Box {
+                            IconButton(
+                                onClick = { importMenuExpanded = true },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FileDownload,
+                                    contentDescription = stringResource(R.string.import_tavern_card),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = importMenuExpanded,
+                                onDismissRequest = { importMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.import_tavern_card)) },
+                                    onClick = {
+                                        importMenuExpanded = false
+                                        onImportTavernCard()
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.FileDownload, contentDescription = null)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("导入多维码") },
+                                    onClick = {
+                                        importMenuExpanded = false
+                                        onImportColorQrCode()
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Image, contentDescription = null)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("扫描多维码") },
+                                    onClick = {
+                                        importMenuExpanded = false
+                                        onScanColorQrCode()
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.PhotoCamera, contentDescription = null)
+                                    }
+                                )
+                            }
                         }
                     }
 
-                    IconButton(
-                        onClick = { sortMenuExpanded = true }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Sort,
-                            contentDescription = stringResource(R.string.character_card_sort),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    Box {
+                        IconButton(
+                            onClick = { sortMenuExpanded = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sort,
+                                contentDescription = stringResource(R.string.character_card_sort),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
 
-                    DropdownMenu(
-                        expanded = sortMenuExpanded,
-                        onDismissRequest = { sortMenuExpanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.character_card_sort_default)) },
-                            onClick = {
-                                sortOptionNameState.value = CharacterCardSortOption.DEFAULT.name
-                                sortMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.character_card_sort_by_name)) },
-                            onClick = {
-                                sortOptionNameState.value = CharacterCardSortOption.NAME_ASC.name
-                                sortMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.character_card_sort_by_created)) },
-                            onClick = {
-                                sortOptionNameState.value = CharacterCardSortOption.CREATED_DESC.name
-                                sortMenuExpanded = false
-                            }
-                        )
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.character_card_sort_default)) },
+                                onClick = {
+                                    sortOptionNameState.value = CharacterCardSortOption.DEFAULT.name
+                                    sortMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.character_card_sort_by_name)) },
+                                onClick = {
+                                    sortOptionNameState.value = CharacterCardSortOption.NAME_ASC.name
+                                    sortMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.character_card_sort_by_created)) },
+                                onClick = {
+                                    sortOptionNameState.value = CharacterCardSortOption.CREATED_DESC.name
+                                    sortMenuExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -1050,7 +1408,8 @@ fun CharacterCardTab(
                 onDelete = { onDeleteCharacterCard(characterCard) },
                 onDuplicate = { onDuplicateCharacterCard(characterCard) },
                 onReset = onResetDefaultCharacterCard,
-                onSetActive = { onSetActiveCharacterCard(characterCard.id) }
+                onSetActive = { onSetActiveCharacterCard(characterCard.id) },
+                onExport = { onExportCharacterCard(characterCard.id, characterCard.name) }
             )
         }
     }
@@ -1067,7 +1426,8 @@ fun CharacterCardItem(
     onDelete: () -> Unit,
     onDuplicate: () -> Unit,
     onReset: () -> Unit,
-    onSetActive: () -> Unit
+    onSetActive: () -> Unit,
+    onExport: () -> Unit
 ) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -1181,6 +1541,21 @@ fun CharacterCardItem(
                             leadingIcon = {
                                 Icon(
                                     Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.export)) },
+                            onClick = {
+                                onExport()
+                                showMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Share,
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -1538,5 +1913,50 @@ fun TagDialog(
         }
     )
 }
+
+private suspend fun saveBitmapToGallery(context: Context, bitmap: android.graphics.Bitmap, fileName: String): Boolean =
+    withContext(Dispatchers.IO) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                    put(
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_PICTURES}/Operit"
+                    )
+                }
+
+                val uri = context.contentResolver.insert(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    contentValues
+                )
+
+                uri?.let { imageUri ->
+                    context.contentResolver.openOutputStream(imageUri)?.use { outputStream ->
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, outputStream)
+                        return@withContext true
+                    }
+                }
+                return@withContext false
+            } else {
+                val imagesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+                val targetDir = File(imagesDir, "Operit").apply { if (!exists()) mkdirs() }
+                val imageFile = File(targetDir, fileName)
+                FileOutputStream(imageFile).use { outputStream ->
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, outputStream)
+                }
+                MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(imageFile.absolutePath),
+                    arrayOf("image/png"),
+                    null
+                )
+                return@withContext true
+            }
+        } catch (e: Exception) {
+            return@withContext false
+        }
+    }
 
 // 旧配置查看对话框已废弃

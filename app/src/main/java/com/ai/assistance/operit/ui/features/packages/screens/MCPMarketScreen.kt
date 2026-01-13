@@ -1,6 +1,5 @@
 package com.ai.assistance.operit.ui.features.packages.screens
 
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
@@ -10,16 +9,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,18 +28,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.rememberAsyncImagePainter
+
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.api.GitHubIssue
 import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 import com.ai.assistance.operit.data.preferences.GitHubUser
-import com.ai.assistance.operit.ui.components.CustomScaffold
 import com.ai.assistance.operit.ui.features.packages.screens.mcp.viewmodel.MCPMarketViewModel
 import com.ai.assistance.operit.ui.features.packages.utils.MCPPluginParser
 import kotlinx.coroutines.launch
@@ -254,6 +253,26 @@ private fun MCPBrowseTab(
     viewModel: MCPMarketViewModel
 ) {
     val context = LocalContext.current
+    val listState = rememberLazyListState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val hasMore by viewModel.hasMore.collectAsState()
+
+    LaunchedEffect(listState, issues.size, searchQuery, hasMore, isLoadingMore) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .collect { lastVisibleIndex ->
+                if (searchQuery.isNotBlank()) return@collect
+                val headerCount = if (searchQuery.isBlank()) 1 else 0
+                val lastIssueIndex = headerCount + issues.size - 1
+                if (
+                    hasMore &&
+                    !isLoadingMore &&
+                    issues.isNotEmpty() &&
+                    lastVisibleIndex >= (lastIssueIndex - 2)
+                ) {
+                    viewModel.loadMoreMCPMarketData()
+                }
+            }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // 搜索框
@@ -284,6 +303,7 @@ private fun MCPBrowseTab(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
+                    state = listState,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -307,7 +327,7 @@ private fun MCPBrowseTab(
                         }
                     }
 
-                    items(issues) { issue ->
+                    items(issues, key = { it.id }) { issue ->
                         val pluginInfo = remember(issue) {
                             MCPPluginParser.parsePluginInfo(issue)
                         }
@@ -342,6 +362,19 @@ private fun MCPBrowseTab(
                         // 加载reactions数据
                         LaunchedEffect(issue.number) {
                             viewModel.loadIssueReactions(issue.number)
+                        }
+                    }
+
+                    if (isLoadingMore) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            }
                         }
                     }
 

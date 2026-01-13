@@ -190,6 +190,8 @@ dependencies {
     implementation(libs.mlkit.text.korean)
     implementation(libs.mlkit.text.devanagari)
     
+    implementation(libs.zxing.core)
+    
     // diff
     implementation(libs.java.diff.utils)
     

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -62,6 +63,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -286,6 +288,26 @@ private fun SkillBrowseTab(
     onViewDetails: (GitHubIssue) -> Unit
 ) {
     val context = LocalContext.current
+    val listState = rememberLazyListState()
+    val isLoadingMore by viewModel.isLoadingMore.collectAsState()
+    val hasMore by viewModel.hasMore.collectAsState()
+
+    LaunchedEffect(listState, issues.size, searchQuery, hasMore, isLoadingMore) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .collect { lastVisibleIndex ->
+                if (searchQuery.isNotBlank()) return@collect
+                val headerCount = if (searchQuery.isBlank()) 1 else 0
+                val lastIssueIndex = headerCount + issues.size - 1
+                if (
+                    hasMore &&
+                    !isLoadingMore &&
+                    issues.isNotEmpty() &&
+                    lastVisibleIndex >= (lastIssueIndex - 2)
+                ) {
+                    viewModel.loadMoreSkillMarketData()
+                }
+            }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         OutlinedTextField(
@@ -313,6 +335,7 @@ private fun SkillBrowseTab(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
+                    state = listState,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -360,6 +383,19 @@ private fun SkillBrowseTab(
                                 onViewDetails(issue)
                             }
                         )
+                    }
+
+                    if (isLoadingMore) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            }
+                        }
                     }
 
                     if (issues.isEmpty() && !isLoading) {

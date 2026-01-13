@@ -16,6 +16,7 @@ coreKtxVersion = "1.12.0"
 runtimeAndroid = "1.6.2"
 desugar = "2.0.4"
 mlkit-text = "16.0.0"
+zxing = "3.5.3"
 diff-utils = "4.12"
 apksig = "8.1.0"
 apk-parser = "2.6.10"
@@ -68,13 +69,13 @@ swipe = "1.2.0"
 objectbox = "3.8.0"
 mediapipe = "0.10.11"
 work = "2.9.0"
- uiTextAndroid = "1.6.2"
- animationAndroid = "1.6.2"
- uiAndroid = "1.6.2"
- glance = "1.0.0"
- activityKtx = "1.7.1"
+uiTextAndroid = "1.6.2"
+animationAndroid = "1.6.2"
+uiAndroid = "1.6.2"
+glance = "1.0.0"
+activityKtx = "1.7.1"
 
- [libraries]
+[libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
@@ -109,6 +110,9 @@ mlkit-text-chinese = { group = "com.google.mlkit", name = "text-recognition-chin
 mlkit-text-japanese = { group = "com.google.mlkit", name = "text-recognition-japanese", version.ref = "mlkit-text" }
 mlkit-text-korean = { group = "com.google.mlkit", name = "text-recognition-korean", version.ref = "mlkit-text" }
 mlkit-text-devanagari = { group = "com.google.mlkit", name = "text-recognition-devanagari", version.ref = "mlkit-text" }
+
+# ZXing
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 
 # Diff
 java-diff-utils = { group = "io.github.java-diff-utils", name = "java-diff-utils", version.ref = "diff-utils" }

@@ -64,6 +64,14 @@ class MCPMarketViewModel(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _isLoadingMore = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
+
+    private val _hasMore = MutableStateFlow(true)
+    val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
+
+    private var currentPage: Int = 1
+
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
@@ -142,10 +150,10 @@ class MCPMarketViewModel(
 
     // 草稿保存
     private val sharedPrefs: SharedPreferences = context.getSharedPreferences("mcp_publish_draft", Context.MODE_PRIVATE)
-    
+
     // 用户头像URL持久化缓存
     private val avatarCachePrefs: SharedPreferences = context.getSharedPreferences("github_avatar_cache", Context.MODE_PRIVATE)
-    
+
     // 发布草稿数据类
     data class PublishDraft(
         val title: String = "",
@@ -155,7 +163,7 @@ class MCPMarketViewModel(
         val installConfig: String = "",
         val category: String = ""
     )
-    
+
     // 当前草稿
     val publishDraft: PublishDraft
         get() = PublishDraft(
@@ -190,6 +198,7 @@ class MCPMarketViewModel(
         private const val MARKET_REPO_OWNER = "AAswordman"
         private const val MARKET_REPO_NAME = "OperitMCPMarket"
         private const val MCP_PLUGIN_LABEL = "mcp-plugin"
+        private const val MARKET_PAGE_SIZE = 50
     }
 
     /**
@@ -205,9 +214,12 @@ class MCPMarketViewModel(
     fun loadMCPMarketData() {
         viewModelScope.launch {
             _isLoading.value = true
+            _isLoadingMore.value = false
             _errorMessage.value = null
             _isRateLimitError.value = false // 重置状态
             _issueReactions.value = emptyMap() // 刷新时清除旧的Reactions缓存
+            _hasMore.value = true
+            currentPage = 1
 
             try {
                 val result = githubApiService.getRepositoryIssues(
@@ -215,7 +227,8 @@ class MCPMarketViewModel(
                     repo = MARKET_REPO_NAME,
                     state = "open",
                     labels = MCP_PLUGIN_LABEL,
-                    perPage = 50
+                    page = 1,
+                    perPage = MARKET_PAGE_SIZE
                 )
 
                 val isLoggedIn = try {
@@ -227,6 +240,7 @@ class MCPMarketViewModel(
                 result.fold(
                     onSuccess = { issues ->
                         _mcpIssues.value = issues
+                        _hasMore.value = issues.size >= MARKET_PAGE_SIZE
                     },
                     onFailure = { error ->
                         val errorMessage = error.message ?: ""
@@ -236,14 +250,74 @@ class MCPMarketViewModel(
                         } else {
                             _errorMessage.value = "加载MCP市场数据失败: $errorMessage"
                         }
+                        _hasMore.value = false
                         AppLogger.e(TAG, "Failed to load MCP market data", error)
                     }
                 )
             } catch (e: Exception) {
                 _errorMessage.value = "网络错误: ${e.message}"
                 AppLogger.e(TAG, "Network error while loading MCP market data", e)
+                _hasMore.value = false
             } finally {
                 _isLoading.value = false
+            }
+        }
+    }
+
+    fun loadMoreMCPMarketData() {
+        viewModelScope.launch {
+            if (_isLoading.value || _isLoadingMore.value || !_hasMore.value) return@launch
+
+            _isLoadingMore.value = true
+            _errorMessage.value = null
+            _isRateLimitError.value = false
+
+            val isLoggedIn = try {
+                githubAuth.isLoggedIn()
+            } catch (_: Exception) {
+                false
+            }
+
+            val nextPage = currentPage + 1
+
+            try {
+                val result = githubApiService.getRepositoryIssues(
+                    owner = MARKET_REPO_OWNER,
+                    repo = MARKET_REPO_NAME,
+                    state = "open",
+                    labels = MCP_PLUGIN_LABEL,
+                    page = nextPage,
+                    perPage = MARKET_PAGE_SIZE
+                )
+
+                result.fold(
+                    onSuccess = { issues ->
+                        if (issues.isEmpty()) {
+                            _hasMore.value = false
+                            return@fold
+                        }
+
+                        currentPage = nextPage
+                        _mcpIssues.value = (_mcpIssues.value + issues).distinctBy { it.id }
+                        _hasMore.value = issues.size >= MARKET_PAGE_SIZE
+                    },
+                    onFailure = { error ->
+                        val errorMessage = error.message ?: ""
+                        if (errorMessage.contains("HTTP 403") && !isLoggedIn) {
+                            _errorMessage.value = "API请求超限，请登录GitHub后重试"
+                            _isRateLimitError.value = true
+                        } else {
+                            _errorMessage.value = "加载更多失败: $errorMessage"
+                        }
+
+                        AppLogger.e(TAG, "Failed to load more MCP market data", error)
+                    }
+                )
+            } catch (e: Exception) {
+                _errorMessage.value = "网络错误: ${e.message}"
+                AppLogger.e(TAG, "Network error while loading more MCP market data", e)
+            } finally {
+                _isLoadingMore.value = false
             }
         }
     }

@@ -8,16 +8,20 @@ import com.ai.assistance.operit.data.model.CharacterCard
 import com.ai.assistance.operit.data.model.PromptTag
 import com.ai.assistance.operit.data.model.TagType
 import com.ai.assistance.operit.data.model.TavernCharacterCard
+import com.ai.assistance.operit.data.model.TavernCharacterData
+import com.ai.assistance.operit.data.model.TavernExtensions
+import com.ai.assistance.operit.data.model.OperitTavernExtension
+import com.ai.assistance.operit.data.model.OperitCharacterCardPayload
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
+
 import java.util.UUID
 import com.ai.assistance.operit.util.AppLogger
 import android.util.Base64
 import java.io.InputStream
-import java.io.ByteArrayOutputStream
 
 private val Context.characterCardDataStore by preferencesDataStore(
     name = "character_cards"
@@ -426,7 +430,28 @@ class CharacterCardManager private constructor(private val context: Context) {
                 }
             }
 
-            val characterCard = convertTavernCardToCharacterCard(tavernCard)
+            val operitPayload = tavernCard.data.extensions?.operit
+                ?.takeIf { it.schema == "operit_character_card_v1" }
+                ?.character_card
+
+            val characterCard = if (operitPayload != null) {
+                CharacterCard(
+                    id = "",
+                    name = operitPayload.name,
+                    description = operitPayload.description,
+                    characterSetting = operitPayload.characterSetting,
+                    openingStatement = operitPayload.openingStatement,
+                    otherContent = operitPayload.otherContent,
+                    attachedTagIds = operitPayload.attachedTagIds,
+                    advancedCustomPrompt = operitPayload.advancedCustomPrompt,
+                    marks = operitPayload.marks,
+                    isDefault = false,
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+            } else {
+                convertTavernCardToCharacterCard(tavernCard)
+            }
 
             val finalCard = worldBookTagId?.let {
                 characterCard.copy(attachedTagIds = characterCard.attachedTagIds + it)
@@ -450,6 +475,56 @@ class CharacterCardManager private constructor(private val context: Context) {
             createCharacterCardFromTavernJson(jsonString)
         } catch (e: Exception) {
             Result.failure(Exception("PNG解析失败: ${e.message}"))
+        }
+    }
+
+    suspend fun exportCharacterCardToTavernJson(characterCardId: String): Result<String> {
+        return try {
+            val card = getCharacterCard(characterCardId)
+            val tagNames = card.attachedTagIds.mapNotNull { tagId ->
+                runCatching { tagManager.getPromptTagFlow(tagId).first().name }.getOrNull()
+            }
+
+            val operitExt = OperitTavernExtension(
+                character_card = OperitCharacterCardPayload(
+                    name = card.name,
+                    description = card.description,
+                    characterSetting = card.characterSetting,
+                    openingStatement = card.openingStatement,
+                    otherContent = card.otherContent,
+                    attachedTagIds = card.attachedTagIds,
+                    advancedCustomPrompt = card.advancedCustomPrompt,
+                    marks = card.marks
+                )
+            )
+
+            val tavernCard = TavernCharacterCard(
+                spec = "chara_card_v2",
+                spec_version = "2.0",
+                data = TavernCharacterData(
+                    name = card.name,
+                    description = card.description,
+                    personality = "",
+                    first_mes = card.openingStatement,
+                    avatar = "",
+                    mes_example = card.otherContent,
+                    scenario = "",
+                    creator_notes = card.marks,
+                    system_prompt = card.characterSetting,
+                    post_history_instructions = card.advancedCustomPrompt,
+                    alternate_greetings = emptyList(),
+                    tags = tagNames,
+                    creator = "",
+                    character_version = "",
+                    extensions = TavernExtensions(operit = operitExt),
+                    character_book = null
+                )
+            )
+
+            val gson = Gson()
+            Result.success(gson.toJson(tavernCard))
+        } catch (e: Exception) {
+            Result.failure(Exception("导出失败: ${e.message}"))
         }
     }
     

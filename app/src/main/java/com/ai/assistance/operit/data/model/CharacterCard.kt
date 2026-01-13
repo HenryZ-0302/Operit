@@ -53,7 +53,24 @@ data class TavernCharacterData(
 
 data class TavernExtensions(
     val chub: TavernChubExtension? = null,
-    val depth_prompt: TavernDepthPrompt? = null
+    val depth_prompt: TavernDepthPrompt? = null,
+    val operit: OperitTavernExtension? = null
+)
+
+data class OperitTavernExtension(
+    val schema: String = "operit_character_card_v1",
+    val character_card: OperitCharacterCardPayload
+)
+
+data class OperitCharacterCardPayload(
+    val name: String = "",
+    val description: String = "",
+    val characterSetting: String = "",
+    val openingStatement: String = "",
+    val otherContent: String = "",
+    val attachedTagIds: List<String> = emptyList(),
+    val advancedCustomPrompt: String = "",
+    val marks: String = ""
 )
 
 data class TavernChubExtension(
