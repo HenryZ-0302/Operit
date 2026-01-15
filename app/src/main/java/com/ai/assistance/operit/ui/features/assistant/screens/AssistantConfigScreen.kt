@@ -56,6 +56,10 @@ fun AssistantConfigScreen() {
     )
     val wakeGreetingEnabled by wakePrefs.wakeGreetingEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_WAKE_GREETING_ENABLED)
     val wakeGreetingText by wakePrefs.wakeGreetingTextFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_WAKE_GREETING_TEXT)
+    val wakeCreateNewChatOnWakeEnabled by wakePrefs.wakeCreateNewChatOnWakeEnabledFlow.collectAsState(
+        initial = WakeWordPreferences.DEFAULT_WAKE_CREATE_NEW_CHAT_ON_WAKE_ENABLED
+    )
+    val autoNewChatGroup by wakePrefs.autoNewChatGroupFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_AUTO_NEW_CHAT_GROUP)
     val voiceAutoAttachEnabled by wakePrefs.voiceAutoAttachEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_ENABLED)
     val voiceAutoAttachItems by wakePrefs.voiceAutoAttachItemsFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_ITEMS)
     val coroutineScope = rememberCoroutineScope()
@@ -81,6 +85,7 @@ fun AssistantConfigScreen() {
     var wakePhraseInput by remember { mutableStateOf("") }
     var inactivityTimeoutInput by remember { mutableStateOf("") }
     var wakeGreetingTextInput by remember { mutableStateOf("") }
+    var autoNewChatGroupInput by remember { mutableStateOf("") }
 
     var voiceWakeupExpanded by rememberSaveable { mutableStateOf(true) }
 
@@ -99,6 +104,12 @@ fun AssistantConfigScreen() {
     LaunchedEffect(wakeGreetingText) {
         if (wakeGreetingTextInput.isBlank()) {
             wakeGreetingTextInput = wakeGreetingText
+        }
+    }
+
+    LaunchedEffect(autoNewChatGroup) {
+        if (autoNewChatGroupInput.isBlank()) {
+            autoNewChatGroupInput = autoNewChatGroup
         }
     }
 
@@ -338,6 +349,45 @@ fun AssistantConfigScreen() {
                             enabled = wakeGreetingEnabled,
                             label = { Text(stringResource(R.string.voice_wakeup_greeting_text_label)) },
                             supportingText = { Text(stringResource(R.string.voice_wakeup_greeting_text_supporting)) },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent
+                            )
+                        )
+
+                        CompactSwitchRow(
+                            title = stringResource(R.string.voice_wakeup_create_new_chat_title),
+                            description = stringResource(R.string.voice_wakeup_create_new_chat_desc),
+                            checked = wakeCreateNewChatOnWakeEnabled,
+                            onCheckedChange = { enabled ->
+                                coroutineScope.launch {
+                                    wakePrefs.saveWakeCreateNewChatOnWakeEnabled(enabled)
+                                }
+                            }
+                        )
+
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = autoNewChatGroupInput,
+                            onValueChange = { newValue ->
+                                autoNewChatGroupInput = newValue
+                                coroutineScope.launch {
+                                    wakePrefs.saveAutoNewChatGroup(
+                                        newValue.ifBlank { WakeWordPreferences.DEFAULT_AUTO_NEW_CHAT_GROUP }
+                                    )
+                                }
+                            },
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.voice_wakeup_auto_new_chat_group_label)) },
+                            supportingText = {
+                                Text(
+                                    stringResource(
+                                        R.string.voice_wakeup_auto_new_chat_group_supporting,
+                                        WakeWordPreferences.DEFAULT_AUTO_NEW_CHAT_GROUP
+                                    )
+                                )
+                            },
                             shape = RoundedCornerShape(12.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,

@@ -46,6 +46,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -98,6 +99,8 @@ fun SpeechServicesSettingsScreen(
     val ttsServiceType by prefs.ttsServiceTypeFlow.collectAsState(initial = VoiceServiceFactory.VoiceServiceType.SIMPLE_TTS)
     val httpConfig by prefs.ttsHttpConfigFlow.collectAsState(initial = SpeechServicesPreferences.DEFAULT_HTTP_TTS_PRESET)
     val ttsCleanerRegexs by prefs.ttsCleanerRegexsFlow.collectAsState(initial = emptyList())
+    val ttsSpeechRate by prefs.ttsSpeechRateFlow.collectAsState(initial = SpeechServicesPreferences.DEFAULT_TTS_SPEECH_RATE)
+    val ttsPitch by prefs.ttsPitchFlow.collectAsState(initial = SpeechServicesPreferences.DEFAULT_TTS_PITCH)
 
     var ttsServiceTypeInput by remember(ttsServiceType) { mutableStateOf(ttsServiceType) }
     var ttsUrlTemplateInput by remember(httpConfig) { mutableStateOf(httpConfig.urlTemplate) }
@@ -108,6 +111,8 @@ fun SpeechServicesSettingsScreen(
     var ttsContentTypeInput by remember(httpConfig) { mutableStateOf(httpConfig.contentType) }
     var ttsVoiceIdInput by remember(httpConfig) { mutableStateOf(httpConfig.voiceId) }
     var ttsModelNameInput by remember(httpConfig) { mutableStateOf(httpConfig.modelName) }
+    var ttsSpeechRateInput by remember(ttsSpeechRate) { mutableStateOf(ttsSpeechRate) }
+    var ttsPitchInput by remember(ttsPitch) { mutableStateOf(ttsPitch) }
     var ttsJsonError by remember { mutableStateOf<String?>(null) }
     var httpMethodDropdownExpanded by remember { mutableStateOf(false) }
     val ttsCleanerRegexsState = remember { mutableStateListOf<String>() }
@@ -169,7 +174,9 @@ fun SpeechServicesSettingsScreen(
                 prefs.saveTtsSettings(
                     serviceType = ttsServiceTypeInput,
                     httpConfig = httpConfigData,
-                    cleanerRegexs = ttsCleanerRegexsState.toList()
+                    cleanerRegexs = ttsCleanerRegexsState.toList(),
+                    speechRate = ttsSpeechRateInput,
+                    pitch = ttsPitchInput
                 )
                 
                 // 保存 STT 设置
@@ -302,6 +309,38 @@ fun SpeechServicesSettingsScreen(
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = stringResource(R.string.speech_services_tts_speech_rate_value, ttsSpeechRateInput),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Slider(
+                            value = ttsSpeechRateInput,
+                            onValueChange = { ttsSpeechRateInput = it },
+                            valueRange = 0.5f..2.0f,
+                            steps = 5,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = stringResource(R.string.speech_services_tts_pitch_value, ttsPitchInput),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Slider(
+                            value = ttsPitchInput,
+                            onValueChange = { ttsPitchInput = it },
+                            valueRange = 0.5f..2.0f,
+                            steps = 5,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                        )
 
                         Spacer(modifier = Modifier.height(16.dp))
 

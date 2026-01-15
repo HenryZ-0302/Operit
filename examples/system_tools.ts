@@ -2,8 +2,8 @@
 {
     "name": "system_tools",
     "description": {
-        "zh": "提供系统级操作工具，包括设置管理、应用安装卸载与启动、通知获取、位置服务和设备信息查询。",
-        "en": "System-level operations: settings management, app install/uninstall & launch, notification retrieval, location services, and device info queries."
+        "zh": "提供系统级操作工具，包括设置管理、应用安装卸载与启动、通知获取、位置服务、设备信息查询，以及 Intent/广播调用。",
+        "en": "System-level operations: settings management, app install/uninstall & launch, notification retrieval, location services, device info queries, plus Intent/broadcast execution."
     },
     "enabledByDefault": true,
     "tools": [
@@ -62,6 +62,30 @@
             ]
         },
         {
+            "name": "send_broadcast",
+            "description": { "zh": "发送广播（Broadcast Intent）。需要用户授权。", "en": "Send a broadcast (Broadcast Intent). Requires user authorization." },
+            "parameters": [
+                { "name": "action", "description": { "zh": "Intent action，例如 android.intent.action.VIEW", "en": "Intent action, e.g. android.intent.action.VIEW" }, "type": "string", "required": true },
+                { "name": "package_name", "description": { "zh": "可选：限制广播目标包名", "en": "Optional: restrict target package" }, "type": "string", "required": false },
+                { "name": "component", "description": { "zh": "可选：组件名 package/class，优先于package_name", "en": "Optional: component package/class, takes priority over package_name" }, "type": "string", "required": false },
+                { "name": "uri", "description": { "zh": "可选：data uri", "en": "Optional: data uri" }, "type": "string", "required": false },
+                { "name": "extras", "description": { "zh": "可选：extras（对象，可用于传参）", "en": "Optional: extras (object for parameters)" }, "type": "object", "required": false }
+            ]
+        },
+        {
+            "name": "execute_intent",
+            "description": { "zh": "执行 Intent（Activity/Service/Broadcast），支持 extras 传参。需要用户授权。", "en": "Execute an Intent (Activity/Service/Broadcast) with extras parameters. Requires user authorization." },
+            "parameters": [
+                { "name": "type", "description": { "zh": "类型：activity/broadcast/service，默认activity", "en": "Type: activity/broadcast/service (default: activity)" }, "type": "string", "required": false },
+                { "name": "action", "description": { "zh": "Intent action（action 或 component 至少一个必填）", "en": "Intent action (either action or component is required)" }, "type": "string", "required": false },
+                { "name": "package_name", "description": { "zh": "可选：包名", "en": "Optional: package name" }, "type": "string", "required": false },
+                { "name": "component", "description": { "zh": "可选：组件名 package/class", "en": "Optional: component package/class" }, "type": "string", "required": false },
+                { "name": "uri", "description": { "zh": "可选：data uri", "en": "Optional: data uri" }, "type": "string", "required": false },
+                { "name": "flags", "description": { "zh": "可选：flags（整数或JSON数组字符串）", "en": "Optional: flags (integer or JSON array string)" }, "type": "string", "required": false },
+                { "name": "extras", "description": { "zh": "可选：extras（对象，可用于传参）", "en": "Optional: extras (object for parameters)" }, "type": "object", "required": false }
+            ]
+        },
+        {
             "name": "get_notifications",
             "description": { "zh": "获取设备通知内容。", "en": "Retrieve device notifications." },
             "parameters": [
@@ -105,8 +129,8 @@ const SystemTools = (function () {
         return { success: success, message: success ? '成功修改系统设置' : '修改系统设置失败', data: result };
     }
 
-    async function install_app(params: { apk_path: string }): Promise<ToolResponse> {
-        const result = await Tools.System.installApp(params.apk_path);
+    async function install_app(params: { path: string }): Promise<ToolResponse> {
+        const result = await Tools.System.installApp(params.path);
         return { success: result.success, message: result.success ? '应用安装成功' : '应用安装失败', data: result };
     }
 
@@ -128,6 +152,35 @@ const SystemTools = (function () {
     async function stop_app(params: { package_name: string }): Promise<ToolResponse> {
         const result = await Tools.System.stopApp(params.package_name);
         return { success: result.success, message: result.success ? '应用停止成功' : '应用停止失败', data: result };
+    }
+
+    async function send_broadcast(params: { action: string, package_name?: string, component?: string, uri?: string, extras?: any, extra_key?: string, extra_value?: string, extra_key2?: string, extra_value2?: string }): Promise<ToolResponse> {
+        const result = await Tools.System.sendBroadcast({
+            action: params.action,
+            uri: params.uri,
+            package: params.package_name,
+            component: params.component,
+            extras: params.extras,
+            extra_key: params.extra_key,
+            extra_value: params.extra_value,
+            extra_key2: params.extra_key2,
+            extra_value2: params.extra_value2
+        });
+        return { success: true, message: '广播发送成功', data: result };
+    }
+
+    async function execute_intent(params: { type?: 'activity' | 'broadcast' | 'service' | string, action?: string, uri?: string, package_name?: string, component?: string, flags?: number | number[] | string, extras?: any }): Promise<ToolResponse> {
+        const flags = Array.isArray(params.flags) ? JSON.stringify(params.flags) : params.flags;
+        const result = await Tools.System.intent({
+            action: params.action,
+            uri: params.uri,
+            package: params.package_name,
+            component: params.component,
+            flags: flags as any,
+            extras: params.extras,
+            type: (params.type as any) || 'activity'
+        });
+        return { success: true, message: 'Intent 执行成功', data: result };
     }
 
     async function get_notifications(params: { limit?: number, include_ongoing?: boolean }): Promise<ToolResponse> {
@@ -291,11 +344,13 @@ const SystemTools = (function () {
     return {
         get_system_setting: (params: { setting: string, namespace?: string }) => wrapToolExecution(get_system_setting, params),
         modify_system_setting: (params: { setting: string, value: string, namespace?: string }) => wrapToolExecution(modify_system_setting, params),
-        install_app: (params: { apk_path: string }) => wrapToolExecution(install_app, params),
+        install_app: (params: { path: string }) => wrapToolExecution(install_app, params),
         uninstall_app: (params: { package_name: string, keep_data?: boolean }) => wrapToolExecution(uninstall_app, params),
         list_installed_apps: (params: { include_system_apps?: boolean }) => wrapToolExecution(list_installed_apps, params),
         start_app: (params: { package_name: string, activity?: string }) => wrapToolExecution(start_app, params),
         stop_app: (params: { package_name: string }) => wrapToolExecution(stop_app, params),
+        send_broadcast: (params: { action: string, package_name?: string, component?: string, uri?: string, extras?: any }) => wrapToolExecution(send_broadcast, params),
+        execute_intent: (params: { type?: 'activity' | 'broadcast' | 'service' | string, action?: string, uri?: string, package_name?: string, component?: string, flags?: number | number[] | string, extras?: any }) => wrapToolExecution(execute_intent, params),
         get_notifications: (params: { limit?: number, include_ongoing?: boolean }) => wrapToolExecution(get_notifications, params),
         get_device_location: (params: { high_accuracy?: boolean, timeout?: number }) => wrapToolExecution(get_device_location, params),
         get_device_info: (params: {}) => wrapToolExecution(get_device_info, params),
@@ -310,8 +365,9 @@ exports.uninstall_app = SystemTools.uninstall_app;
 exports.list_installed_apps = SystemTools.list_installed_apps;
 exports.start_app = SystemTools.start_app;
 exports.stop_app = SystemTools.stop_app;
+exports.send_broadcast = SystemTools.send_broadcast;
+exports.execute_intent = SystemTools.execute_intent;
 exports.get_notifications = SystemTools.get_notifications;
 exports.get_device_location = SystemTools.get_device_location;
 exports.get_device_info = SystemTools.get_device_info;
 exports.main = SystemTools.main;
-

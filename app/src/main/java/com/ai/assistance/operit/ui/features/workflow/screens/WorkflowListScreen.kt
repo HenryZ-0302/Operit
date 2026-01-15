@@ -207,6 +207,12 @@ fun WorkflowListScreen(
             if (showTemplateDialog) {
                 TemplateTypeDialog(
                     onDismiss = { showTemplateDialog = false },
+                    onSelectIntentChatBroadcastTemplate = {
+                        showTemplateDialog = false
+                        viewModel.createIntentChatBroadcastTemplateWorkflow { workflow ->
+                            onNavigateToDetail(workflow.id)
+                        }
+                    },
                     onSelectChatTemplate = {
                         showTemplateDialog = false
                         viewModel.createChatTemplateWorkflow { workflow ->
@@ -258,6 +264,7 @@ fun WorkflowListScreen(
 @Composable
 private fun TemplateTypeDialog(
     onDismiss: () -> Unit,
+    onSelectIntentChatBroadcastTemplate: () -> Unit,
     onSelectChatTemplate: () -> Unit,
     onSelectConditionTemplate: () -> Unit,
     onSelectLogicAndTemplate: () -> Unit,
@@ -274,6 +281,11 @@ private fun TemplateTypeDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                TemplateTypeItem(
+                    title = "Intent对话回传模板",
+                    subtitle = "Intent触发 -> 悬浮窗对话 -> 关闭 -> 广播回传AI结果",
+                    onClick = onSelectIntentChatBroadcastTemplate
+                )
                 TemplateTypeItem(
                     title = "对话模板",
                     subtitle = "启动悬浮窗 -> 创建对话 -> 发送消息",

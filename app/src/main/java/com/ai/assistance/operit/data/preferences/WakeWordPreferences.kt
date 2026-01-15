@@ -37,6 +37,10 @@ class WakeWordPreferences(private val context: Context) {
         private val KEY_WAKE_GREETING_ENABLED = booleanPreferencesKey("wake_greeting_enabled")
         private val KEY_WAKE_GREETING_TEXT = stringPreferencesKey("wake_greeting_text")
 
+        private val KEY_WAKE_CREATE_NEW_CHAT_ON_WAKE_ENABLED =
+            booleanPreferencesKey("wake_create_new_chat_on_wake_enabled")
+        private val KEY_AUTO_NEW_CHAT_GROUP = stringPreferencesKey("auto_new_chat_group")
+
         private val KEY_VOICE_AUTO_ATTACH_ENABLED = booleanPreferencesKey("voice_auto_attach_enabled")
         private val KEY_VOICE_AUTO_ATTACH_ITEMS_JSON = stringPreferencesKey("voice_auto_attach_items_json")
 
@@ -46,6 +50,9 @@ class WakeWordPreferences(private val context: Context) {
         const val DEFAULT_VOICE_CALL_INACTIVITY_TIMEOUT_SECONDS = 15
         const val DEFAULT_WAKE_GREETING_ENABLED = true
         const val DEFAULT_WAKE_GREETING_TEXT = "我在"
+
+        const val DEFAULT_WAKE_CREATE_NEW_CHAT_ON_WAKE_ENABLED = false
+        const val DEFAULT_AUTO_NEW_CHAT_GROUP = "全局助手"
 
         const val DEFAULT_VOICE_AUTO_ATTACH_ENABLED = true
 
@@ -119,6 +126,17 @@ class WakeWordPreferences(private val context: Context) {
             prefs[KEY_WAKE_GREETING_TEXT] ?: DEFAULT_WAKE_GREETING_TEXT
         }
 
+    val wakeCreateNewChatOnWakeEnabledFlow: Flow<Boolean> =
+        dataStore.data.map { prefs ->
+            prefs[KEY_WAKE_CREATE_NEW_CHAT_ON_WAKE_ENABLED]
+                ?: DEFAULT_WAKE_CREATE_NEW_CHAT_ON_WAKE_ENABLED
+        }
+
+    val autoNewChatGroupFlow: Flow<String> =
+        dataStore.data.map { prefs ->
+            prefs[KEY_AUTO_NEW_CHAT_GROUP] ?: DEFAULT_AUTO_NEW_CHAT_GROUP
+        }
+
     val voiceAutoAttachEnabledFlow: Flow<Boolean> =
         dataStore.data.map { prefs ->
             prefs[KEY_VOICE_AUTO_ATTACH_ENABLED] ?: DEFAULT_VOICE_AUTO_ATTACH_ENABLED
@@ -168,6 +186,18 @@ class WakeWordPreferences(private val context: Context) {
     suspend fun saveWakeGreetingText(text: String) {
         dataStore.edit { prefs ->
             prefs[KEY_WAKE_GREETING_TEXT] = text
+        }
+    }
+
+    suspend fun saveWakeCreateNewChatOnWakeEnabled(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[KEY_WAKE_CREATE_NEW_CHAT_ON_WAKE_ENABLED] = enabled
+        }
+    }
+
+    suspend fun saveAutoNewChatGroup(group: String) {
+        dataStore.edit { prefs ->
+            prefs[KEY_AUTO_NEW_CHAT_GROUP] = group
         }
     }
 

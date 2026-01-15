@@ -131,6 +131,11 @@
     <string name="voice_wakeup_greeting_text_label">Greeting</string>
     <string name="voice_wakeup_greeting_text_supporting">Example: I’m here</string>
 
+    <string name="voice_wakeup_create_new_chat_title">Create new chat on wake-up</string>
+    <string name="voice_wakeup_create_new_chat_desc">Automatically create a new chat after waking up</string>
+    <string name="voice_wakeup_auto_new_chat_group_label">Default group for new chats</string>
+    <string name="voice_wakeup_auto_new_chat_group_supporting">Default: %1$s</string>
+
     <string name="voice_keyword_attachments_title">Voice Keyword Attachments</string>
     <string name="voice_keyword_attachments_enabled_title">Auto attach</string>
     <string name="voice_keyword_attachments_enabled_desc">Automatically capture attachments when keywords are detected</string>
@@ -1871,10 +1876,12 @@
     <string name="speech_services_tts_desc">Configure how text is converted to voice output</string>
     <string name="speech_services_stt_title">Speech-to-Text (STT) Settings</string>
     <string name="speech_services_stt_desc">Configure how speech is converted to text</string>
+    <string name="speech_services_tts_speech_rate_value">Speech rate: %1$.2fx</string>
+    <string name="speech_services_tts_pitch_value">Pitch: %1$.2fx</string>
     <string name="speech_services_service_type">Service Type</string>
     <string name="speech_services_tts_engine">TTS Engine</string>
     <string name="speech_services_stt_engine">STT Engine</string>
-    <string name="speech_services_dropdown_expand">Expand dropdown menu</string>
+    <string name="speech_services_dropdown_expand">Expand dropdown</string>
     
     <!-- TTS Service Types -->
     <string name="speech_services_tts_type_simple">System TTS (Simple)</string>

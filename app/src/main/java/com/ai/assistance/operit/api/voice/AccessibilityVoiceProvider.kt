@@ -4,11 +4,13 @@ import android.content.Context
 import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.util.AppLogger
 import java.util.Locale
 import java.util.UUID
 import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -129,8 +131,8 @@ class SimpleVoiceProvider(private val context: Context) : VoiceService {
     override suspend fun speak(
             text: String,
             interrupt: Boolean,
-            rate: Float,
-            pitch: Float,
+            rate: Float?,
+            pitch: Float?,
             extraParams: Map<String, String>
     ): Boolean =
             withContext(Dispatchers.IO) {
@@ -142,17 +144,21 @@ class SimpleVoiceProvider(private val context: Context) : VoiceService {
                     }
                 }
 
+                val prefs = SpeechServicesPreferences(context.applicationContext)
+                val effectiveRate = rate ?: prefs.ttsSpeechRateFlow.first()
+                val effectivePitch = pitch ?: prefs.ttsPitchFlow.first()
+
                 return@withContext suspendCancellableCoroutine { continuation ->
                     tts?.let { textToSpeech ->
                         // 设置语速和音调
-                        if (currentRate != rate) {
-                            textToSpeech.setSpeechRate(rate)
-                            currentRate = rate
+                        if (currentRate != effectiveRate) {
+                            textToSpeech.setSpeechRate(effectiveRate)
+                            currentRate = effectiveRate
                         }
 
-                        if (currentPitch != pitch) {
-                            textToSpeech.setPitch(pitch)
-                            currentPitch = pitch
+                        if (currentPitch != effectivePitch) {
+                            textToSpeech.setPitch(effectivePitch)
+                            currentPitch = effectivePitch
                         }
 
                         // 生成唯一的话语ID

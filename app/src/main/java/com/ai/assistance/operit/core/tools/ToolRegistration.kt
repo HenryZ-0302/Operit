@@ -394,6 +394,20 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
+    handler.registerTool(
+            name = "send_broadcast",
+            dangerCheck = { true },
+            descriptionGenerator = { tool ->
+                val action = tool.parameters.find { it.name == "action" }?.value
+                val preview = action?.takeIf { it.isNotBlank() } ?: "(no action)"
+                "Send broadcast: $preview"
+            },
+            executor = { tool ->
+                val sendBroadcastTool = ToolGetter.getSendBroadcastToolExecutor(context)
+                runBlocking(Dispatchers.IO) { sendBroadcastTool.invoke(tool) }
+            }
+    )
+
     // 设备信息工具
     handler.registerTool(
             name = "device_info",

@@ -128,6 +128,21 @@ export namespace System {
     }): Promise<IntentResultData>;
 
     /**
+     * Send a broadcast intent (string extras supported via extra_key/extra_value pairs).
+     */
+    function sendBroadcast(options?: {
+        action: string;
+        uri?: string;
+        package?: string;
+        component?: string;
+        extras?: Record<string, any> | string;
+        extra_key?: string;
+        extra_value?: string;
+        extra_key2?: string;
+        extra_value2?: string;
+    }): Promise<IntentResultData>;
+
+    /**
      * Terminal operations.
      */
     namespace terminal {

@@ -3,6 +3,7 @@ package com.ai.assistance.operit.api.voice
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.util.AppLogger
 import java.io.File
 import java.io.FileOutputStream
@@ -11,6 +12,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -117,8 +119,8 @@ class OpenAIVoiceProvider(
     override suspend fun speak(
         text: String,
         interrupt: Boolean,
-        rate: Float,
-        pitch: Float,
+        rate: Float?,
+        pitch: Float?,
         extraParams: Map<String, String>
     ): Boolean = withContext(Dispatchers.IO) {
         playbackMutex.withLock {
@@ -132,11 +134,14 @@ class OpenAIVoiceProvider(
                     stop()
                 }
 
+                val prefs = SpeechServicesPreferences(context.applicationContext)
+                val effectiveRate = rate ?: prefs.ttsSpeechRateFlow.first()
+
                 val requestModel = extraParams["model"]?.takeIf { it.isNotBlank() } ?: model
                 val requestVoice = extraParams["voice"]?.takeIf { it.isNotBlank() } ?: voiceId
                 val responseFormat =
                     extraParams["response_format"]?.takeIf { it.isNotBlank() } ?: "mp3"
-                val speed = (extraParams["speed"]?.toDoubleOrNull() ?: rate.toDouble())
+                val speed = (extraParams["speed"]?.toDoubleOrNull() ?: effectiveRate.toDouble())
                     .coerceIn(0.25, 4.0)
 
                 val payload = OpenAiSpeechRequest(

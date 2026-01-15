@@ -18,6 +18,7 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -151,8 +152,8 @@ class HttpVoiceProvider(
     override suspend fun speak(
         text: String,
         interrupt: Boolean,
-        rate: Float,
-        pitch: Float,
+        rate: Float?,
+        pitch: Float?,
         extraParams: Map<String, String>
     ): Boolean = withContext(Dispatchers.IO) {
         speakMutex.withLock {
@@ -169,14 +170,18 @@ class HttpVoiceProvider(
                 stop()
             }
 
+            val prefs = SpeechServicesPreferences(context.applicationContext)
+            val effectiveRate = rate ?: prefs.ttsSpeechRateFlow.first()
+            val effectivePitch = pitch ?: prefs.ttsPitchFlow.first()
+
             try {
                 // 生成缓存键
-                val cacheKey = generateCacheKey(text, rate, pitch, currentVoiceId, extraParams)
+                val cacheKey = generateCacheKey(text, effectiveRate, effectivePitch, currentVoiceId, extraParams)
                 var audioFile = audioCache[cacheKey]
 
                 // 如果缓存中没有，则请求新的音频
                 if (audioFile == null || !audioFile.exists()) {
-                    audioFile = fetchAudioFromServer(text, rate, pitch, currentVoiceId, extraParams)
+                    audioFile = fetchAudioFromServer(text, effectiveRate, effectivePitch, currentVoiceId, extraParams)
                     if (audioFile != null) {
                         audioCache[cacheKey] = audioFile
                     } else {

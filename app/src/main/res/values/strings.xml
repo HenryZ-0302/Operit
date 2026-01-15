@@ -122,6 +122,11 @@
     <string name="voice_wakeup_greeting_text_label">朗读内容</string>
     <string name="voice_wakeup_greeting_text_supporting">例如：我在</string>
 
+    <string name="voice_wakeup_create_new_chat_title">唤醒时新建对话</string>
+    <string name="voice_wakeup_create_new_chat_desc">唤醒进入语音后自动新建一个对话</string>
+    <string name="voice_wakeup_auto_new_chat_group_label">自动新建对话分组</string>
+    <string name="voice_wakeup_auto_new_chat_group_supporting">默认：%1$s</string>
+
     <string name="voice_keyword_attachments_title">语音关键词附件</string>
     <string name="voice_keyword_attachments_enabled_title">自动附加</string>
     <string name="voice_keyword_attachments_enabled_desc">命中关键词时自动抓取附件</string>
@@ -1910,6 +1915,8 @@
     <string name="speech_services_tts_desc">配置如何将文本转换为语音输出</string>
     <string name="speech_services_stt_title">语音转文本 (STT) 设置</string>
     <string name="speech_services_stt_desc">配置如何将语音转换为文本</string>
+    <string name="speech_services_tts_speech_rate_value">语速: %1$.2fx</string>
+    <string name="speech_services_tts_pitch_value">音调: %1$.2fx</string>
     <string name="speech_services_service_type">服务类型</string>
     <string name="speech_services_tts_engine">TTS 引擎</string>
     <string name="speech_services_stt_engine">STT 引擎</string>

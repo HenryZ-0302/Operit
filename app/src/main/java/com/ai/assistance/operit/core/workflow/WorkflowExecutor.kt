@@ -17,6 +17,7 @@ import com.ai.assistance.operit.data.model.TriggerNode
 import com.ai.assistance.operit.data.model.Workflow
 import com.ai.assistance.operit.data.model.WorkflowNode
 import com.ai.assistance.operit.data.model.WorkflowNodeConnection
+import com.ai.assistance.operit.core.tools.MessageSendResultData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.LinkedList
@@ -82,7 +83,8 @@ class WorkflowExecutor(private val context: Context) {
 
     private fun resolveParameterValue(
         value: ParameterValue,
-        nodeResults: Map<String, NodeExecutionState>
+        nodeResults: Map<String, NodeExecutionState>,
+        triggerExtras: Map<String, String>
     ): String {
         return when (value) {
             is ParameterValue.StaticValue -> value.value
@@ -429,6 +431,7 @@ class WorkflowExecutor(private val context: Context) {
     suspend fun executeWorkflow(
         workflow: Workflow,
         triggerNodeId: String? = null,
+        triggerExtras: Map<String, String> = emptyMap(),
         onNodeStateChange: (nodeId: String, state: NodeExecutionState) -> Unit
     ): WorkflowExecutionResult = withContext(Dispatchers.IO) {
         AppLogger.d(TAG, "开始执行工作流: ${workflow.name} (${workflow.id})")
@@ -499,8 +502,9 @@ class WorkflowExecutor(private val context: Context) {
             // 5. 标记所有触发节点为成功（触发节点本身不需要执行）
             for (triggerNode in triggerNodes) {
                 AppLogger.d(TAG, "标记触发节点: ${triggerNode.name} (${triggerNode.id})")
-                nodeResults[triggerNode.id] = NodeExecutionState.Success("触发节点")
-                onNodeStateChange(triggerNode.id, NodeExecutionState.Success("触发节点"))
+                val triggerPayload = org.json.JSONObject(triggerExtras).toString()
+                nodeResults[triggerNode.id] = NodeExecutionState.Success(triggerPayload)
+                onNodeStateChange(triggerNode.id, NodeExecutionState.Success(triggerPayload))
             }
             
             // 6. 使用拓扑排序执行所有后续节点
@@ -509,6 +513,7 @@ class WorkflowExecutor(private val context: Context) {
                 workflow = workflow,
                 dependencyGraph = dependencyGraph,
                 nodeResults = nodeResults,
+                triggerExtras = triggerExtras,
                 onNodeStateChange = onNodeStateChange
             )
             
@@ -639,6 +644,7 @@ class WorkflowExecutor(private val context: Context) {
         workflow: Workflow,
         dependencyGraph: DependencyGraph,
         nodeResults: MutableMap<String, NodeExecutionState>,
+        triggerExtras: Map<String, String>,
         onNodeStateChange: (nodeId: String, state: NodeExecutionState) -> Unit
     ): Boolean {
         val reachableNodeIds = getReachableNodeIds(startNodeIds, dependencyGraph.adjacencyList)
@@ -779,7 +785,16 @@ class WorkflowExecutor(private val context: Context) {
             AppLogger.d(TAG, "执行节点: ${node.name} (${node.id})")
             
             // 执行节点
-            val executionSuccess = executeNode(node, workflow, incomingConnections, nodeById, nodeResults, onNodeStateChange)
+            val executionSuccess =
+                executeNode(
+                    node,
+                    workflow,
+                    incomingConnections,
+                    nodeById,
+                    nodeResults,
+                    triggerExtras,
+                    onNodeStateChange
+                )
             
             // 如果执行失败，停止整个流程
             if (!executionSuccess) {
@@ -825,10 +840,11 @@ class WorkflowExecutor(private val context: Context) {
     
     private fun resolveParameters(
         node: ExecuteNode,
-        nodeResults: Map<String, NodeExecutionState>
+        nodeResults: Map<String, NodeExecutionState>,
+        triggerExtras: Map<String, String>
     ): List<ToolParameter> {
         return node.actionConfig.map { (key, paramValue) ->
-            val resolvedValue = resolveParameterValue(paramValue, nodeResults)
+            val resolvedValue = resolveParameterValue(paramValue, nodeResults, triggerExtras)
             ToolParameter(name = key, value = resolvedValue)
         }
     }
@@ -843,11 +859,13 @@ class WorkflowExecutor(private val context: Context) {
         incomingConnections: List<WorkflowNodeConnection>,
         nodeById: Map<String, WorkflowNode>,
         nodeResults: MutableMap<String, NodeExecutionState>,
+        triggerExtras: Map<String, String>,
         onNodeStateChange: (nodeId: String, state: NodeExecutionState) -> Unit
     ): Boolean {
         if (node is TriggerNode) {
-            nodeResults[node.id] = NodeExecutionState.Success("触发节点")
-            onNodeStateChange(node.id, NodeExecutionState.Success("触发节点"))
+            val triggerPayload = org.json.JSONObject(triggerExtras).toString()
+            nodeResults[node.id] = NodeExecutionState.Success(triggerPayload)
+            onNodeStateChange(node.id, NodeExecutionState.Success(triggerPayload))
             return true
         }
 
@@ -856,8 +874,8 @@ class WorkflowExecutor(private val context: Context) {
             onNodeStateChange(node.id, NodeExecutionState.Running)
 
             return try {
-                val left = resolveParameterValue(node.left, nodeResults)
-                val right = resolveParameterValue(node.right, nodeResults)
+                val left = resolveParameterValue(node.left, nodeResults, triggerExtras)
+                val right = resolveParameterValue(node.right, nodeResults, triggerExtras)
                 val ok = compareValues(left, right, node.operator)
                 val result = ok.toString()
                 nodeResults[node.id] = NodeExecutionState.Success(result)
@@ -906,7 +924,7 @@ class WorkflowExecutor(private val context: Context) {
             return try {
                 var sourceText = ""
                 if (node.mode != ExtractMode.RANDOM_INT && node.mode != ExtractMode.RANDOM_STRING) {
-                    sourceText = resolveParameterValue(node.source, nodeResults)
+                    sourceText = resolveParameterValue(node.source, nodeResults, triggerExtras)
                     if (sourceText.isBlank() && node.source is ParameterValue.StaticValue) {
                         val fallbackSourceId = incomingConnections.firstOrNull()?.sourceNodeId
                         if (fallbackSourceId != null) {
@@ -924,7 +942,7 @@ class WorkflowExecutor(private val context: Context) {
                     ExtractMode.SUB -> substringByIndex(sourceText, node.startIndex, node.length, node.defaultValue)
                     ExtractMode.CONCAT -> {
                         val otherText = node.others.joinToString(separator = "") { other ->
-                            resolveParameterValue(other, nodeResults)
+                            resolveParameterValue(other, nodeResults, triggerExtras)
                         }
                         sourceText + otherText
                     }
@@ -980,7 +998,7 @@ class WorkflowExecutor(private val context: Context) {
             }
             
             // 解析参数（支持静态值和节点引用）
-            val parameters = resolveParameters(node, nodeResults)
+            val parameters = resolveParameters(node, nodeResults, triggerExtras)
             
             // 构造 AITool
             val tool = AITool(
@@ -994,7 +1012,13 @@ class WorkflowExecutor(private val context: Context) {
             val result = toolHandler.executeTool(tool)
             
             if (result.success) {
-                val resultMessage = result.result.toString()
+                val resultData = result.result
+                val resultMessage =
+                    if (resultData is MessageSendResultData && !resultData.aiResponse.isNullOrBlank()) {
+                        resultData.aiResponse
+                    } else {
+                        resultData.toString()
+                    }
                 AppLogger.d(TAG, "节点执行成功: ${node.name}, 结果: $resultMessage")
                 nodeResults[node.id] = NodeExecutionState.Success(resultMessage)
                 onNodeStateChange(node.id, NodeExecutionState.Success(resultMessage))

@@ -141,6 +141,67 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "send_broadcast",
+                            description = "Send a broadcast intent.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "action",
+                                        type = "string",
+                                        description = "required, broadcast action",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "uri",
+                                        type = "string",
+                                        description = "optional, data URI",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "package",
+                                        type = "string",
+                                        description = "optional, package name",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "component",
+                                        type = "string",
+                                        description = "optional, component in \"package/class\" format",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extras",
+                                        type = "string",
+                                        description = "optional, JSON object string for extras",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extra_key",
+                                        type = "string",
+                                        description = "optional, a single string extra key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extra_value",
+                                        type = "string",
+                                        description = "optional, a single string extra value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extra_key2",
+                                        type = "string",
+                                        description = "optional, second string extra key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extra_value2",
+                                        type = "string",
+                                        description = "optional, second string extra value",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "device_info",
                             description = "Get device information.",
                             parametersStructured = listOf()
@@ -850,7 +911,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "path",
                                         type = "string",
-                                        description = "APK file path (alias: apk_path)",
+                                        description = "APK file path (alias: path)",
                                         required = true
                                     )
                                 )
@@ -1202,6 +1263,67 @@ object SystemToolPromptsInternal {
                                         name = "extras",
                                         type = "string",
                                         description = "可选，extras 的 JSON 对象字符串",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "send_broadcast",
+                            description = "发送广播 Intent。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "action",
+                                        type = "string",
+                                        description = "必填，广播 action",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "uri",
+                                        type = "string",
+                                        description = "可选，data URI",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "package",
+                                        type = "string",
+                                        description = "可选，包名",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "component",
+                                        type = "string",
+                                        description = "可选，\"package/class\" 格式",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extras",
+                                        type = "string",
+                                        description = "可选，extras 的 JSON 对象字符串",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extra_key",
+                                        type = "string",
+                                        description = "可选，单个字符串 extra 的 key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extra_value",
+                                        type = "string",
+                                        description = "可选，单个字符串 extra 的 value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extra_key2",
+                                        type = "string",
+                                        description = "可选，第二个字符串 extra 的 key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "extra_value2",
+                                        type = "string",
+                                        description = "可选，第二个字符串 extra 的 value",
                                         required = false
                                     )
                                 )
@@ -1889,7 +2011,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "path",
                                         type = "string",
-                                        description = "APK 文件路径（别名：apk_path）",
+                                        description = "APK 文件路径（别名：path）",
                                         required = true
                                     )
                                 )

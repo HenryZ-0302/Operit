@@ -6,8 +6,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.width
@@ -24,13 +27,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ai.assistance.operit.R
 
 private const val TAG = "TableBlock"
@@ -67,7 +73,7 @@ fun EnhancedTableBlock(
     
     // 解析表格内容
     val tableData by remember(tableContent) {
-        derivedStateOf {
+        derivedStateOf<TableData> {
             parseTable(tableContent)
         }
     }
@@ -77,8 +83,12 @@ fun EnhancedTableBlock(
         return
     }
     
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val baseTextStyle = MaterialTheme.typography.bodyMedium
+    
     // 计算每列的最大宽度
-    val columnWidths = remember(tableData) {
+    val columnWidths = remember(tableData, density, baseTextStyle) {
         if (tableData.rows.isEmpty()) {
             emptyList()
         } else {
@@ -86,14 +96,39 @@ fun EnhancedTableBlock(
             val columnCount = tableData.rows.maxOf { it.size }
             
             // 初始化列宽数组
-            val widths = MutableList(columnCount) { 0 }
+            val widths = MutableList(columnCount) { 80.dp }
             
             // 计算每列的最大宽度
-            tableData.rows.forEach { row ->
+            tableData.rows.forEachIndexed { rowIndex, row ->
+                val isHeaderRow = rowIndex == 0 && tableData.hasHeader
+                val rowTextStyle: TextStyle = if (isHeaderRow) {
+                    baseTextStyle.copy(fontWeight = FontWeight.Bold)
+                } else {
+                    baseTextStyle
+                }
+
                 row.forEachIndexed { colIndex, cell ->
-                    // 使用更准确的宽度计算 - 考虑字体大小和中文字符
-                    val cellMinWidth = calculateTextWidth(cell)
-                    widths[colIndex] = maxOf(widths[colIndex], cellMinWidth)
+                    val maxLineWidthPx =
+                        cell
+                            .split('\n')
+                            .maxOfOrNull { line ->
+                                textMeasurer
+                                    .measure(
+                                        text = AnnotatedString(line),
+                                        style = rowTextStyle,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                    .size
+                                    .width
+                            }
+                            ?: 0
+
+                    val measuredWidthDp = with(density) { maxLineWidthPx.toDp() }
+                    val cellMinWidth = (measuredWidthDp + 16.dp).coerceAtLeast(80.dp)
+                    if (colIndex < widths.size && cellMinWidth > widths[colIndex]) {
+                        widths[colIndex] = cellMinWidth
+                    }
                 }
             }
             
@@ -140,19 +175,21 @@ fun EnhancedTableBlock(
                                     .then(
                                         if (isHeader) Modifier.background(headerBackground) else Modifier
                                     )
+                                    .height(IntrinsicSize.Min)
                             ) {
                                 row.forEachIndexed { colIndex, cell ->
                                     // 使用预计算的列宽
                                     val columnWidth = if (colIndex < columnWidths.size) {
                                         columnWidths[colIndex]
                                     } else {
-                                        80 // 默认宽度
+                                        80.dp // 默认宽度
                                     }
                                     
                                     // 表格单元格
                                     Box(
                                         modifier = Modifier
-                                            .width(columnWidth.dp)
+                                            .width(columnWidth)
+                                            .fillMaxHeight()
                                             .border(width = 0.5.dp, color = borderColor)
                                             .padding(8.dp),
                                         contentAlignment = Alignment.Center
@@ -176,46 +213,6 @@ fun EnhancedTableBlock(
             }
         }
     }
-}
-
-/**
- * 计算文本显示所需的宽度（单位：dp）
- * 考虑了不同字符的宽度差异
- */
-private fun calculateTextWidth(text: String): Int {
-    // 空字符串返回最小宽度
-    if (text.isEmpty()) return 80
-    
-    var width = 0
-    
-    // 遍历每个字符，根据字符类型估算宽度
-    text.forEach { char ->
-        width += when {
-            // 中文、日文、韩文等宽字符
-            char.isIdeographic() -> 16
-            // 数字、英文字母
-            char.isLetterOrDigit() -> 8
-            // 标点符号等
-            else -> 6
-        }
-    }
-    
-    // 添加一定的边距，确保文本不会太靠近边缘
-    width += 16
-    
-    // 确保最小宽度
-    return width.coerceAtLeast(80)
-}
-
-/**
- * 判断字符是否为表意文字（如中文、日文、韩文等）
- */
-private fun Char.isIdeographic(): Boolean {
-    val code = this.code
-    return (code in 0x4E00..0x9FFF) || // CJK统一表意文字
-           (code in 0x3040..0x309F) || // 平假名
-           (code in 0x30A0..0x30FF) || // 片假名
-           (code in 0xAC00..0xD7A3)    // 韩文音节
 }
 
 /**
@@ -251,7 +248,7 @@ private fun parseTable(content: String): TableData {
         val cells = line.split('|')
             .drop(1) // 删除第一个空元素
             .dropLast(1) // 删除最后一个空元素
-            .map { it.trim() }
+            .map { it.trim().replace(Regex("(?i)<br\\s*/?>"), "\n") }
             .toMutableList()
         
         // 更新最大列数

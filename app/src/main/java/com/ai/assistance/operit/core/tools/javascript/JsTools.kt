@@ -224,6 +224,10 @@ fun getJsToolsDefinition(): String {
                 // 执行Intent
                 intent: (options = {}) => {
                     return toolCall("execute_intent", options);
+                },
+                // 发送广播（避免手动拼接 extras JSON 的场景）
+                sendBroadcast: (options = {}) => {
+                    return toolCall("send_broadcast", options);
                 }
             },
             // Tasker event

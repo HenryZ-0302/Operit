@@ -94,6 +94,7 @@ export interface ToolResultMap {
 
     // Intent operations
     'execute_intent': IntentResultData;
+    'send_broadcast': IntentResultData;
 
     // Terminal operations
     'execute_terminal': TerminalCommandResultData;

@@ -1978,8 +1978,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 val success = voiceService?.speak(
                     text = cleanMessage,
                     interrupt = true, // 中断当前播放
-                    rate = 1.0f,
-                    pitch = 1.0f
+                    rate = null,
+                    pitch = null
                 ) ?: false
 
                 if (!success) {

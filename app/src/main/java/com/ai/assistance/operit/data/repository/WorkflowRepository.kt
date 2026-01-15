@@ -184,7 +184,11 @@ class WorkflowRepository(private val context: Context) {
      * @param id 工作流ID
      * @param triggerNodeId 指定要触发的节点ID，如果为null则触发所有触发节点
      */
-    suspend fun triggerWorkflow(id: String, triggerNodeId: String? = null): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun triggerWorkflow(
+        id: String,
+        triggerNodeId: String? = null,
+        triggerExtras: Map<String, String> = emptyMap()
+    ): Result<String> = withContext(Dispatchers.IO) {
         try {
             val workflowResult = getWorkflowById(id)
             val workflow = workflowResult.getOrNull()
@@ -207,7 +211,7 @@ class WorkflowRepository(private val context: Context) {
             
             // 创建执行器并执行工作流
             val executor = WorkflowExecutor(context)
-            val result = executor.executeWorkflow(workflow, triggerNodeId) { nodeId, state ->
+            val result = executor.executeWorkflow(workflow, triggerNodeId, triggerExtras) { nodeId, state ->
                 // 这里可以通过 Flow 或其他机制传递状态更新到 UI
                 AppLogger.d(TAG, "Node $nodeId state: $state")
             }
@@ -238,6 +242,7 @@ class WorkflowRepository(private val context: Context) {
     suspend fun triggerWorkflowWithCallback(
         id: String,
         triggerNodeId: String? = null,
+        triggerExtras: Map<String, String> = emptyMap(),
         onNodeStateChange: (nodeId: String, state: NodeExecutionState) -> Unit
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
@@ -262,7 +267,7 @@ class WorkflowRepository(private val context: Context) {
             
             // 创建执行器并执行工作流
             val executor = WorkflowExecutor(context)
-            val result = executor.executeWorkflow(workflow, triggerNodeId, onNodeStateChange)
+            val result = executor.executeWorkflow(workflow, triggerNodeId, triggerExtras, onNodeStateChange)
             
             // 更新执行统计
             val executionStatus = if (result.success) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED
@@ -456,6 +461,19 @@ class WorkflowRepository(private val context: Context) {
         AppLogger.d(TAG, "Checking for Intent-triggered workflows for action: ${intent.action}")
         val workflows = getAllWorkflows().getOrNull() ?: return@withContext
 
+        val extras: Map<String, String> = try {
+            val bundle = intent.extras
+            if (bundle == null) {
+                emptyMap()
+            } else {
+                bundle.keySet().associateWith { key ->
+                    bundle.get(key)?.toString() ?: ""
+                }
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
         coroutineScope {
             workflows.filter { it.enabled }.forEach { workflow ->
                 workflow.nodes.forEach { node ->
@@ -466,7 +484,7 @@ class WorkflowRepository(private val context: Context) {
                         if (expectedAction != null && expectedAction.equals(intent.action, ignoreCase = true)) {
                             AppLogger.d(TAG, "Intent trigger matched for workflow '${workflow.name}' on node '${node.name}'. Triggering.")
                             launch {
-                                triggerWorkflow(workflow.id, node.id)
+                                triggerWorkflow(workflow.id, node.id, extras)
                             }
                         }
                     }

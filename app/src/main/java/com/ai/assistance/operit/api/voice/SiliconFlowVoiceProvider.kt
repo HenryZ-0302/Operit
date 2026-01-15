@@ -3,8 +3,10 @@ package com.ai.assistance.operit.api.voice
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.util.AppLogger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -92,8 +94,8 @@ class SiliconFlowVoiceProvider(
     override suspend fun speak(
         text: String,
         interrupt: Boolean,
-        rate: Float,
-        pitch: Float,
+        rate: Float?,
+        pitch: Float?,
         extraParams: Map<String, String>
     ): Boolean = withContext(Dispatchers.IO) {
         if (!isInitialized) {
@@ -107,6 +109,9 @@ class SiliconFlowVoiceProvider(
             }
 
             _isSpeaking.value = true
+
+            val prefs = SpeechServicesPreferences(context.applicationContext)
+            val effectiveRate = rate ?: prefs.ttsSpeechRateFlow.first()
 
             // 从 extraParams 获取自定义的 model 和 voice，如果没有则使用配置或默认值
             val customModel = extraParams["model"]
@@ -163,7 +168,7 @@ class SiliconFlowVoiceProvider(
                 
                 append("\"response_format\":\"$RESPONSE_FORMAT\",")
                 append("\"sample_rate\":$SAMPLE_RATE,")
-                append("\"speed\":$SPEED,")
+                append("\"speed\":${effectiveRate.toDouble()},")
                 append("\"gain\":$GAIN")
                 append("}")
             }

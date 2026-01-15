@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddComment
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -31,20 +32,23 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.data.preferences.WakeWordPreferences
 import com.ai.assistance.operit.ui.floating.FloatContext
 import com.ai.assistance.operit.ui.floating.FloatingMode
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.XmlTextProcessor
@@ -82,6 +86,9 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
     
     val speechServicesPrefs = SpeechServicesPreferences(context)
     val ttsCleanerRegexs by speechServicesPrefs.ttsCleanerRegexsFlow.collectAsState(initial = emptyList())
+    
+    val wakePrefs = remember { WakeWordPreferences(context.applicationContext) }
+    val autoNewChatGroup by wakePrefs.autoNewChatGroupFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_AUTO_NEW_CHAT_GROUP)
     
     val volumeLevel by viewModel.volumeLevelFlow.collectAsState()
     
@@ -197,6 +204,34 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                 )
             )
     ) {
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .zIndex(10f)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = {
+                    val group = autoNewChatGroup.trim().ifBlank {
+                        WakeWordPreferences.DEFAULT_AUTO_NEW_CHAT_GROUP
+                    }
+                    floatContext.chatService?.getChatCore()?.createNewChat(
+                        group = group,
+                        inheritGroupFromCurrent = false
+                    )
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AddComment,
+                    contentDescription = stringResource(R.string.new_chat),
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+
         // 顶部控制区域：返回窗口 / 语音模式 / 缩成语音球 / 关闭
         Row(
             modifier = Modifier

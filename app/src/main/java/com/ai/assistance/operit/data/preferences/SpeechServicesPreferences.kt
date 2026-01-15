@@ -4,11 +4,13 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ai.assistance.operit.api.speech.SpeechServiceFactory
 import com.ai.assistance.operit.api.voice.VoiceServiceFactory
+
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -49,6 +51,8 @@ class SpeechServicesPreferences(private val context: Context) {
         val TTS_SERVICE_TYPE = stringPreferencesKey("tts_service_type")
         val TTS_HTTP_CONFIG = stringPreferencesKey("tts_http_config")
         val TTS_CLEANER_REGEXS = stringSetPreferencesKey("tts_cleaner_regexs")
+        val TTS_SPEECH_RATE = floatPreferencesKey("tts_speech_rate")
+        val TTS_PITCH = floatPreferencesKey("tts_pitch")
 
         // STT Preference Keys
         val STT_SERVICE_TYPE = stringPreferencesKey("stt_service_type")
@@ -57,6 +61,9 @@ class SpeechServicesPreferences(private val context: Context) {
         // Default Values
         val DEFAULT_TTS_SERVICE_TYPE = VoiceServiceFactory.VoiceServiceType.SIMPLE_TTS
         val DEFAULT_STT_SERVICE_TYPE = SpeechServiceFactory.SpeechServiceType.SHERPA_NCNN
+
+        const val DEFAULT_TTS_SPEECH_RATE = 1.0f
+        const val DEFAULT_TTS_PITCH = 1.0f
 
         // HTTP TTS的默认预设
         val DEFAULT_HTTP_TTS_PRESET = TtsHttpConfig(
@@ -112,6 +119,14 @@ class SpeechServicesPreferences(private val context: Context) {
         }
     }
 
+    val ttsSpeechRateFlow: Flow<Float> = dataStore.data.map { prefs ->
+        prefs[TTS_SPEECH_RATE] ?: DEFAULT_TTS_SPEECH_RATE
+    }
+
+    val ttsPitchFlow: Flow<Float> = dataStore.data.map { prefs ->
+        prefs[TTS_PITCH] ?: DEFAULT_TTS_PITCH
+    }
+
     // --- STT Flows ---
     val sttServiceTypeFlow: Flow<SpeechServiceFactory.SpeechServiceType> = dataStore.data.map { prefs ->
         SpeechServiceFactory.SpeechServiceType.valueOf(
@@ -136,7 +151,9 @@ class SpeechServicesPreferences(private val context: Context) {
     suspend fun saveTtsSettings(
         serviceType: VoiceServiceFactory.VoiceServiceType,
         httpConfig: TtsHttpConfig? = null,
-        cleanerRegexs: List<String>? = null
+        cleanerRegexs: List<String>? = null,
+        speechRate: Float? = null,
+        pitch: Float? = null
     ) {
         dataStore.edit { prefs ->
             prefs[TTS_SERVICE_TYPE] = serviceType.name
@@ -144,6 +161,9 @@ class SpeechServicesPreferences(private val context: Context) {
             cleanerRegexs?.let {
                 prefs[TTS_CLEANER_REGEXS] = it.filter { regex -> regex.isNotBlank() }.toSet()
             }
+
+            speechRate?.let { prefs[TTS_SPEECH_RATE] = it }
+            pitch?.let { prefs[TTS_PITCH] = it }
 
             // 根据服务类型保存相应的配置
             when (serviceType) {

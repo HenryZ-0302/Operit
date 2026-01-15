@@ -113,6 +113,15 @@ object ToolGetter {
     }
 
     /**
+     * 获取发送广播工具执行器
+     * @param context 应用上下文
+     * @return 发送广播工具执行器实现（只有标准版本）
+     */
+    fun getSendBroadcastToolExecutor(context: Context): StandardSendBroadcastToolExecutor {
+        return StandardSendBroadcastToolExecutor(context)
+    }
+
+    /**
      * 获取终端命令执行器
      * @param context 应用上下文
      * @return 终端命令执行器实现（只有标准版本）

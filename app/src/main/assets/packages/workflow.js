@@ -360,141 +360,141 @@ Notes:
 }
 */
 var __rest = (this && this.__rest) || function (s, e) {
-  var t = {};
-  for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
-    t[p] = s[p];
-  if (s != null && typeof Object.getOwnPropertySymbols === "function")
-    for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
-      if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
-        t[p[i]] = s[p[i]];
-    }
-  return t;
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
 };
 /// <reference path="./types/index.d.ts" />
 const WorkflowIntegration = (function () {
-  async function usage_advice(_params) {
-    return {
-      success: true,
-      message: "请阅读 workflow 工具 METADATA 中的 usage_advice 说明：包含节点/连线 schema、分支 condition 规则、触发类型与配置示例。建议在脚本里直接使用 Tools.Workflow.getAll/get/create/update/patch/delete/trigger 等封装方法。"
-    };
-  }
-  /**
-   * 获取所有工作流
-   * @returns 工作流列表
-   */
-  async function get_all_workflows() {
-    const data = await Tools.Workflow.getAll();
-    return {
-      success: true,
-      message: "成功获取工作流列表",
-      data
-    };
-  }
-  /**
-   * 创建新工作流
-   * @param params 工作流参数
-   * @returns 创建结果
-   */
-  async function create_workflow(params) {
-    const data = await Tools.Workflow.create(params.name, params.description || "", params.nodes || null, params.connections || null, params.enabled);
-    return {
-      success: true,
-      message: "成功创建工作流",
-      data
-    };
-  }
-  /**
-   * 获取工作流详情
-   * @param params 获取参数
-   * @returns 工作流详情
-   */
-  async function get_workflow(params) {
-    const data = await Tools.Workflow.get(params.workflow_id);
-    return {
-      success: true,
-      message: "成功获取工作流详情",
-      data
-    };
-  }
-  /**
-   * 更新工作流
-   * @param params 更新参数
-   * @returns 更新结果
-   */
-  async function update_workflow(params) {
-    const { workflow_id } = params, updates = __rest(params, ["workflow_id"]);
-    const data = await Tools.Workflow.update(workflow_id, updates);
-    return {
-      success: true,
-      message: "成功更新工作流",
-      data
-    };
-  }
-  /**
-   * 差异更新工作流（增量 patch）
-   * @param params patch 参数
-   * @returns 更新结果
-   */
-  async function patch_workflow(params) {
-    const { workflow_id } = params, patch = __rest(params, ["workflow_id"]);
-    const data = await Tools.Workflow.patch(workflow_id, patch);
-    return {
-      success: true,
-      message: "成功差异更新工作流",
-      data
-    };
-  }
-  /**
-   * 删除工作流
-   * @param params 删除参数
-   * @returns 删除结果
-   */
-  async function delete_workflow(params) {
-    const data = await Tools.Workflow['delete'](params.workflow_id);
-    return {
-      success: true,
-      message: "成功删除工作流",
-      data
-    };
-  }
-  /**
-   * 触发工作流执行
-   * @param params 触发参数
-   * @returns 执行结果
-   */
-  async function trigger_workflow(params) {
-    const data = await Tools.Workflow.trigger(params.workflow_id);
-    return {
-      success: true,
-      message: "成功触发工作流",
-      data
-    };
-  }
-  /**
-   * 包装工具执行，处理错误和结果
-   * @param func 要执行的函数
-   * @param params 函数参数
-   */
-  async function wrapToolExecution(func, params) {
-    try {
-      const result = await func(params);
-      complete(result);
+    async function usage_advice(_params) {
+        return {
+            success: true,
+            message: "请阅读 workflow 工具 METADATA 中的 usage_advice 说明：包含节点/连线 schema、分支 condition 规则、触发类型与配置示例。建议在脚本里直接使用 Tools.Workflow.getAll/get/create/update/patch/delete/trigger 等封装方法。"
+        };
     }
-    catch (error) {
-      console.error(`Tool ${func.name} failed unexpectedly`, error);
-      complete({ success: false, message: String(error && error.message ? error.message : error) });
+    /**
+     * 获取所有工作流
+     * @returns 工作流列表
+     */
+    async function get_all_workflows() {
+        const data = await Tools.Workflow.getAll();
+        return {
+            success: true,
+            message: "成功获取工作流列表",
+            data
+        };
     }
-  }
-  return {
-    usage_advice: (params) => wrapToolExecution(usage_advice, params),
-    get_all_workflows: () => wrapToolExecution(get_all_workflows, {}),
-    create_workflow: (params) => wrapToolExecution(create_workflow, params),
-    get_workflow: (params) => wrapToolExecution(get_workflow, params),
-    update_workflow: (params) => wrapToolExecution(update_workflow, params),
-    patch_workflow: (params) => wrapToolExecution(patch_workflow, params),
-    delete_workflow: (params) => wrapToolExecution(delete_workflow, params),
-    trigger_workflow: (params) => wrapToolExecution(trigger_workflow, params)
-  };
+    /**
+     * 创建新工作流
+     * @param params 工作流参数
+     * @returns 创建结果
+     */
+    async function create_workflow(params) {
+        const data = await Tools.Workflow.create(params.name, params.description || "", params.nodes || null, params.connections || null, params.enabled);
+        return {
+            success: true,
+            message: "成功创建工作流",
+            data
+        };
+    }
+    /**
+     * 获取工作流详情
+     * @param params 获取参数
+     * @returns 工作流详情
+     */
+    async function get_workflow(params) {
+        const data = await Tools.Workflow.get(params.workflow_id);
+        return {
+            success: true,
+            message: "成功获取工作流详情",
+            data
+        };
+    }
+    /**
+     * 更新工作流
+     * @param params 更新参数
+     * @returns 更新结果
+     */
+    async function update_workflow(params) {
+        const { workflow_id } = params, updates = __rest(params, ["workflow_id"]);
+        const data = await Tools.Workflow.update(workflow_id, updates);
+        return {
+            success: true,
+            message: "成功更新工作流",
+            data
+        };
+    }
+    /**
+     * 差异更新工作流（增量 patch）
+     * @param params patch 参数
+     * @returns 更新结果
+     */
+    async function patch_workflow(params) {
+        const { workflow_id } = params, patch = __rest(params, ["workflow_id"]);
+        const data = await Tools.Workflow.patch(workflow_id, patch);
+        return {
+            success: true,
+            message: "成功差异更新工作流",
+            data
+        };
+    }
+    /**
+     * 删除工作流
+     * @param params 删除参数
+     * @returns 删除结果
+     */
+    async function delete_workflow(params) {
+        const data = await Tools.Workflow['delete'](params.workflow_id);
+        return {
+            success: true,
+            message: "成功删除工作流",
+            data
+        };
+    }
+    /**
+     * 触发工作流执行
+     * @param params 触发参数
+     * @returns 执行结果
+     */
+    async function trigger_workflow(params) {
+        const data = await Tools.Workflow.trigger(params.workflow_id);
+        return {
+            success: true,
+            message: "成功触发工作流",
+            data
+        };
+    }
+    /**
+     * 包装工具执行，处理错误和结果
+     * @param func 要执行的函数
+     * @param params 函数参数
+     */
+    async function wrapToolExecution(func, params) {
+        try {
+            const result = await func(params);
+            complete(result);
+        }
+        catch (error) {
+            console.error(`Tool ${func.name} failed unexpectedly`, error);
+            complete({ success: false, message: String(error && error.message ? error.message : error) });
+        }
+    }
+    return {
+        usage_advice: (params) => wrapToolExecution(usage_advice, params),
+        get_all_workflows: () => wrapToolExecution(get_all_workflows, {}),
+        create_workflow: (params) => wrapToolExecution(create_workflow, params),
+        get_workflow: (params) => wrapToolExecution(get_workflow, params),
+        update_workflow: (params) => wrapToolExecution(update_workflow, params),
+        patch_workflow: (params) => wrapToolExecution(patch_workflow, params),
+        delete_workflow: (params) => wrapToolExecution(delete_workflow, params),
+        trigger_workflow: (params) => wrapToolExecution(trigger_workflow, params)
+    };
 })();
 exports.usage_advice = WorkflowIntegration.usage_advice;
 exports.get_all_workflows = WorkflowIntegration.get_all_workflows;

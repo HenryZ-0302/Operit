@@ -190,11 +190,31 @@ Condition 节点：
 Logic 节点：
 - operator: AND/OR
 
-Extract 节点：
-- source: ParameterValue
-- mode: REGEX/JSON
-- expression: REGEX 表达式 或 JSONPath
-- group/defaultValue 可选
+Extract（运算）节点：
+- 说明：node.type 仍然是 "extract"（兼容旧数据），但语义更接近“运算器/计算节点”。
+- source: ParameterValue（部分模式不需要，例如 RANDOM_INT）
+- mode:
+  - REGEX：正则提取
+    - expression: 正则表达式
+    - group/defaultValue 可选
+  - JSON：JSON 路径提取
+    - expression: JSON 路径（简化实现）
+    - defaultValue 可选
+  - SUB：字符串截取
+    - startIndex: 起始下标
+    - length: 长度（-1 表示到结尾）
+    - defaultValue 可选
+  - CONCAT：字符串拼接
+    - others: ParameterValue[]（被拼接项列表）
+  - RANDOM_INT：随机整数
+    - randomMin/randomMax
+    - useFixed: 是否使用固定值（可选）
+    - fixedValue: 固定整数（可选，仅 useFixed=true 时生效；输出仍为数字字符串）
+  - RANDOM_STRING：随机字符串
+    - randomStringLength: 长度
+    - randomStringCharset: 字符集（可选，默认字母数字）
+    - useFixed: 是否使用固定值（可选）
+    - fixedValue: 固定字符串（可选，仅 useFixed=true 时生效）
 '''
         en: '''
 Create a workflow.
@@ -217,11 +237,31 @@ Condition node:
 Logic node:
 - operator: AND/OR
 
-Extract node:
-- source: ParameterValue
-- mode: REGEX/JSON
-- expression: regex expression or JSONPath
-- group/defaultValue are optional
+Extract (operator) node:
+- Note: node.type is still "extract" for backward compatibility, but it behaves like an "operator" node.
+- source: ParameterValue (not required for some modes like RANDOM_INT)
+- mode:
+  - REGEX: regex extraction
+    - expression: regex pattern
+    - group/defaultValue are optional
+  - JSON: JSON path extraction
+    - expression: JSON path (simplified)
+    - defaultValue optional
+  - SUB: substring
+    - startIndex
+    - length (-1 means to end)
+    - defaultValue optional
+  - CONCAT: string concatenation
+    - others: ParameterValue[]
+  - RANDOM_INT: random integer
+    - randomMin/randomMax
+    - useFixed: whether to use a fixed value (optional)
+    - fixedValue: fixed integer (optional, only effective when useFixed=true; output is still a numeric string)
+  - RANDOM_STRING: random string
+    - randomStringLength
+    - randomStringCharset (optional, default: alphanumeric)
+    - useFixed: whether to use a fixed value (optional)
+    - fixedValue: fixed string (optional, only effective when useFixed=true)
 '''
       }
       parameters: [
