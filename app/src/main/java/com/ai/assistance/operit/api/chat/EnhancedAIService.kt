@@ -436,6 +436,7 @@ class EnhancedAIService private constructor(private val context: Context) {
 
         return stream {
             val context = MessageExecutionContext(conversationHistory = chatHistory.toMutableList())
+            var hadFatalError = false
             try {
                 // 确保所有操作都在IO线程上执行
                 withContext(Dispatchers.IO) {
@@ -591,17 +592,12 @@ class EnhancedAIService private constructor(private val context: Context) {
                 if (e.message?.contains("Socket closed", ignoreCase = true) == true) {
                     AppLogger.d(TAG, "Stream was cancelled by the user (Socket closed).")
                 } else {
+                    hadFatalError = true
                     // Handle any exceptions
                     AppLogger.e(TAG, "发送消息时发生错误: ${e.message}", e)
                     withContext(Dispatchers.Main) {
                         _inputProcessingState.value =
                                 InputProcessingState.Error(message = "错误: ${e.message}")
-                    }
-                    // 将致命错误也通过回调传递给调用方，以便UI（如桌宠）可以提示用户
-                    try {
-                        onNonFatalError(e.message ?: "发生未知错误")
-                    } catch (_: Exception) {
-                        // 忽略回调中的任何异常，避免影响后续清理流程
                     }
                 }
 
@@ -611,8 +607,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                 }
             } finally {
                 // 确保流处理完成后调用
-                val collector = this
-                withContext(Dispatchers.IO) { processStreamCompletion(context, functionType, collector, enableThinking, enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask, characterName, avatarUri, stream) }
+                if (!hadFatalError) {
+                    val collector = this
+                    withContext(Dispatchers.IO) { processStreamCompletion(context, functionType, collector, enableThinking, enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask, characterName, avatarUri, stream) }
+                }
             }
         }
     }

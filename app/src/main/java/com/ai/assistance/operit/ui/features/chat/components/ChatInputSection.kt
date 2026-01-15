@@ -244,7 +244,13 @@ fun ChatInputSection(
             }
 
             // Input processing indicator
-            SimpleAnimatedVisibility(visible = showInputProcessingStatus && inputState !is InputProcessingState.Idle && inputState !is InputProcessingState.Completed) {
+            SimpleAnimatedVisibility(
+                visible =
+                    showInputProcessingStatus &&
+                        inputState !is InputProcessingState.Idle &&
+                        inputState !is InputProcessingState.Completed &&
+                        inputState !is InputProcessingState.Error
+            ) {
                 val (progressColor, baseMessage) = when (inputState) {
                     is InputProcessingState.Connecting -> MaterialTheme.colorScheme.tertiary to inputState.message
                     is InputProcessingState.ExecutingTool -> MaterialTheme.colorScheme.secondary to context.getString(R.string.executing_tool, inputState.toolName)

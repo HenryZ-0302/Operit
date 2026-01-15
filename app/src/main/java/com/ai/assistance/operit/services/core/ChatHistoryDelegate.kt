@@ -412,6 +412,22 @@ class ChatHistoryDelegate(
         }
     }
 
+    fun deleteMessageByTimestamp(chatId: String, timestamp: Long) {
+        coroutineScope.launch {
+            historyUpdateMutex.withLock {
+                chatHistoryManager.deleteMessage(chatId, timestamp)
+
+                if (_currentChatId.value == chatId) {
+                    val currentMessages = _chatHistory.value
+                    val newMessages = currentMessages.filterNot { it.timestamp == timestamp }
+                    if (newMessages.size != currentMessages.size) {
+                        _chatHistory.value = newMessages
+                    }
+                }
+            }
+        }
+    }
+
     /** 从指定索引删除后续所有消息 */
     suspend fun deleteMessagesFrom(index: Int) {
         historyUpdateMutex.withLock {

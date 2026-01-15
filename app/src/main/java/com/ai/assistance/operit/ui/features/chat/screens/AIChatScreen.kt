@@ -330,7 +330,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
     // 用新的错误弹窗替换原有的错误显示逻辑
     errorMessage?.let { message ->
-        ErrorDialog(errorMessage = message, onDismiss = { actualViewModel.clearError() })
+        ErrorDialog(errorMessage = message, onDismiss = { actualViewModel.dismissErrorDialog() })
     }
 
     // 处理toast事件 (保留)
@@ -338,7 +338,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
     toastEvent?.let { message ->
         LaunchedEffect(message) {
-            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT)
+            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG)
                     .show()
             actualViewModel.clearToastEvent()
         }

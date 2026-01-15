@@ -61,6 +61,21 @@ class MessageCoordinationDelegate(
     // 保存当前的 promptFunctionType，用于自动继续时保持提示词一致性
     private var currentPromptFunctionType: PromptFunctionType = PromptFunctionType.CHAT
 
+    private var nonFatalErrorCollectorJob: Job? = null
+
+    init {
+        ensureNonFatalErrorCollectorStarted()
+    }
+
+    private fun ensureNonFatalErrorCollectorStarted() {
+        if (nonFatalErrorCollectorJob?.isActive == true) return
+        nonFatalErrorCollectorJob = coroutineScope.launch {
+            messageProcessingDelegate.nonFatalErrorEvent.collect { errorMessage ->
+                uiStateDelegate.showToast(errorMessage)
+            }
+        }
+    }
+
     /**
      * 发送用户消息
      * 检查是否有当前对话，如果没有则自动创建新对话
@@ -185,13 +200,6 @@ class MessageCoordinationDelegate(
             isAutoContinuation = isAutoContinuation,
             enableSummary = apiConfigDelegate.enableSummary.value
         )
-
-        // 在sendMessageInternal中，添加对nonFatalErrorEvent的收集
-        coroutineScope.launch {
-            messageProcessingDelegate.nonFatalErrorEvent.collect { errorMessage ->
-                uiStateDelegate.showToast(errorMessage)
-            }
-        }
 
         // 只有在非续写（即用户主动发送）时才清空附件和UI状态
         if (!isContinuation) {

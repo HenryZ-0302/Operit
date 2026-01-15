@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
 import com.ai.assistance.operit.data.model.PromptTag
 import com.ai.assistance.operit.data.model.TagType
+
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
@@ -30,7 +31,10 @@ class PromptTagManager private constructor(private val context: Context) {
         const val SYSTEM_VOICE_TAG_ID = "system_voice_tag"
         const val SYSTEM_DESKTOP_PET_TAG_ID = "system_desktop_pet_tag"
         
+        private const val SYSTEM_CHAT_TAG_PROMPT_V1 = "使用问题库根据用户的风格、偏好和过去的信息个性化响应。"
         private const val SYSTEM_VOICE_TAG_LEGACY_PROMPT_V1 = "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。你的回答就是纯文本的、可以直接朗读的对话。总是直接回答问题，不要有多余的客套话和引导语。"
+        private const val SYSTEM_VOICE_TAG_PROMPT_V2 = "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。你的回答就是纯文本的、可以直接朗读的对话。总是直接回答问题，不要有多余的客套话和引导语。用户输入可能来自语音识别，可能包含错别字、同音字、漏词、断句。你的回答应该简单，不能盯着字眼去执着搜索用户提到的东西，应该用你的知识储备快速回答问题/完成任务。"
+        private const val SYSTEM_DESKTOP_PET_TAG_PROMPT_V1 = "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。使用可爱、亲切、活泼的语气，经常使用表情符号增加互动感。表现得像一个真正的朋友，而不仅仅是工具。可以适当撒娇、卖萌，让用户感受到温暖和陪伴。"
         
         @Volatile
         private var INSTANCE: PromptTagManager? = null
@@ -230,162 +234,111 @@ class PromptTagManager private constructor(private val context: Context) {
         tagType: TagType = TagType.CUSTOM,
         isSystemTag: Boolean = false
     ): String {
-        // 首先查找是否存在相同内容的标签
         val existingTag = findTagWithSameContent(promptContent)
-        
         return if (existingTag != null) {
-            // 如果找到相同内容的标签，返回现有标签的ID
             existingTag.id
         } else {
-            // 如果没有找到，创建新标签
             createPromptTag(name, description, promptContent, tagType, isSystemTag)
         }
     }
-    
-    private fun updateSystemTagIfNeeded(
-        preferences: MutablePreferences,
-        currentList: MutableSet<String>,
-        id: String,
-        details: Triple<String, String, String>,
-        latestVersion: Int
-    ): Boolean {
-        val defaultVersionKey = intPreferencesKey("prompt_tag_${id}_default_version")
 
-        if (!currentList.contains(id)) {
-            currentList.add(id)
-            setupSystemTag(preferences, id, details.first, details.second, details.third)
-            preferences[defaultVersionKey] = latestVersion
-            return true
-        }
-
-        val promptContentKey = stringPreferencesKey("prompt_tag_${id}_prompt_content")
-        val currentPromptContent = preferences[promptContentKey] ?: ""
-        val storedDefaultVersion = preferences[defaultVersionKey]
-
-        val lastAppliedDefaultContent = when (id) {
-            SYSTEM_VOICE_TAG_ID ->
-                when (storedDefaultVersion) {
-                    1 -> SYSTEM_VOICE_TAG_LEGACY_PROMPT_V1
-                    2 -> details.third
-                    else -> null
-                }
-            else -> details.third
-        }
-
-        val isUsingKnownDefault = if (storedDefaultVersion != null) {
-            lastAppliedDefaultContent != null && currentPromptContent == lastAppliedDefaultContent
-        } else {
-            when (id) {
-                SYSTEM_VOICE_TAG_ID ->
-                    currentPromptContent == SYSTEM_VOICE_TAG_LEGACY_PROMPT_V1 ||
-                        currentPromptContent == details.third
-                else -> currentPromptContent == details.third
-            }
-        }
-
-        if (!isUsingKnownDefault) return false
-        if (storedDefaultVersion != null && storedDefaultVersion == latestVersion) return false
-
-        val nameKey = stringPreferencesKey("prompt_tag_${id}_name")
-        val descriptionKey = stringPreferencesKey("prompt_tag_${id}_description")
-        val tagTypeKey = stringPreferencesKey("prompt_tag_${id}_tag_type")
-        val isSystemTagKey = booleanPreferencesKey("prompt_tag_${id}_is_system_tag")
-        val createdAtKey = longPreferencesKey("prompt_tag_${id}_created_at")
-        val updatedAtKey = longPreferencesKey("prompt_tag_${id}_updated_at")
-
-        val tagType = when (id) {
-            SYSTEM_CHAT_TAG_ID -> TagType.SYSTEM_CHAT
-            SYSTEM_VOICE_TAG_ID -> TagType.SYSTEM_VOICE
-            SYSTEM_DESKTOP_PET_TAG_ID -> TagType.SYSTEM_DESKTOP_PET
-            else -> TagType.CUSTOM
-        }
-
-        preferences[nameKey] = details.first
-        preferences[descriptionKey] = details.second
-        preferences[promptContentKey] = details.third
-        preferences[tagTypeKey] = tagType.name
-        preferences[isSystemTagKey] = true
-        if (preferences[createdAtKey] == null) {
-            preferences[createdAtKey] = System.currentTimeMillis()
-        }
-        preferences[defaultVersionKey] = latestVersion
-        preferences[updatedAtKey] = System.currentTimeMillis()
-        return false
-    }
-    
     // 初始化系统标签
     suspend fun initializeSystemTags() {
+        val promptVersionManager = PromptVersionManager<SystemTagSpec>()
+        
+        promptVersionManager.setVersions(mapOf(
+            SYSTEM_CHAT_TAG_ID to SystemTagSpec(
+                name = "通用聊天",
+                description = "适用于聊天功能的通用提示词",
+                key = "prompt_tag_$SYSTEM_CHAT_TAG_ID",
+                defaultsByVersion = PromptVersionManager.defaults(SYSTEM_CHAT_TAG_PROMPT_V1)
+            ),
+            SYSTEM_VOICE_TAG_ID to SystemTagSpec(
+                name = "通用语音",
+                description = "适用于语音功能的通用提示词",
+                key = "prompt_tag_$SYSTEM_VOICE_TAG_ID",
+                defaultsByVersion = PromptVersionManager.defaults(
+                    SYSTEM_VOICE_TAG_LEGACY_PROMPT_V1,
+                    SYSTEM_VOICE_TAG_PROMPT_V2
+                )
+            ),
+            SYSTEM_DESKTOP_PET_TAG_ID to SystemTagSpec(
+                name = "通用桌宠",
+                description = "适用于桌宠功能的通用提示词",
+                key = "prompt_tag_$SYSTEM_DESKTOP_PET_TAG_ID",
+                defaultsByVersion = PromptVersionManager.defaults(SYSTEM_DESKTOP_PET_TAG_PROMPT_V1)
+            )
+        ))
+
         dataStore.edit { preferences ->
             val tagListKey = PROMPT_TAG_LIST
             val currentList = preferences[tagListKey]?.toMutableSet() ?: mutableSetOf()
             var listModified = false
-            
-            // 检查并创建系统标签
-            val systemTags = mapOf(
-                SYSTEM_CHAT_TAG_ID to Triple(
-                    "通用聊天",
-                    "适用于聊天功能的通用提示词",
-                    "使用问题库根据用户的风格、偏好和过去的信息个性化响应。"
-                ),
-                SYSTEM_VOICE_TAG_ID to Triple(
-                    "通用语音",
-                    "适用于语音功能的通用提示词",
-                    "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。你的回答就是纯文本的、可以直接朗读的对话。总是直接回答问题，不要有多余的客套话和引导语。用户输入可能来自语音识别，可能包含错别字、同音字、漏词、断句。你的回答应该简单，不能盯着字眼去执着搜索用户提到的东西，应该用你的知识储备快速回答问题/完成任务。"
-                ),
-                SYSTEM_DESKTOP_PET_TAG_ID to Triple(
-                    "通用桌宠",
-                    "适用于桌宠功能的通用提示词",
-                    "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。使用可爱、亲切、活泼的语气，经常使用表情符号增加互动感。表现得像一个真正的朋友，而不仅仅是工具。可以适当撒娇、卖萌，让用户感受到温暖和陪伴。"
-                )
-            )
-            
-            val systemTagVersions = mapOf(
-                SYSTEM_CHAT_TAG_ID to 1,
-                SYSTEM_VOICE_TAG_ID to 2,
-                SYSTEM_DESKTOP_PET_TAG_ID to 1
-            )
-            
-            systemTags.forEach { (id, details) ->
-                val latestVersion = systemTagVersions[id] ?: 1
-                if (updateSystemTagIfNeeded(preferences, currentList, id, details, latestVersion)) {
-                    listModified = true
+
+            if (promptVersionManager.isNeededUpdate(preferences)) {
+                promptVersionManager.autoUpdate(preferences) { prefs, id, spec ->
+                    updateSystemTagMetadata(prefs, id, spec)
+                    
+                    // 确保 ID 在列表中
+                    if (currentList.add(id)) {
+                        listModified = true
+                    }
                 }
+            } else {
+                // 如果不需要内容更新，但也需要检查是否存在（防止误删）
+                // 这是一个额外的保护措施，确保所有定义的系统标签都在列表中
+                // 但为了保持简洁和高性能，我们仅在 isNeededUpdate 为 true 时（通常是第一次运行或版本更新）做完全检查？
+                // 或者是遍历所有 IDs 检查是否在 list 中？
+                // 暂时仅在 update 时处理 list。
+                
+                // 补充：如果用户清除了数据但保留了文件？
+                // 通常 isNeededUpdate 会处理这种情况（因为 Key 不存在时 shouldUpdate 返回 true）。
             }
-            
+
             if (listModified) {
                 preferences[tagListKey] = currentList
             }
         }
     }
-    
-    private fun setupSystemTag(
+
+    private data class SystemTagSpec(
+        val name: String,
+        val description: String,
+        override val key: String,
+        override val defaultsByVersion: Map<Int, String>
+    ) : PromptVersionManager.VersionSpec
+
+    /**
+     * 更新系统标签的元数据（名称、描述、类型等），不包含 Prompt 内容
+     */
+    private fun updateSystemTagMetadata(
         preferences: MutablePreferences,
         id: String,
-        name: String,
-        description: String,
-        promptContent: String
+        spec: SystemTagSpec
     ) {
         val nameKey = stringPreferencesKey("prompt_tag_${id}_name")
         val descriptionKey = stringPreferencesKey("prompt_tag_${id}_description")
-        val promptContentKey = stringPreferencesKey("prompt_tag_${id}_prompt_content")
         val tagTypeKey = stringPreferencesKey("prompt_tag_${id}_tag_type")
         val isSystemTagKey = booleanPreferencesKey("prompt_tag_${id}_is_system_tag")
         val createdAtKey = longPreferencesKey("prompt_tag_${id}_created_at")
         val updatedAtKey = longPreferencesKey("prompt_tag_${id}_updated_at")
-        
+
         val tagType = when (id) {
             SYSTEM_CHAT_TAG_ID -> TagType.SYSTEM_CHAT
             SYSTEM_VOICE_TAG_ID -> TagType.SYSTEM_VOICE
             SYSTEM_DESKTOP_PET_TAG_ID -> TagType.SYSTEM_DESKTOP_PET
             else -> TagType.CUSTOM
         }
-        
-        preferences[nameKey] = name
-        preferences[descriptionKey] = description
-        preferences[promptContentKey] = promptContent
+
+        val now = System.currentTimeMillis()
+
+        preferences[nameKey] = spec.name
+        preferences[descriptionKey] = spec.description
         preferences[tagTypeKey] = tagType.name
         preferences[isSystemTagKey] = true
-        preferences[createdAtKey] = System.currentTimeMillis()
-        preferences[updatedAtKey] = System.currentTimeMillis()
+        if (preferences[createdAtKey] == null) {
+            preferences[createdAtKey] = now
+        }
+        preferences[updatedAtKey] = now
     }
-} 
+}

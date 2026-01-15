@@ -759,7 +759,14 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     /** 删除单条消息 */
     fun deleteMessage(index: Int) {
         AppLogger.d(TAG, "准备删除消息，索引: $index")
-        chatHistoryDelegate.deleteMessage(index)
+        val chatIdSnapshot = chatHistoryDelegate.currentChatId.value
+        val historySnapshot = chatHistoryDelegate.chatHistory.value
+        val timestampSnapshot = historySnapshot.getOrNull(index)?.timestamp
+        if (chatIdSnapshot != null && timestampSnapshot != null) {
+            chatHistoryDelegate.deleteMessageByTimestamp(chatIdSnapshot, timestampSnapshot)
+        } else {
+            chatHistoryDelegate.deleteMessage(index)
+        }
     }
 
     /** 从指定索引删除后续所有消息 */
@@ -1132,6 +1139,14 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     // UI状态相关方法
     fun showErrorMessage(message: String) = uiStateDelegate.showErrorMessage(message)
     fun clearError() = uiStateDelegate.clearError()
+    fun dismissErrorDialog() {
+        uiStateDelegate.clearError()
+        val chatId = chatHistoryDelegate.currentChatId.value
+        if (chatId != null) {
+            messageProcessingDelegate.setInputProcessingStateForChat(chatId, InputProcessingState.Idle)
+            EnhancedAIService.getChatInstance(context, chatId)?.setInputProcessingState(InputProcessingState.Idle)
+        }
+    }
     fun popupMessage(message: String) = uiStateDelegate.showPopupMessage(message)
     fun clearPopupMessage() = uiStateDelegate.clearPopupMessage()
     fun showToast(message: String) = uiStateDelegate.showToast(message)

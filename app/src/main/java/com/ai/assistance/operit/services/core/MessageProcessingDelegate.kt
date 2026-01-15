@@ -331,12 +331,28 @@ class MessageProcessingDelegate(
                             return@launch
                         }
 
+                // 清除上一次可能残留的 Error 状态，避免 StateFlow 重放导致新一轮发送立即再次触发弹窗
+                service.setInputProcessingState(EnhancedInputProcessingState.Processing("正在处理消息..."))
+
                 // 监听此 chat 对应的 EnhancedAIService 状态，映射到 per-chat state
                 chatRuntime.stateCollectionJob?.cancel()
                 chatRuntime.stateCollectionJob =
                     coroutineScope.launch {
+                        var lastErrorMessage: String? = null
                         service.inputProcessingState.collect { state ->
                             setChatInputProcessingState(activeChatId, state)
+
+                            if (state is EnhancedInputProcessingState.Error) {
+                                val msg = state.message
+                                if (msg != lastErrorMessage) {
+                                    lastErrorMessage = msg
+                                    withContext(Dispatchers.Main) {
+                                        showErrorMessage(msg)
+                                    }
+                                }
+                            } else {
+                                lastErrorMessage = null
+                            }
                         }
                     }
 
@@ -476,7 +492,11 @@ class MessageProcessingDelegate(
                 // 等待流完成，以便finally块可以正确执行来更新UI状态
                 deferred.await()
 
-                setChatInputProcessingState(chatId, EnhancedInputProcessingState.Completed)
+                val stateAfterStream =
+                    _inputProcessingStateByChatId.value[chatKey(chatId)]
+                if (stateAfterStream !is EnhancedInputProcessingState.Error) {
+                    setChatInputProcessingState(chatId, EnhancedInputProcessingState.Completed)
+                }
 
                 if (pendingAsyncSummaryUiByChatId.containsKey(chatId)) {
                     setSuppressIdleCompletedStateForChat(chatId, true)
@@ -486,7 +506,9 @@ class MessageProcessingDelegate(
                     )
                 }
 
-                onTurnComplete(activeChatId, service)
+                if (stateAfterStream !is EnhancedInputProcessingState.Error) {
+                    onTurnComplete(activeChatId, service)
+                }
 
                 AppLogger.d(TAG, "AI响应处理完成，总耗时: ${System.currentTimeMillis() - startTime}ms")
             } catch (e: Exception) {
