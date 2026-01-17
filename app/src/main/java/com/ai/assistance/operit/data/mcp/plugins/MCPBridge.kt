@@ -14,8 +14,15 @@ import java.io.PrintWriter
 import java.net.Socket
 import java.util.UUID
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.json.JSONArray
@@ -38,7 +45,50 @@ class MCPBridge private constructor(private val context: Context) {
         private const val BRIDGE_PORT = 8752  // 远程bridge监听的端口
         private const val CLIENT_PORT = 8751  // Android客户端连接的端口（SSH转发）
         private const val TERMUX_BRIDGE_PATH = "~/bridge"
+        private const val START_COMMAND_THROTTLE_MS = 4000L
+        private const val COMMAND_CONNECTION_KEEP_MS = 3500L
+        private const val DETECT_PORT_CACHE_MS = 3500L
         private var appContext: Context? = null
+
+        private val startBridgeMutex = Mutex()
+
+        private val commandConnectionMutex = Mutex()
+        private val commandConnectionScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        @Volatile
+        private var commandSocket: Socket? = null
+
+        @Volatile
+        private var commandWriter: PrintWriter? = null
+
+        @Volatile
+        private var commandReader: BufferedReader? = null
+
+        @Volatile
+        private var commandHost: String? = null
+
+        @Volatile
+        private var commandPort: Int? = null
+
+        @Volatile
+        private var commandLastUsedAtMs: Long = 0L
+
+        @Volatile
+        private var commandCloseJob: Job? = null
+
+        private val detectPortMutex = Mutex()
+
+        @Volatile
+        private var cachedDetectedPort: Int? = null
+
+        @Volatile
+        private var cachedDetectedPortAtMs: Long = 0L
+
+        @Volatile
+        private var startBridgeDeferred: CompletableDeferred<Boolean>? = null
+
+        @Volatile
+        private var lastStartCommandAtMs: Long = 0L
         
         @Volatile
         private var INSTANCE: MCPBridge? = null
@@ -57,15 +107,32 @@ class MCPBridge private constructor(private val context: Context) {
          * 优先尝试 8752（本地直连），失败后尝试 8751（SSH转发）
          */
         private suspend fun detectPort(): Int = withContext(Dispatchers.IO) {
-            // 优先尝试 8752（远程端口）- 本地环境
-            if (isPortAvailable(DEFAULT_HOST, BRIDGE_PORT)) {
-                AppLogger.d(TAG, "检测到本地环境，使用端口 $BRIDGE_PORT")
-                return@withContext BRIDGE_PORT
+            val nowMs = System.currentTimeMillis()
+            val cached = cachedDetectedPort
+            if (cached != null && nowMs - cachedDetectedPortAtMs <= DETECT_PORT_CACHE_MS) {
+                return@withContext cached
             }
-            
-            // 降级到 8751（SSH转发端口）
-            AppLogger.d(TAG, "本地连接失败，尝试SSH转发端口 $CLIENT_PORT")
-            return@withContext CLIENT_PORT
+
+            return@withContext detectPortMutex.withLock {
+                val lockNowMs = System.currentTimeMillis()
+                val lockCached = cachedDetectedPort
+                if (lockCached != null && lockNowMs - cachedDetectedPortAtMs <= DETECT_PORT_CACHE_MS) {
+                    return@withLock lockCached
+                }
+
+                val detectedPort =
+                    if (isPortAvailable(DEFAULT_HOST, BRIDGE_PORT)) {
+                        AppLogger.d(TAG, "检测到本地环境，使用端口 $BRIDGE_PORT")
+                        BRIDGE_PORT
+                    } else {
+                        AppLogger.d(TAG, "本地连接失败，尝试SSH转发端口 $CLIENT_PORT")
+                        CLIENT_PORT
+                    }
+
+                cachedDetectedPort = detectedPort
+                cachedDetectedPortAtMs = lockNowMs
+                return@withLock detectedPort
+            }
         }
         
         /**
@@ -85,6 +152,49 @@ class MCPBridge private constructor(private val context: Context) {
                     socket?.close()
                 } catch (e: Exception) {
                     // 静默关闭
+                }
+            }
+        }
+
+        private fun closeCommandConnectionLocked() {
+            try { commandWriter?.close() } catch (e: Exception) { }
+            try { commandReader?.close() } catch (e: Exception) { }
+            try { commandSocket?.close() } catch (e: Exception) { }
+            commandWriter = null
+            commandReader = null
+            commandSocket = null
+            commandHost = null
+            commandPort = null
+            commandLastUsedAtMs = 0L
+            commandCloseJob?.cancel()
+            commandCloseJob = null
+        }
+
+        private fun isCommandSocketReusable(host: String, port: Int, nowMs: Long): Boolean {
+            val socket = commandSocket ?: return false
+            val writer = commandWriter ?: return false
+            val reader = commandReader ?: return false
+            if (commandHost != host) return false
+            if (commandPort != port) return false
+            if (nowMs - commandLastUsedAtMs > COMMAND_CONNECTION_KEEP_MS) return false
+            if (!socket.isConnected) return false
+            if (socket.isClosed) return false
+            if (socket.isInputShutdown || socket.isOutputShutdown) return false
+            if (writer.checkError()) return false
+            return true
+        }
+
+        private fun scheduleCommandConnectionCloseLocked() {
+            commandCloseJob?.cancel()
+            val expectedLastUsed = commandLastUsedAtMs
+            commandCloseJob = commandConnectionScope.launch {
+                delay(COMMAND_CONNECTION_KEEP_MS)
+                commandConnectionMutex.withLock {
+                    if (commandLastUsedAtMs == expectedLastUsed &&
+                        System.currentTimeMillis() - commandLastUsedAtMs >= COMMAND_CONNECTION_KEEP_MS
+                    ) {
+                        closeCommandConnectionLocked()
+                    }
                 }
             }
         }
@@ -200,18 +310,36 @@ class MCPBridge private constructor(private val context: Context) {
                 sessionId: String? = null
         ): Boolean =
                 withContext(Dispatchers.IO) {
-                    try {
-                        // 使用传入的context或保存的appContext
-                        val ctx = context ?: appContext
-                        if (ctx == null) {
-                            AppLogger.e(TAG, "没有可用的上下文，无法执行命令")
-                            return@withContext false
-                        }
+                    // 使用传入的context或保存的appContext
+                    val ctx = context ?: appContext
+                    if (ctx == null) {
+                        AppLogger.e(TAG, "没有可用的上下文，无法执行命令")
+                        return@withContext false
+                    }
 
+                    var isLeader = false
+                    val deferred = startBridgeMutex.withLock {
+                        val inFlight = startBridgeDeferred
+                        if (inFlight != null && !inFlight.isCompleted) {
+                            inFlight
+                        } else {
+                            val newDeferred = CompletableDeferred<Boolean>()
+                            startBridgeDeferred = newDeferred
+                            isLeader = true
+                            newDeferred
+                        }
+                    }
+
+                    if (!isLeader) {
+                        return@withContext deferred.await()
+                    }
+
+                    try {
                         // 首先检查桥接器是否已经在运行
                         val listResult = getInstance(ctx).listMcpServices()
                         if (listResult != null && listResult.optBoolean("success", false)) {
                             AppLogger.d(TAG, "桥接器已经在运行，无需重新启动")
+                            deferred.complete(true)
                             return@withContext true
                         }
 
@@ -223,6 +351,7 @@ class MCPBridge private constructor(private val context: Context) {
                             val connected = terminal.initialize()
                             if (!connected) {
                                 AppLogger.e(TAG, "无法连接到终端服务")
+                                deferred.complete(false)
                                 return@withContext false
                             }
                         }
@@ -232,6 +361,7 @@ class MCPBridge private constructor(private val context: Context) {
                             val newSessionId = terminal.createSession("mcp-bridge-daemon")
                             if (newSessionId == null) {
                                 AppLogger.e(TAG, "无法创建终端会话或会话初始化超时")
+                                deferred.complete(false)
                                 return@withContext false
                             }
                             newSessionId
@@ -247,11 +377,24 @@ class MCPBridge private constructor(private val context: Context) {
                         }
                         command.append(" &")
 
-                        AppLogger.d(TAG, "发送启动命令: $command")
+                        val now = System.currentTimeMillis()
+                        val shouldSendStartCommand = startBridgeMutex.withLock {
+                            val last = lastStartCommandAtMs
+                            if (now - last < START_COMMAND_THROTTLE_MS) {
+                                false
+                            } else {
+                                lastStartCommandAtMs = now
+                                true
+                            }
+                        }
 
-                        // 异步方式发送启动命令 - 不等待完成，因为它会作为后台进程一直运行
-                        AppLogger.d(TAG, "进行桥接器启动...")
-                        terminal.executeCommand(actualSessionId, command.toString())
+                        if (shouldSendStartCommand) {
+                            AppLogger.d(TAG, "发送启动命令: $command")
+                            AppLogger.d(TAG, "进行桥接器启动...")
+                            terminal.executeCommand(actualSessionId, command.toString())
+                        } else {
+                            AppLogger.w(TAG, "桥接器启动命令发送过于频繁，跳过本次发送")
+                        }
 
                         // 等待一段时间让桥接器启动
                         AppLogger.d(TAG, "等待桥接器启动...")
@@ -275,10 +418,18 @@ class MCPBridge private constructor(private val context: Context) {
                             AppLogger.e(TAG, "桥接器可能未成功启动。请检查终端会话 'mcp-bridge-daemon' 的输出。")
                         }
 
+                        deferred.complete(isRunning)
                         return@withContext isRunning
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "启动桥接器异常", e)
+                        deferred.complete(false)
                         return@withContext false
+                    } finally {
+                        startBridgeMutex.withLock {
+                            if (startBridgeDeferred === deferred) {
+                                startBridgeDeferred = null
+                            }
+                        }
                     }
                 }
 
@@ -313,13 +464,10 @@ class MCPBridge private constructor(private val context: Context) {
                 port: Int? = null
         ): JSONObject? =
                 withContext(Dispatchers.IO) {
-                    var socket: Socket? = null
-                    var writer: PrintWriter? = null
-                    var reader: BufferedReader? = null
-
                     try {
                         // 自动检测端口（如果未指定）
                         val actualPort = port ?: detectPort()
+                        val nowMs = System.currentTimeMillis()
                         
                         // Extract command details for better logging
                         val cmdType = command.optString("command", "unknown")
@@ -337,89 +485,109 @@ class MCPBridge private constructor(private val context: Context) {
 
                         AppLogger.d(TAG, logMessage)
 
-                        // Create socket with timeout and proper options
-                        socket = Socket()
-                        socket.reuseAddress = true
-                        socket.soTimeout = 180000 // 180 seconds read timeout (3 minutes)
-                        socket.connect(
-                                java.net.InetSocketAddress(host, actualPort),
-                                5000
-                        ) // 5 seconds connect timeout
+                        return@withContext commandConnectionMutex.withLock {
+                            val canReuse = isCommandSocketReusable(host, actualPort, nowMs)
+                            if (!canReuse) {
+                                closeCommandConnectionLocked()
 
-                        writer = PrintWriter(socket.getOutputStream(), true)
-                        reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                                val newSocket = Socket()
+                                newSocket.reuseAddress = true
+                                newSocket.soTimeout = 180000
+                                newSocket.connect(
+                                    java.net.InetSocketAddress(host, actualPort),
+                                    5000
+                                )
 
-                        // 发送命令
-                        writer.println(command.toString())
-                        writer.flush()
-
-                        // 读取响应
-                        val response = reader.readLine()
-                        if (response != null) {
-                            try {
-                                val jsonResponse = JSONObject(response)
-                                val success = jsonResponse.optBoolean("success", false)
-                                val result = jsonResponse.optJSONObject("result")
-                                val error = jsonResponse.optJSONObject("error")
-
-                                // Log the raw JSON response first for detailed debugging
-                                AppLogger.d(TAG, "命令[$cmdId: $cmdType]原始JSON响应: $response")
-
-                                // Enhanced response logging
-                                val responseLog = StringBuilder()
-                                responseLog.append("命令[$cmdId: $cmdType")
-                                if (serviceName != null) responseLog.append(" 服务: $serviceName")
-                                responseLog.append("]响应: ${if (success) "成功" else "失败"} ")
-
-                                if (result != null) {
-                                    // For listtools, show both the summary and full result
-                                    if (cmdType == "listtools" && result.has("tools")) {
-                                        val tools = result.optJSONArray("tools")
-                                        val toolCount = tools?.length() ?: 0
-                                        responseLog.append("获取到 $toolCount 个工具")
-                                        // Add tool names if available
-                                        if (toolCount > 0) {
-                                            responseLog.append(" [")
-                                            for (i in 0 until toolCount) {
-                                                val tool = tools?.optJSONObject(i)
-                                                val toolName = tool?.optString("name", "未命名工具")
-                                                if (i > 0) responseLog.append(", ")
-                                                responseLog.append(toolName)
-                                                if (i >= 2 && toolCount > 3) {
-                                                    responseLog.append("... (共 $toolCount 个)")
-                                                    break
-                                                }
-                                            }
-                                            responseLog.append("]")
-                                        }
-                                    } else {
-                                        responseLog.append("结果: $result")
-                                    }
-                                }
-
-                                if (error != null) responseLog.append(" 错误: $error")
-
-                                AppLogger.d(TAG, responseLog.toString())
-
-                                return@withContext jsonResponse
-                            } catch (e: Exception) {
-                                AppLogger.e(TAG, "解析响应失败: $response", e)
-                                return@withContext null
+                                commandSocket = newSocket
+                                commandWriter = PrintWriter(newSocket.getOutputStream(), true)
+                                commandReader = BufferedReader(InputStreamReader(newSocket.getInputStream()))
+                                commandHost = host
+                                commandPort = actualPort
                             }
-                        } else {
-                            AppLogger.e(TAG, "命令[$cmdId: $cmdType]没有收到响应")
-                            return@withContext null
+
+                            commandLastUsedAtMs = nowMs
+                            scheduleCommandConnectionCloseLocked()
+
+                            val writer = commandWriter
+                            val reader = commandReader
+                            if (writer == null || reader == null) {
+                                closeCommandConnectionLocked()
+                                return@withLock null
+                            }
+
+                            try {
+                                writer.println(command.toString())
+                                writer.flush()
+
+                                val response = reader.readLine()
+                                if (response != null) {
+                                    try {
+                                        val jsonResponse = JSONObject(response)
+                                        val success = jsonResponse.optBoolean("success", false)
+                                        val result = jsonResponse.optJSONObject("result")
+                                        val error = jsonResponse.optJSONObject("error")
+
+                                        AppLogger.d(TAG, "命令[$cmdId: $cmdType]原始JSON响应: $response")
+
+                                        val responseLog = StringBuilder()
+                                        responseLog.append("命令[$cmdId: $cmdType")
+                                        if (serviceName != null) responseLog.append(" 服务: $serviceName")
+                                        responseLog.append("]响应: ${if (success) "成功" else "失败"} ")
+
+                                        if (result != null) {
+                                            if (cmdType == "listtools" && result.has("tools")) {
+                                                val tools = result.optJSONArray("tools")
+                                                val toolCount = tools?.length() ?: 0
+                                                responseLog.append("获取到 $toolCount 个工具")
+                                                if (toolCount > 0) {
+                                                    responseLog.append(" [")
+                                                    for (i in 0 until toolCount) {
+                                                        val tool = tools?.optJSONObject(i)
+                                                        val toolName = tool?.optString("name", "未命名工具")
+                                                        if (i > 0) responseLog.append(", ")
+                                                        responseLog.append(toolName)
+                                                        if (i >= 2 && toolCount > 3) {
+                                                            responseLog.append("... (共 $toolCount 个)")
+                                                            break
+                                                        }
+                                                    }
+                                                    responseLog.append("]")
+                                                }
+                                            } else {
+                                                responseLog.append("结果: $result")
+                                            }
+                                        }
+
+                                        if (error != null) responseLog.append(" 错误: $error")
+
+                                        AppLogger.d(TAG, responseLog.toString())
+
+                                        commandLastUsedAtMs = System.currentTimeMillis()
+                                        scheduleCommandConnectionCloseLocked()
+
+                                        return@withLock jsonResponse
+                                    } catch (e: Exception) {
+                                        AppLogger.e(TAG, "解析响应失败: $response", e)
+                                        closeCommandConnectionLocked()
+                                        return@withLock null
+                                    }
+                                } else {
+                                    AppLogger.e(TAG, "命令[$cmdId: $cmdType]没有收到响应")
+                                    closeCommandConnectionLocked()
+                                    return@withLock null
+                                }
+                            } catch (e: Exception) {
+                                val errorCmdType = command.optString("command", "unknown")
+                                AppLogger.e(TAG, "发送命令失败[$errorCmdType]: ${e.message}")
+                                closeCommandConnectionLocked()
+                                return@withLock null
+                            }
                         }
                     } catch (e: Exception) {
                         // 简化错误日志 - 只记录关键信息
                         val cmdType = command.optString("command", "unknown")
                         AppLogger.e(TAG, "发送命令失败[$cmdType]: ${e.message}")
                         return@withContext null
-                    } finally {
-                        // 静默清理资源
-                        try { writer?.close() } catch (e: Exception) { }
-                        try { reader?.close() } catch (e: Exception) { }
-                        try { socket?.close() } catch (e: Exception) { }
                     }
                 }
     }

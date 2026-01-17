@@ -64,11 +64,13 @@ import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.data.mcp.plugins.MCPStarter
 import com.ai.assistance.operit.ui.features.startup.components.SmoothLinearProgressIndicator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
 /** 表示插件加载状态的枚举 */
@@ -499,6 +501,9 @@ class PluginLoadingState {
     // 用于取消超时计时器
     private var timeoutJob: kotlinx.coroutines.Job? = null
 
+    private val mcpInitInProgress = AtomicBoolean(false)
+    private var mcpInitJob: Job? = null
+
     // 跳过加载事件回调
     private var onSkipCallback: (() -> Unit)? = null
 
@@ -695,6 +700,8 @@ class PluginLoadingState {
     /** 重置所有状态 */
     fun reset() {
         timeoutJob?.cancel()
+        mcpInitJob?.cancel()
+        mcpInitInProgress.set(false)
         _progress.value = 0f
         _message.value = ""
         _pluginsStarted.value = 0
@@ -708,7 +715,12 @@ class PluginLoadingState {
 
     // 添加方法来初始化MCP服务器并启动插件
     fun initializeMCPServer(context: Context, lifecycleScope: kotlinx.coroutines.CoroutineScope) {
-        lifecycleScope.launch(Dispatchers.IO) {
+        if (!mcpInitInProgress.compareAndSet(false, true)) {
+            AppLogger.d("PluginLoadingState", "initializeMCPServer already running, skipping")
+            return
+        }
+
+        mcpInitJob = lifecycleScope.launch(Dispatchers.IO) {
             try {
                 // 更新初始状态
                 updateMessage(context.getString(R.string.plugin_initializing))
@@ -813,6 +825,8 @@ class PluginLoadingState {
                 updateProgress(1.0f)
 
                 forceExpanded()
+            } finally {
+                mcpInitInProgress.set(false)
             }
         }
     }

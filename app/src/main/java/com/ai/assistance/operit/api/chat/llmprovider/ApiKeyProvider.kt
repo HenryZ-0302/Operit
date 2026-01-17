@@ -62,8 +62,7 @@ class MultiApiKeyProvider(
 
             // 更新并保存下一个索引
             val nextIndex = (startIndex + 1) % enabledKeys.size
-            val updatedConfig = config.copy(currentKeyIndex = nextIndex)
-            modelConfigManager.saveModelConfig(updatedConfig)
+            modelConfigManager.updateConfigKeyIndex(configId, nextIndex)
 
             selectedKey.key
         }

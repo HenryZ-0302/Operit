@@ -46,11 +46,11 @@ fun AdvancedSettingsSection(
     // Save changes to the config
     fun saveChanges() {
         scope.launch {
-            val updatedConfig = config.copy(
+            configManager.updateApiKeyPoolSettings(
+                configId = config.id,
                 useMultipleApiKeys = useApiKeyPool,
                 apiKeyPool = apiKeyPool
             )
-            configManager.saveModelConfig(updatedConfig)
             showNotification(context.getString(R.string.advanced_settings_saved))
         }
     }

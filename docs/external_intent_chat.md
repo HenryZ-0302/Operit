@@ -110,29 +110,96 @@ adb shell am broadcast \
 
 ---
 
-## 6. 安全建议
+## 6. 发送完毕后的回传如何接收
 
-该 Receiver 是 `exported=true`，**任何应用都可以发送该广播**。
+Operit 会在处理完成后发送广播回传：
 
-- 如果你担心被其他 App 滥用，建议：
-  - 通过 `reply_package` 限制回传目标。
-  - 后续为该 Receiver 增加自定义 permission（例如 signature 级别），并在 Manifest 中声明 `android:permission`。
+- 默认 action：`com.ai.assistance.operit.EXTERNAL_CHAT_RESULT`
+- 或者你在请求中指定的 `reply_action`
 
----
+注意：
 
-## 7. 工作流示范：Trigger 输出 JSON + Extract(JSON) 提取参数
+- `adb` 本身只能用来“发送广播”，不能直接作为“广播接收端”打印收到的广播。
 
-工作流侧（示范模板）采用的是：
+如果你希望**只让自己的 App 收到回传**，请在请求里设置：
 
-- **触发器节点输出 JSON**：触发 extras 会被打包成 JSON 字符串，作为 TriggerNode 的输出（下游可以 `NodeReference(triggerId)` 拿到）。
-- **提取节点 ExtractNode(JSON)**：下游用 `ExtractNode(mode=JSON)` 从 JSON 中提取字段，例如提取 `message`。
+- `reply_package = 你的包名`
 
-示例（概念）：
+这样 Operit 在回传时会对广播设置 `intent.setPackage(reply_package)`。
 
-- TriggerNode 输出：`{"message":"hello","foo":"bar"}`
-- ExtractNode(JSON) 参数：
-  - `source = NodeReference(triggerId)`
-  - `expression = "message"`
-  - 输出即为 `hello`
+### 6.1 写一个最小接收 App / Receiver（用于调试/集成）
 
-说明：JSON 提取表达式支持 `a.b.c` 以及数组下标 `arr[0].name` 这类简单路径。
+下面给出一个“最小可用”的接收端示例（Kotlin）。你只需要：
+
+- 注册一个 `BroadcastReceiver`
+- 监听 `EXTERNAL_CHAT_RESULT`（或你自定义的 `reply_action`）
+- 在 `onReceive()` 中读取 extras
+
+#### 6.1.1 Receiver 代码示例
+
+```kotlin
+class ExternalChatResultReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != "com.ai.assistance.operit.EXTERNAL_CHAT_RESULT") return
+
+        val requestId = intent.getStringExtra("request_id")
+        val success = intent.getBooleanExtra("success", false)
+        val chatId = intent.getStringExtra("chat_id")
+        val aiResponse = intent.getStringExtra("ai_response")
+        val error = intent.getStringExtra("error")
+
+        Log.d(
+            "ExternalChatResult",
+            "request_id=$requestId success=$success chat_id=$chatId ai_response=$aiResponse error=$error"
+        )
+    }
+}
+```
+
+#### 6.1.2 Manifest 注册示例
+
+在你的 App 的 `AndroidManifest.xml` 中注册（Android 12+ 需要显式声明 exported）：
+
+```xml
+<receiver
+    android:name=".ExternalChatResultReceiver"
+    android:exported="true">
+    <intent-filter>
+        <action android:name="com.ai.assistance.operit.EXTERNAL_CHAT_RESULT" />
+    </intent-filter>
+</receiver>
+```
+
+#### 6.1.3 触发请求并验证回传（adb + logcat）
+
+1) 先启动你的接收端 App（确保进程存在更容易观察 log）：
+
+2) 发送请求（建议指定 `reply_package`，避免回传被其他 App 接收）：
+
+```bash
+adb shell am broadcast \
+  -a com.ai.assistance.operit.EXTERNAL_CHAT \
+  --es request_id "req-101" \
+  --es message "hello" \
+  --es reply_package "YOUR.APP.PACKAGE"
+```
+
+3) 观察你的 App 日志：
+
+```bash
+adb logcat | findstr ExternalChatResult
+```
+
+如果 `success=true`，则 `ai_response` 通常会包含 AI 回复文本；失败时可查看 `error`。
+
+### 6.2 回传字段快速说明
+
+回传广播 extras：
+
+- `request_id: String?`
+- `success: Boolean`
+- `chat_id: String?`
+- `ai_response: String?`
+- `error: String?`
+
+你可以用 `request_id` 在业务侧把请求与回传关联起来。

@@ -452,6 +452,13 @@ const UIAutomationSubAgentTools = (function () {
         }
     }
 
+    async function getInstalledAppPackages(): Promise<string[]> {
+        const appList = await Tools.System.listApps(false);
+        return (((appList as any)?.packages || []) as any[])
+            .map((p) => String(p || '').trim())
+            .filter((p) => p.length > 0);
+    }
+
     async function usage_advice(_params: {}): Promise<ToolResponse> {
         const state = getPackageState();
         const isMainScreen = String(state).toLowerCase() === 'main_screen';
@@ -481,6 +488,23 @@ const UIAutomationSubAgentTools = (function () {
     async function run_subagent(params: { intent: string, max_steps?: number, agent_id?: string, target_app?: string }): Promise<ToolResponse> {
         const { intent, max_steps, agent_id, target_app } = params;
         const agentIdToUse = (agent_id && String(agent_id).length > 0) ? String(agent_id) : getCachedAgentId();
+
+        if (target_app && String(target_app).trim().length > 0) {
+            const target = String(target_app).trim();
+            const installedApps = await getInstalledAppPackages();
+            const installedSet = new Set(installedApps.map((s) => s.toLowerCase()));
+            if (!installedSet.has(target.toLowerCase())) {
+                return {
+                    success: false,
+                    message: `目标应用不存在：当前给定的 target_app=“${target}” 未在已安装应用中找到。已返回已安装应用名列表。`,
+                    data: {
+                        target_app: target,
+                        installed_apps: installedApps,
+                    },
+                };
+            }
+        }
+
         const result = await Tools.UI.runSubAgent(intent, max_steps, agentIdToUse, target_app);
         if (result && (result as any).agentId) {
             setCachedAgentId((result as any).agentId);
@@ -530,6 +554,25 @@ const UIAutomationSubAgentTools = (function () {
                 };
             }
             used[key] = s.index;
+        }
+
+        const targetAppsToCheck = activeSlots
+            .map((s) => String(s.targetApp || '').trim())
+            .filter((v) => v.length > 0);
+        if (targetAppsToCheck.length > 0) {
+            const installedApps = await getInstalledAppPackages();
+            const installedSet = new Set(installedApps.map((s) => s.toLowerCase()));
+            const missingApps = targetAppsToCheck.filter((t) => !installedSet.has(t.toLowerCase()));
+            if (missingApps.length > 0) {
+                return {
+                    success: false,
+                    message: `目标应用不存在：当前给定的 target_app 列表中包含未安装/不存在的应用：${missingApps.map((s) => `“${String(s).trim()}”`).join('，')}。已返回已安装应用名列表。`,
+                    data: {
+                        missing_apps: missingApps,
+                        installed_apps: installedApps,
+                    },
+                };
+            }
         }
 
         const tasks = slots

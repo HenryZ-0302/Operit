@@ -16,6 +16,7 @@ import com.ai.assistance.operit.data.model.ParameterCategory
 import com.ai.assistance.operit.data.model.ParameterValueType
 import com.ai.assistance.operit.data.model.StandardModelParameters
 import com.ai.assistance.operit.data.model.ApiProviderType
+import com.ai.assistance.operit.data.model.ApiKeyInfo
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -159,10 +160,36 @@ class ModelConfigManager(private val context: Context) {
             configId: String,
             transform: (ModelConfigData) -> ModelConfigData
     ): ModelConfigData {
-        val current = getModelConfigFlow(configId).first()
-        val updated = transform(current)
-        saveConfigToDataStore(updated)
-        return updated
+        val configKey = stringPreferencesKey("config_${configId}")
+        var updated: ModelConfigData? = null
+        context.modelConfigDataStore.edit { preferences ->
+            val current =
+                    run {
+                        val configJson = preferences[configKey]
+                        if (configJson != null) {
+                            try {
+                                json.decodeFromString<ModelConfigData>(configJson)
+                            } catch (e: Exception) {
+                                if (configId == DEFAULT_CONFIG_ID) {
+                                    createFreshDefaultConfig()
+                                } else {
+                                    ModelConfigData(id = configId, name = "配置 $configId")
+                                }
+                            }
+                        } else {
+                            if (configId == DEFAULT_CONFIG_ID) {
+                                createFreshDefaultConfig()
+                            } else {
+                                ModelConfigData(id = configId, name = "配置 $configId")
+                            }
+                        }
+                    }
+
+            val newConfig = transform(current)
+            preferences[configKey] = json.encodeToString(newConfig)
+            updated = newConfig
+        }
+        return updated ?: ModelConfigData(id = configId, name = "配置 $configId")
     }
 
     // 获取指定ID的配置
@@ -180,11 +207,7 @@ class ModelConfigManager(private val context: Context) {
 
     // 更新API Key池的当前索引
     suspend fun updateConfigKeyIndex(configId: String, newIndex: Int) {
-        val config = getModelConfig(configId)
-        if (config != null) {
-            val updatedConfig = config.copy(currentKeyIndex = newIndex)
-            saveConfigToDataStore(updatedConfig)
-        }
+        updateConfigInternal(configId) { it.copy(currentKeyIndex = newIndex) }
     }
 
     // 获取所有配置的摘要信息
@@ -252,10 +275,7 @@ class ModelConfigManager(private val context: Context) {
 
     // 更新配置基本信息（名称等）
     suspend fun updateConfigBase(configId: String, name: String): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig = config.copy(name = name)
-        saveConfigToDataStore(updatedConfig)
-        return updatedConfig
+        return updateConfigInternal(configId) { it.copy(name = name) }
     }
 
     // 更新模型配置
@@ -265,14 +285,9 @@ class ModelConfigManager(private val context: Context) {
             apiEndpoint: String,
             modelName: String
     ): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig =
-                config.copy(apiKey = apiKey, apiEndpoint = apiEndpoint, modelName = modelName)
-
-        // 保存更新后的配置
-        saveConfigToDataStore(updatedConfig)
-
-        return updatedConfig
+        return updateConfigInternal(configId) {
+            it.copy(apiKey = apiKey, apiEndpoint = apiEndpoint, modelName = modelName)
+        }
     }
 
     // 更新模型配置 - 包含API提供商类型
@@ -283,19 +298,14 @@ class ModelConfigManager(private val context: Context) {
             modelName: String,
             apiProviderType: com.ai.assistance.operit.data.model.ApiProviderType
     ): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig =
-                config.copy(
-                        apiKey = apiKey,
-                        apiEndpoint = apiEndpoint,
-                        modelName = modelName,
-                        apiProviderType = apiProviderType
-                )
-
-        // 保存更新后的配置
-        saveConfigToDataStore(updatedConfig)
-
-        return updatedConfig
+        return updateConfigInternal(configId) {
+            it.copy(
+                    apiKey = apiKey,
+                    apiEndpoint = apiEndpoint,
+                    modelName = modelName,
+                    apiProviderType = apiProviderType
+            )
+        }
     }
 
     // 更新模型配置 - 包含API提供商类型和MNN配置
@@ -308,41 +318,76 @@ class ModelConfigManager(private val context: Context) {
             mnnForwardType: Int,
             mnnThreadCount: Int
     ): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig =
-                config.copy(
-                        apiKey = apiKey,
-                        apiEndpoint = apiEndpoint,
-                        modelName = modelName,
-                        apiProviderType = apiProviderType,
-                        mnnForwardType = mnnForwardType,
-                        mnnThreadCount = mnnThreadCount
-                )
+        return updateConfigInternal(configId) {
+            it.copy(
+                    apiKey = apiKey,
+                    apiEndpoint = apiEndpoint,
+                    modelName = modelName,
+                    apiProviderType = apiProviderType,
+                    mnnForwardType = mnnForwardType,
+                    mnnThreadCount = mnnThreadCount
+            )
+        }
+    }
 
-        // 保存更新后的配置
-        saveConfigToDataStore(updatedConfig)
+    suspend fun updateApiSettingsFull(
+            configId: String,
+            apiKey: String,
+            apiEndpoint: String,
+            modelName: String,
+            apiProviderType: ApiProviderType,
+            mnnForwardType: Int,
+            mnnThreadCount: Int,
+            enableDirectImageProcessing: Boolean,
+            enableDirectAudioProcessing: Boolean,
+            enableDirectVideoProcessing: Boolean,
+            enableGoogleSearch: Boolean,
+            enableToolCall: Boolean,
+            enableDeepseekReasoning: Boolean
+    ): ModelConfigData {
+        return updateConfigInternal(configId) {
+            it.copy(
+                    apiKey = apiKey,
+                    apiEndpoint = apiEndpoint,
+                    modelName = modelName,
+                    apiProviderType = apiProviderType,
+                    mnnForwardType = mnnForwardType,
+                    mnnThreadCount = mnnThreadCount,
+                    enableDirectImageProcessing = enableDirectImageProcessing,
+                    enableDirectAudioProcessing = enableDirectAudioProcessing,
+                    enableDirectVideoProcessing = enableDirectVideoProcessing,
+                    enableGoogleSearch = enableGoogleSearch,
+                    enableToolCall = enableToolCall,
+                    enableDeepseekReasoning = enableDeepseekReasoning
+            )
+        }
+    }
 
-        return updatedConfig
+    suspend fun updateApiKeyPoolSettings(
+            configId: String,
+            useMultipleApiKeys: Boolean,
+            apiKeyPool: List<ApiKeyInfo>
+    ): ModelConfigData {
+        return updateConfigInternal(configId) {
+            it.copy(
+                    useMultipleApiKeys = useMultipleApiKeys,
+                    apiKeyPool = apiKeyPool
+            )
+        }
     }
 
     // 更新自定义参数
     suspend fun updateCustomParameters(configId: String, parametersJson: String): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig =
-                config.copy(
-                        customParameters = parametersJson,
-                        hasCustomParameters = parametersJson.isNotBlank() && parametersJson != "[]"
-                )
-
-        // 保存更新后的配置
-        saveConfigToDataStore(updatedConfig)
-        return updatedConfig
+        return updateConfigInternal(configId) {
+            it.copy(
+                    customParameters = parametersJson,
+                    hasCustomParameters = parametersJson.isNotBlank() && parametersJson != "[]"
+            )
+        }
     }
 
     // 更新参数 - 新增方法
     suspend fun updateParameters(configId: String, parameters: List<ModelParameter<*>>) {
-        val config = getModelConfigFlow(configId).first()
-
         // 提取自定义参数并序列化
         val customParams = parameters.filter { it.isCustom }
         val customParamsJson = if (customParams.isNotEmpty()) {
@@ -352,73 +397,90 @@ class ModelConfigManager(private val context: Context) {
             "[]"
         }
 
-        // 从参数列表更新配置，包括自定义参数
-        val updatedConfig = config.copy(
-            maxTokens = parameters.find { it.id == "max_tokens" }?.currentValue as Int? ?: config.maxTokens,
-            maxTokensEnabled = parameters.find { it.id == "max_tokens" }?.isEnabled ?: config.maxTokensEnabled,
-            temperature = parameters.find { it.id == "temperature" }?.currentValue as Float? ?: config.temperature,
-            temperatureEnabled = parameters.find { it.id == "temperature" }?.isEnabled ?: config.temperatureEnabled,
-            topP = parameters.find { it.id == "top_p" }?.currentValue as Float? ?: config.topP,
-            topPEnabled = parameters.find { it.id == "top_p" }?.isEnabled ?: config.topPEnabled,
-            topK = parameters.find { it.id == "top_k" }?.currentValue as Int? ?: config.topK,
-            topKEnabled = parameters.find { it.id == "top_k" }?.isEnabled ?: config.topKEnabled,
-            presencePenalty = parameters.find { it.id == "presence_penalty" }?.currentValue as Float? ?: config.presencePenalty,
-            presencePenaltyEnabled = parameters.find { it.id == "presence_penalty" }?.isEnabled ?: config.presencePenaltyEnabled,
-            frequencyPenalty = parameters.find { it.id == "frequency_penalty" }?.currentValue as Float? ?: config.frequencyPenalty,
-            frequencyPenaltyEnabled = parameters.find { it.id == "frequency_penalty" }?.isEnabled ?: config.frequencyPenaltyEnabled,
-            repetitionPenalty = parameters.find { it.id == "repetition_penalty" }?.currentValue as Float? ?: config.repetitionPenalty,
-            repetitionPenaltyEnabled = parameters.find { it.id == "repetition_penalty" }?.isEnabled ?: config.repetitionPenaltyEnabled,
-            customParameters = customParamsJson,
-            hasCustomParameters = customParams.isNotEmpty()
-        )
-
-        saveConfigToDataStore(updatedConfig)
+        updateConfigInternal(configId) { current ->
+            current.copy(
+                    maxTokens =
+                            parameters.find { it.id == "max_tokens" }?.currentValue as Int?
+                                    ?: current.maxTokens,
+                    maxTokensEnabled =
+                            parameters.find { it.id == "max_tokens" }?.isEnabled
+                                    ?: current.maxTokensEnabled,
+                    temperature =
+                            parameters.find { it.id == "temperature" }?.currentValue as Float?
+                                    ?: current.temperature,
+                    temperatureEnabled =
+                            parameters.find { it.id == "temperature" }?.isEnabled
+                                    ?: current.temperatureEnabled,
+                    topP =
+                            parameters.find { it.id == "top_p" }?.currentValue as Float?
+                                    ?: current.topP,
+                    topPEnabled =
+                            parameters.find { it.id == "top_p" }?.isEnabled
+                                    ?: current.topPEnabled,
+                    topK =
+                            parameters.find { it.id == "top_k" }?.currentValue as Int?
+                                    ?: current.topK,
+                    topKEnabled =
+                            parameters.find { it.id == "top_k" }?.isEnabled
+                                    ?: current.topKEnabled,
+                    presencePenalty =
+                            parameters.find { it.id == "presence_penalty" }?.currentValue as Float?
+                                    ?: current.presencePenalty,
+                    presencePenaltyEnabled =
+                            parameters.find { it.id == "presence_penalty" }?.isEnabled
+                                    ?: current.presencePenaltyEnabled,
+                    frequencyPenalty =
+                            parameters.find { it.id == "frequency_penalty" }?.currentValue as Float?
+                                    ?: current.frequencyPenalty,
+                    frequencyPenaltyEnabled =
+                            parameters.find { it.id == "frequency_penalty" }?.isEnabled
+                                    ?: current.frequencyPenaltyEnabled,
+                    repetitionPenalty =
+                            parameters.find { it.id == "repetition_penalty" }?.currentValue as Float?
+                                    ?: current.repetitionPenalty,
+                    repetitionPenaltyEnabled =
+                            parameters.find { it.id == "repetition_penalty" }?.isEnabled
+                                    ?: current.repetitionPenaltyEnabled,
+                    customParameters = customParamsJson,
+                    hasCustomParameters = customParams.isNotEmpty()
+            )
+        }
     }
 
     // 更新图片直接处理配置
     suspend fun updateDirectImageProcessing(configId: String, enableDirectImageProcessing: Boolean): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig = config.copy(enableDirectImageProcessing = enableDirectImageProcessing)
-        saveConfigToDataStore(updatedConfig)
-        return updatedConfig
+        return updateConfigInternal(configId) {
+            it.copy(enableDirectImageProcessing = enableDirectImageProcessing)
+        }
     }
 
     suspend fun updateDirectAudioProcessing(configId: String, enableDirectAudioProcessing: Boolean): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig = config.copy(enableDirectAudioProcessing = enableDirectAudioProcessing)
-        saveConfigToDataStore(updatedConfig)
-        return updatedConfig
+        return updateConfigInternal(configId) {
+            it.copy(enableDirectAudioProcessing = enableDirectAudioProcessing)
+        }
     }
 
     suspend fun updateDirectVideoProcessing(configId: String, enableDirectVideoProcessing: Boolean): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig = config.copy(enableDirectVideoProcessing = enableDirectVideoProcessing)
-        saveConfigToDataStore(updatedConfig)
-        return updatedConfig
+        return updateConfigInternal(configId) {
+            it.copy(enableDirectVideoProcessing = enableDirectVideoProcessing)
+        }
     }
 
     // 更新 Google Search Grounding 配置 (仅Gemini支持)
     suspend fun updateGoogleSearch(configId: String, enableGoogleSearch: Boolean): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig = config.copy(enableGoogleSearch = enableGoogleSearch)
-        saveConfigToDataStore(updatedConfig)
-        return updatedConfig
+        return updateConfigInternal(configId) { it.copy(enableGoogleSearch = enableGoogleSearch) }
     }
 
     // 更新 Tool Call 配置
     suspend fun updateToolCall(configId: String, enableToolCall: Boolean): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig = config.copy(enableToolCall = enableToolCall)
-        saveConfigToDataStore(updatedConfig)
-        return updatedConfig
+        return updateConfigInternal(configId) { it.copy(enableToolCall = enableToolCall) }
     }
 
     // 更新 DeepSeek推理模式 配置
     suspend fun updateDeepseekReasoning(configId: String, enableDeepseekReasoning: Boolean): ModelConfigData {
-        val config = getModelConfigFlow(configId).first()
-        val updatedConfig = config.copy(enableDeepseekReasoning = enableDeepseekReasoning)
-        saveConfigToDataStore(updatedConfig)
-        return updatedConfig
+        return updateConfigInternal(configId) {
+            it.copy(enableDeepseekReasoning = enableDeepseekReasoning)
+        }
     }
 
     suspend fun updateContextSettings(
