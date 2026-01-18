@@ -44,7 +44,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.ai.assistance.operit"
+        applicationId = "com.hy.aetherai"
         minSdk = 26
         targetSdk = 34
         versionCode = 39
