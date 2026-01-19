@@ -189,9 +189,49 @@ class AIToolHandler private constructor(private val context: Context) {
     }
 
 
+    /**
+     * Returns a tool executor if available.
+     * If missing, it will:
+     * - Ensure default tools are registered (idempotent)
+     * - Auto-activate a package when the name looks like 'packName:toolName'
+     */
+    fun getToolExecutorOrActivate(toolName: String): ToolExecutor? {
+        var executor = availableTools[toolName]
+
+        if (executor == null && !defaultToolsRegistered.get()) {
+            try {
+                registerDefaultTools()
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to register default tools before executing tool $toolName", e)
+            }
+            executor = availableTools[toolName]
+        }
+
+        if (executor == null && toolName.contains(':')) {
+            val packageName = toolName.substringBefore(':', missingDelimiterValue = "")
+            if (packageName.isNotBlank()) {
+                try {
+                    val packageManager = getOrCreatePackageManager()
+                    val isPackageAvailable = packageManager.getAvailablePackages().containsKey(packageName)
+                    val isMcpAvailable = packageManager.getAvailableServerPackages().containsKey(packageName)
+                    if (isPackageAvailable || isMcpAvailable) {
+                        AppLogger.d(TAG, "Auto-activating package '$packageName' for tool $toolName")
+                        packageManager.usePackage(packageName)
+                        executor = availableTools[toolName]
+                    }
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Failed to auto-activate package '$packageName' for tool $toolName", e)
+                }
+            }
+        }
+
+        return executor
+    }
+
+
     /** Executes a tool directly */
     fun executeTool(tool: AITool): ToolResult {
-        val executor = availableTools[tool.name]
+        val executor = getToolExecutorOrActivate(tool.name)
 
         if (executor == null) {
             return ToolResult(

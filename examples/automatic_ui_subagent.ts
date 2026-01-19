@@ -422,17 +422,17 @@ const UIAutomationSubAgentTools = (function () {
     const CACHE_KEY = '__operit_ui_subagent_cached_agent_id';
     function getCachedAgentId(): string | undefined {
         try {
-            return (globalThis as any)[CACHE_KEY];
+            return (globalThis as unknown as Record<string, string | undefined>)[CACHE_KEY];
         } catch (_e) {
             return undefined;
         }
     }
-    function setCachedAgentId(value: any) {
+    function setCachedAgentId(value: unknown) {
         try {
             if (value === undefined || value === null || String(value).length === 0) {
-                delete (globalThis as any)[CACHE_KEY];
+                delete (globalThis as unknown as Record<string, string | undefined>)[CACHE_KEY];
             } else {
-                (globalThis as any)[CACHE_KEY] = String(value);
+                (globalThis as unknown as Record<string, string | undefined>)[CACHE_KEY] = String(value);
             }
         } catch (_e) {
         }
@@ -441,7 +441,7 @@ const UIAutomationSubAgentTools = (function () {
     interface ToolResponse {
         success: boolean;
         message: string;
-        data?: any;
+        data?: unknown;
     }
 
     function getPackageState(): string | undefined {
@@ -452,11 +452,51 @@ const UIAutomationSubAgentTools = (function () {
         }
     }
 
-    async function getInstalledAppPackages(): Promise<string[]> {
-        const appList = await Tools.System.listApps(false);
-        return (((appList as any)?.packages || []) as any[])
-            .map((p) => String(p || '').trim())
-            .filter((p) => p.length > 0);
+    type InstalledAppEntry = { name: string, pkg?: string, raw: string };
+
+    function errorMessage(e: unknown): string {
+        return e instanceof Error ? e.message : String(e);
+    }
+
+    function getStringArrayFromUnknown(v: unknown): string[] {
+        if (!Array.isArray(v)) return [];
+        return v.map((x) => String(x || '').trim()).filter((s) => s.length > 0);
+    }
+
+    function parseInstalledAppEntry(raw: string): InstalledAppEntry {
+        const s = String(raw || '').trim();
+        if (!s) return { name: '', raw: '' };
+        const open = s.lastIndexOf('(');
+        const close = s.lastIndexOf(')');
+        if (open >= 0 && close === s.length - 1 && open < close) {
+            const name = s.slice(0, open).trim();
+            const pkg = s.slice(open + 1, close).trim();
+            if (name && pkg) return { name, pkg, raw: s };
+        }
+        return { name: s, raw: s };
+    }
+
+    async function getInstalledApps(): Promise<{ entries: InstalledAppEntry[], names: string[] }> {
+        const appList = await Tools.System.listApps(false) as unknown;
+        const rawItems = getStringArrayFromUnknown((appList as { packages?: unknown } | null)?.packages);
+        const entries = rawItems.map(parseInstalledAppEntry).filter((e) => e.name);
+        const nameMap = new Map<string, string>();
+        for (const e of entries) nameMap.set(e.name.toLowerCase(), e.name);
+        const names = Array.from(nameMap.values()).sort((a, b) => a.localeCompare(b));
+        return { entries, names };
+    }
+
+    function matchTarget(targetApp: string, installed: InstalledAppEntry[]): { run: string, key: string } | null {
+        const t = String(targetApp || '').trim();
+        if (!t) return null;
+        const tl = t.toLowerCase();
+        const m =
+            installed.find((a) => (a.pkg || '').toLowerCase() === tl) ||
+            installed.find((a) => a.name.toLowerCase() === tl) ||
+            installed.find((a) => a.raw.toLowerCase() === tl);
+        if (!m) return null;
+        const run = m.pkg || m.name;
+        return { run, key: run.toLowerCase() };
     }
 
     async function usage_advice(_params: {}): Promise<ToolResponse> {
@@ -489,26 +529,26 @@ const UIAutomationSubAgentTools = (function () {
         const { intent, max_steps, agent_id, target_app } = params;
         const agentIdToUse = (agent_id && String(agent_id).length > 0) ? String(agent_id) : getCachedAgentId();
 
+        let targetAppForRun = target_app;
         if (target_app && String(target_app).trim().length > 0) {
-            const target = String(target_app).trim();
-            const installedApps = await getInstalledAppPackages();
-            const installedSet = new Set(installedApps.map((s) => s.toLowerCase()));
-            if (!installedSet.has(target.toLowerCase())) {
+            const installed = await getInstalledApps();
+            const matched = matchTarget(target_app, installed.entries);
+            if (!matched) {
                 return {
                     success: false,
-                    message: `目标应用不存在：当前给定的 target_app=“${target}” 未在已安装应用中找到。已返回已安装应用名列表。`,
+                    message: `目标应用不存在：当前给定的 target_app=“${String(target_app).trim()}” 未在已安装应用中找到。已返回已安装应用名列表。`,
                     data: {
-                        target_app: target,
-                        installed_apps: installedApps,
+                        target_app: String(target_app).trim(),
+                        installed_apps: installed.names,
                     },
                 };
             }
+            targetAppForRun = matched.run;
         }
 
-        const result = await Tools.UI.runSubAgent(intent, max_steps, agentIdToUse, target_app);
-        if (result && (result as any).agentId) {
-            setCachedAgentId((result as any).agentId);
-        }
+        const result = await Tools.UI.runSubAgent(intent, max_steps, agentIdToUse, targetAppForRun) as unknown;
+        const agentId = (result as { agentId?: unknown } | null)?.agentId;
+        if (agentId) setCachedAgentId(agentId);
         return {
             success: true,
             message: 'UI子代理执行完成',
@@ -516,22 +556,29 @@ const UIAutomationSubAgentTools = (function () {
         };
     }
 
-    async function run_subagent_parallel(params: {
+    type Slot = 1 | 2 | 3 | 4;
+    type ParallelParams = {
         intent_1: string, target_app_1: string, max_steps_1?: number, agent_id_1?: string,
         intent_2?: string, target_app_2?: string, max_steps_2?: number, agent_id_2?: string,
         intent_3?: string, target_app_3?: string, max_steps_3?: number, agent_id_3?: string,
         intent_4?: string, target_app_4?: string, max_steps_4?: number, agent_id_4?: string,
-    }): Promise<ToolResponse> {
-        const slots = [1, 2, 3, 4] as const;
+    };
+
+    async function run_subagent_parallel(params: ParallelParams): Promise<ToolResponse> {
+        const slots: Slot[] = [1, 2, 3, 4];
+        type IntentKey = `intent_${Slot}`;
+        type TargetKey = `target_app_${Slot}`;
+        type MaxStepsKey = `max_steps_${Slot}`;
+        type AgentIdKey = `agent_id_${Slot}`;
 
         const activeSlots = slots
             .map((i) => {
-                const intent = (params as any)[`intent_${i}`];
-                if (!intent || String(intent).trim().length === 0) return null;
-                const targetApp = (params as any)[`target_app_${i}`];
+                const intent = params[`intent_${i}` as IntentKey];
+                if (!intent || intent.trim().length === 0) return null;
+                const targetApp = params[`target_app_${i}` as TargetKey];
                 return { index: i, targetApp };
             })
-            .filter(Boolean) as Array<{ index: 1 | 2 | 3 | 4, targetApp: any }>;
+            .filter((x): x is { index: Slot, targetApp: string | undefined } => Boolean(x));
 
         const missingTargets = activeSlots
             .filter((s) => s.targetApp === undefined || s.targetApp === null || String(s.targetApp).trim().length === 0)
@@ -543,9 +590,31 @@ const UIAutomationSubAgentTools = (function () {
             };
         }
 
+        const installed = await getInstalledApps();
+        const resolvedBySlot = new Map<Slot, { key: string, run: string }>();
+        const missingApps: string[] = [];
+
+        for (const s of activeSlots) {
+            const t = String(s.targetApp || '').trim();
+            const m = matchTarget(t, installed.entries);
+            if (!m) missingApps.push(t);
+            else resolvedBySlot.set(s.index, m);
+        }
+
+        if (missingApps.length) {
+            return {
+                success: false,
+                message: `目标应用不存在：当前给定的 target_app 列表中包含未安装/不存在的应用：${missingApps.map((s) => `“${String(s).trim()}”`).join('，')}。已返回已安装应用名列表。`,
+                data: {
+                    missing_apps: missingApps,
+                    installed_apps: installed.names,
+                },
+            };
+        }
+
         const used: Record<string, number> = {};
         for (const s of activeSlots) {
-            const key = String(s.targetApp).trim().toLowerCase();
+            const key = resolvedBySlot.get(s.index)?.key || String(s.targetApp).trim().toLowerCase();
             const prev = used[key];
             if (prev !== undefined) {
                 return {
@@ -556,47 +625,34 @@ const UIAutomationSubAgentTools = (function () {
             used[key] = s.index;
         }
 
-        const targetAppsToCheck = activeSlots
-            .map((s) => String(s.targetApp || '').trim())
-            .filter((v) => v.length > 0);
-        if (targetAppsToCheck.length > 0) {
-            const installedApps = await getInstalledAppPackages();
-            const installedSet = new Set(installedApps.map((s) => s.toLowerCase()));
-            const missingApps = targetAppsToCheck.filter((t) => !installedSet.has(t.toLowerCase()));
-            if (missingApps.length > 0) {
-                return {
-                    success: false,
-                    message: `目标应用不存在：当前给定的 target_app 列表中包含未安装/不存在的应用：${missingApps.map((s) => `“${String(s).trim()}”`).join('，')}。已返回已安装应用名列表。`,
-                    data: {
-                        missing_apps: missingApps,
-                        installed_apps: installedApps,
-                    },
-                };
-            }
-        }
+        type ParallelSubAgentResult =
+            | { index: Slot, success: true, result: unknown }
+            | { index: Slot, success: false, error: string };
 
         const tasks = slots
             .map((i) => {
-                const intent = (params as any)[`intent_${i}`];
-                if (!intent || String(intent).trim().length === 0) return null;
+                const intent = params[`intent_${i}` as IntentKey];
+                if (!intent || intent.trim().length === 0) return null;
 
-                const maxSteps = (params as any)[`max_steps_${i}`];
-                const agentId = (params as any)[`agent_id_${i}`];
+                const maxSteps = params[`max_steps_${i}` as MaxStepsKey];
+                const agentId = params[`agent_id_${i}` as AgentIdKey];
+                const targetApp = resolvedBySlot.get(i)?.run ?? params[`target_app_${i}` as TargetKey];
 
-                return (async () => {
+                return (async (): Promise<ParallelSubAgentResult> => {
                     try {
                         const result = await Tools.UI.runSubAgent(
                             String(intent),
                             maxSteps === undefined ? undefined : Number(maxSteps),
-                            agentId === undefined || agentId === null || String(agentId).length === 0 ? undefined : String(agentId)
-                        );
+                            agentId === undefined || agentId === null || String(agentId).length === 0 ? undefined : String(agentId),
+                            targetApp
+                        ) as unknown;
                         return { index: i, success: true, result };
-                    } catch (e: any) {
-                        return { index: i, success: false, error: e?.message || String(e) };
+                    } catch (e: unknown) {
+                        return { index: i, success: false, error: errorMessage(e) };
                     }
                 })();
             })
-            .filter(Boolean) as Array<Promise<any>>;
+            .filter((x): x is Promise<ParallelSubAgentResult> => x !== null);
 
         const results = await Promise.all(tasks);
         const okCount = results.filter((r) => r.success).length;
@@ -613,11 +669,11 @@ const UIAutomationSubAgentTools = (function () {
         try {
             const result = await func(params);
             complete(result);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(`Tool ${func.name} failed unexpectedly`, error);
             complete({
                 success: false,
-                message: `工具执行时发生意外错误: ${error.message}`,
+                message: `工具执行时发生意外错误: ${errorMessage(error)}`,
             });
         }
     }

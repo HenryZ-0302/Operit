@@ -87,6 +87,7 @@ private enum class TaskStatus {
 private data class PlanExecutionState(
     val graph: ExecutionGraph?,
     val taskStatuses: Map<String, TaskStatus>,
+    val taskToolCounts: Map<String, Int>,
     val logs: List<String>,
     val summary: String?,
     val error: String?
@@ -94,7 +95,7 @@ private data class PlanExecutionState(
 
 private fun parsePlanStream(content: String): PlanExecutionState {
     val graphRegex = "<graph><!\\[CDATA\\[(.*?)]]></graph>".toRegex(RegexOption.DOT_MATCHES_ALL)
-    val updateRegex = """<update id="([^"]+)" status="([^"]+)"/>""".toRegex()
+    val updateRegex = """<update\s+id="([^"]+)"\s+status="([^"]+)"(?:\s+tool_count="([^"]+)")?(?:\s+error="([^"]*)")?\s*/>""".toRegex()
     val logRegex = "<log>(.*?)</log>".toRegex()
     val summaryRegex = "<summary>(.*?)</summary>".toRegex(RegexOption.DOT_MATCHES_ALL)
     val errorRegex = "<error>(.*?)</error>".toRegex()
@@ -110,6 +111,7 @@ private fun parsePlanStream(content: String): PlanExecutionState {
     }
 
     val taskStatuses = mutableMapOf<String, TaskStatus>()
+    val taskToolCounts = mutableMapOf<String, Int>()
     updateRegex.findAll(content).forEach {
         val id = it.groupValues[1]
         val status = when (it.groupValues[2]) {
@@ -119,13 +121,19 @@ private fun parsePlanStream(content: String): PlanExecutionState {
             else -> TaskStatus.TODO
         }
         taskStatuses[id] = status
+
+        val toolCountRaw = it.groupValues.getOrNull(3).orEmpty()
+        val toolCount = toolCountRaw.toIntOrNull()
+        if (toolCount != null) {
+            taskToolCounts[id] = toolCount
+        }
     }
 
     val logs = logRegex.findAll(content).map { it.groupValues[1] }.toList()
     val summary = summaryRegex.find(content)?.groupValues?.get(1)
     val error = errorRegex.find(content)?.groupValues?.get(1)
 
-    return PlanExecutionState(graph, taskStatuses, logs, summary, error)
+    return PlanExecutionState(graph, taskStatuses, taskToolCounts, logs, summary, error)
 }
 
 @Composable
@@ -141,6 +149,7 @@ fun PlanExecutionRenderer(
         ExecutionGraphDisplay(
             graph = state.graph!!,
             taskStatuses = state.taskStatuses,
+            taskToolCounts = state.taskToolCounts,
             logs = state.logs,
             summary = state.summary,
             modifier = modifier
@@ -210,6 +219,7 @@ fun PlanExecutionRenderer(
 private fun ExecutionGraphDisplay(
     graph: ExecutionGraph,
     taskStatuses: Map<String, TaskStatus>,
+    taskToolCounts: Map<String, Int>,
     logs: List<String>,
     summary: String?,
     modifier: Modifier = Modifier
@@ -240,8 +250,8 @@ private fun ExecutionGraphDisplay(
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
-            Text(
-                text = "Execution Plan",
+                Text(
+                    text = "Execution Plan",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -253,7 +263,7 @@ private fun ExecutionGraphDisplay(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
+                    .height(200.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(
                         Brush.verticalGradient(
@@ -268,6 +278,7 @@ private fun ExecutionGraphDisplay(
                 WorkflowGraph(
                     graph = graph,
                     taskStatuses = taskStatuses,
+                    taskToolCounts = taskToolCounts,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -288,8 +299,8 @@ private fun ExecutionGraphDisplay(
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         fontSize = 11.sp,
                         modifier = Modifier.padding(8.dp)
-                        )
-                    }
+                    )
+                }
             } else {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
@@ -317,12 +328,12 @@ private fun ExecutionGraphDisplay(
                             fontSize = 9.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
+                        )
                     }
                 }
+            }
+        }
+    }
 }
 
 private data class NodePositionData(
@@ -335,6 +346,7 @@ private data class NodePositionData(
 private fun WorkflowGraph(
     graph: ExecutionGraph,
     taskStatuses: Map<String, TaskStatus>,
+    taskToolCounts: Map<String, Int>,
     modifier: Modifier = Modifier
 ) {
     var scale by remember { mutableStateOf(1f) }
@@ -413,6 +425,7 @@ private fun WorkflowGraph(
                             backgroundColor = surfaceColor,
                             textColor = onSurfaceColor,
                             status = taskStatuses[nodeData.taskNode.id] ?: TaskStatus.TODO,
+                            toolCount = taskToolCounts[nodeData.taskNode.id] ?: 0,
                             todoColor = todoColor,
                             inProgressColor = inProgressColor,
                             completedColor = completedColor,
@@ -437,13 +450,13 @@ private fun calculateNodePositions(
 
     val levels = mutableMapOf<String, Int>()
     for (task in sortedTasks) {
-            val maxDepLevel = task.dependencies.map { levels[it] ?: -1 }.maxOrNull() ?: -1
-            levels[task.id] = maxDepLevel + 1
-        }
+        val maxDepLevel = task.dependencies.map { levels[it] ?: -1 }.maxOrNull() ?: -1
+        levels[task.id] = maxDepLevel + 1
+    }
 
     // Much larger, more spacious nodes
     val nodeWidth = 300f
-    val nodeHeight = 120f
+    val nodeHeight = 140f
     val horizontalSpacing = 50f
     val verticalSpacing = 60f
 
@@ -537,6 +550,7 @@ private fun DrawScope.drawTaskNode(
     backgroundColor: Color,
     textColor: Color,
     status: TaskStatus,
+    toolCount: Int,
     todoColor: Color,
     inProgressColor: Color,
     completedColor: Color,
@@ -649,8 +663,27 @@ private fun DrawScope.drawTaskNode(
         topLeft = position + Offset(padding, padding + taskNameLayout.size.height + 2f)
     )
 
+    val toolCountLayout = textMeasurer.measure(
+        text = AnnotatedString("tools: $toolCount"),
+        style = TextStyle(
+            color = textColor.copy(alpha = 0.7f),
+            fontSize = 7.sp,
+        ),
+        overflow = TextOverflow.Ellipsis,
+        maxLines = 1,
+        constraints = Constraints.fixedWidth(textWidth.toInt())
+    )
+
+    drawText(
+        textLayoutResult = toolCountLayout,
+        topLeft = position + Offset(
+            padding,
+            padding + taskNameLayout.size.height + taskIdLayout.size.height + 4f
+        )
+    )
+
     // Instruction - compact
-    val instructionTop = padding + taskNameLayout.size.height + taskIdLayout.size.height + 4f
+    val instructionTop = padding + taskNameLayout.size.height + taskIdLayout.size.height + toolCountLayout.size.height + 6f
     val instructionTextHeight = size.height - instructionTop - padding
 
     if (instructionTextHeight > 10f) { // Only show if there's enough space

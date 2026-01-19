@@ -220,7 +220,7 @@ class PlanModeManager(
             
             // 调用 AI 生成计划
             // 获取专门用于聊天的AI服务实例
-            val planningService = EnhancedAIService.getAIServiceForFunction(context, FunctionType.CHAT)
+            val planningService = enhancedAIService.getAIServiceForFunction(FunctionType.CHAT)
 
             // 使用获取到的服务实例来发送规划请求
             // 准备包含系统提示词的聊天历史
@@ -239,7 +239,15 @@ class PlanModeManager(
             // 收集规划结果
             val planBuilder = StringBuilder()
             planningStream.collect { chunk ->
+                if (isCancelled.get()) {
+                    planningService.cancelStreaming()
+                    throw kotlinx.coroutines.CancellationException("plan generation cancelled")
+                }
                 planBuilder.append(chunk)
+            }
+
+            if (isCancelled.get()) {
+                return null
             }
             
             val planResponse = ChatUtils.removeThinkingContent(planBuilder.toString().trim())

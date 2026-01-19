@@ -234,7 +234,7 @@
             android:name=".services.FloatingChatService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync|specialUse|microphone" />
+            android:foregroundServiceType="dataSync|specialUse" />
 
         <service
             android:name=".core.tools.system.ScreenCaptureService"

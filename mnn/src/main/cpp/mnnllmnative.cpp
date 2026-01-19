@@ -102,6 +102,24 @@ Java_com_ai_assistance_mnn_MNNLlmNative_nativeCreateLlm(
     }
 }
 
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ai_assistance_mnn_MNNLlmNative_nativeCountTokens(
+    JNIEnv* env, jclass clazz, jlong llmPtr, jstring jtext) {
+
+    if (llmPtr == 0) return 0;
+
+    Llm* llm = reinterpret_cast<Llm*>(llmPtr);
+    std::string text = jstringToString(env, jtext);
+
+    try {
+        std::vector<int> tokens = llm->tokenizer_encode(text);
+        return static_cast<jint>(tokens.size());
+    } catch (const std::exception& e) {
+        LOGE("Exception in countTokens: %s", e.what());
+        return 0;
+    }
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_ai_assistance_mnn_MNNLlmNative_nativeLoadLlm(
     JNIEnv* env, jclass clazz, jlong llmPtr) {
@@ -348,6 +366,19 @@ Java_com_ai_assistance_mnn_MNNLlmNative_nativeGenerateStream(
                 if (mContext->buffer.empty() || mContext->shouldStop) {
                     return;
                 }
+
+                const std::string endMarker = "<eop>";
+                auto pos = mContext->buffer.find(endMarker);
+                if (pos != std::string::npos) {
+                    std::string tail = mContext->buffer.substr(0, pos);
+                    mContext->buffer.clear();
+                    mContext->shouldStop = true;
+                    if (!tail.empty()) {
+                        mContext->buffer = std::move(tail);
+                    } else {
+                        return;
+                    }
+                }
                 
                 // 获取当前线程的 JNIEnv
                 bool needDetach = false;
@@ -462,9 +493,23 @@ Java_com_ai_assistance_mnn_MNNLlmNative_nativeGenerateStream(
         
         CallbackStream callbackBuf(&context);
         std::ostream outputStream(&callbackBuf);
-        
-        // 执行生成（使用历史记录，让 LLM 内部自动应用 chat template）
-        llm->response(history, &outputStream, nullptr, maxTokens);
+
+        llm->reset();
+
+        int maxNewTokens = maxTokens > 0 ? static_cast<int>(maxTokens) : 512;
+        if (maxNewTokens > 8192) {
+            maxNewTokens = 8192;
+        }
+
+        int currentSize = 0;
+
+        llm->response(history, &outputStream, "<eop>", 1);
+        currentSize++;
+
+        while (!context.shouldStop && currentSize < maxNewTokens && !checkCancelFlag(llmPtr)) {
+            llm->generate(1);
+            currentSize++;
+        }
         
         // 刷新剩余缓冲区（使用 callbackBuf 的方法以确保线程安全）
         if (!context.buffer.empty() && !context.shouldStop) {
@@ -533,6 +578,109 @@ Java_com_ai_assistance_mnn_MNNLlmNative_nativeApplyChatTemplate(
     } catch (const std::exception& e) {
         LOGE("Exception in applyChatTemplate: %s", e.what());
         return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_ai_assistance_mnn_MNNLlmNative_nativeApplyChatTemplateWithHistory(
+    JNIEnv* env, jclass clazz,
+    jlong llmPtr,
+    jobject jhistory) {
+
+    if (llmPtr == 0) return nullptr;
+
+    Llm* llm = reinterpret_cast<Llm*>(llmPtr);
+
+    std::vector<std::pair<std::string, std::string>> history;
+
+    jclass listClass = env->FindClass("java/util/List");
+    jmethodID sizeMethod = env->GetMethodID(listClass, "size", "()I");
+    jmethodID getMethod = env->GetMethodID(listClass, "get", "(I)Ljava/lang/Object;");
+    jint listSize = env->CallIntMethod(jhistory, sizeMethod);
+
+    jclass pairClass = env->FindClass("kotlin/Pair");
+    jmethodID getFirstMethod = env->GetMethodID(pairClass, "getFirst", "()Ljava/lang/Object;");
+    jmethodID getSecondMethod = env->GetMethodID(pairClass, "getSecond", "()Ljava/lang/Object;");
+
+    for (jint i = 0; i < listSize; i++) {
+        jobject pairObj = env->CallObjectMethod(jhistory, getMethod, i);
+        if (pairObj == nullptr) continue;
+
+        jobject roleObj = env->CallObjectMethod(pairObj, getFirstMethod);
+        jobject contentObj = env->CallObjectMethod(pairObj, getSecondMethod);
+
+        if (roleObj != nullptr && contentObj != nullptr) {
+            std::string role = jstringToString(env, (jstring)roleObj);
+            std::string content = jstringToString(env, (jstring)contentObj);
+            history.emplace_back(role, content);
+        }
+
+        if (roleObj) env->DeleteLocalRef(roleObj);
+        if (contentObj) env->DeleteLocalRef(contentObj);
+        env->DeleteLocalRef(pairObj);
+    }
+
+    env->DeleteLocalRef(listClass);
+    env->DeleteLocalRef(pairClass);
+
+    try {
+        std::string templated = llm->apply_chat_template(history);
+        return stringToJstring(env, templated);
+    } catch (const std::exception& e) {
+        LOGE("Exception in applyChatTemplateWithHistory: %s", e.what());
+        return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_ai_assistance_mnn_MNNLlmNative_nativeCountTokensWithHistory(
+    JNIEnv* env, jclass clazz,
+    jlong llmPtr,
+    jobject jhistory) {
+
+    if (llmPtr == 0) return 0;
+
+    Llm* llm = reinterpret_cast<Llm*>(llmPtr);
+
+    std::vector<std::pair<std::string, std::string>> history;
+
+    jclass listClass = env->FindClass("java/util/List");
+    jmethodID sizeMethod = env->GetMethodID(listClass, "size", "()I");
+    jmethodID getMethod = env->GetMethodID(listClass, "get", "(I)Ljava/lang/Object;");
+    jint listSize = env->CallIntMethod(jhistory, sizeMethod);
+
+    jclass pairClass = env->FindClass("kotlin/Pair");
+    jmethodID getFirstMethod = env->GetMethodID(pairClass, "getFirst", "()Ljava/lang/Object;");
+    jmethodID getSecondMethod = env->GetMethodID(pairClass, "getSecond", "()Ljava/lang/Object;");
+
+    for (jint i = 0; i < listSize; i++) {
+        jobject pairObj = env->CallObjectMethod(jhistory, getMethod, i);
+        if (pairObj == nullptr) continue;
+
+        jobject roleObj = env->CallObjectMethod(pairObj, getFirstMethod);
+        jobject contentObj = env->CallObjectMethod(pairObj, getSecondMethod);
+
+        if (roleObj != nullptr && contentObj != nullptr) {
+            std::string role = jstringToString(env, (jstring)roleObj);
+            std::string content = jstringToString(env, (jstring)contentObj);
+            history.emplace_back(role, content);
+        }
+
+        if (roleObj) env->DeleteLocalRef(roleObj);
+        if (contentObj) env->DeleteLocalRef(contentObj);
+        env->DeleteLocalRef(pairObj);
+    }
+
+    env->DeleteLocalRef(listClass);
+    env->DeleteLocalRef(pairClass);
+
+    try {
+        std::string templated = llm->apply_chat_template(history);
+        std::vector<int> tokens = llm->tokenizer_encode(templated);
+        return static_cast<jint>(tokens.size());
+    } catch (const std::exception& e) {
+        LOGE("Exception in countTokensWithHistory: %s", e.what());
+        return 0;
     }
 }
 

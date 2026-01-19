@@ -91,6 +91,20 @@ def _get_stat(cwd: Path) -> str:
     return _run_git(["diff", "--cached", "--stat"], cwd=cwd).strip()
 
 
+def _read_multiline_user_input(header: str) -> str:
+    print(header)
+    lines: list[str] = []
+    while True:
+        try:
+            line = input()
+        except EOFError:
+            break
+        if not line.strip():
+            break
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
 def _extract_commit_subject(resp: dict) -> str:
     try:
         msg = resp["choices"][0]["message"]["content"]
@@ -138,6 +152,11 @@ def main() -> int:
         action="store_true",
         help="Run git add -A before generating message",
     )
+    parser.add_argument(
+        "--extra-zh",
+        default="",
+        help="Optional extra notes in Chinese to help the AI write a better English commit subject",
+    )
     args = parser.parse_args()
 
     _load_env(Path(args.env))
@@ -174,17 +193,24 @@ def main() -> int:
         )
         return 2
 
+    extra_zh = (args.extra_zh or "").strip()
+    if not extra_zh and (not args.yes) and sys.stdin.isatty():
+        extra_zh = _read_multiline_user_input(
+            "Optional: enter extra notes in Chinese (press Enter on an empty line to finish; leave blank to skip):"
+        )
+
     system_prompt = (
         "You are an expert software engineer writing a git commit subject line. "
-        "You must base the subject ONLY on the provided staged change summary (git diff --cached --stat) "
-        "and the staged diff. "
+        "You must base the subject on the provided staged change summary (git diff --cached --stat) "
+        "and the staged diff, plus optional author notes. "
         "Your subject must reflect ALL meaningful staged changes, including small or scattered updates; "
         "do not ignore secondary changes. "
         "If the staged changes span multiple areas and a single narrow theme would omit changes, "
         "choose a broader but accurate subject and optionally use 'and/plus' or a 'misc'/'follow-up' phrasing "
         "to cover secondary updates while staying concise. "
         "If the diff content is truncated (contains '[diff truncated]'), avoid overly specific wording and rely more on --stat. "
-        "Never invent changes that are not present in the inputs."
+        "Never invent changes that are not present in the inputs. "
+        "The output must be a single-line English subject."
     )
 
     user_prompt = textwrap.dedent(
@@ -193,10 +219,14 @@ def main() -> int:
 
         Rules:
         - Output ONLY the subject line.
+        - Must be English, even if the author notes are Chinese.
         - Imperative mood (e.g., 'Fix', 'Add', 'Refactor').
         - Prefer Conventional Commits if obvious (feat/fix/refactor/chore/docs/test/build), otherwise a normal subject.
         - No trailing period.
         - Try to keep <= 72 characters.
+
+        Optional author notes (may be Chinese):
+        {extra_zh or '[none]'}
 
         git diff --cached --stat:
         {stat}

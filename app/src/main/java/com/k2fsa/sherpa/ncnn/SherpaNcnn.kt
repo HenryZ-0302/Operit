@@ -41,7 +41,7 @@ class SherpaNcnn(
     var config: RecognizerConfig,
     assetManager: AssetManager? = null,
 ) {
-    private val ptr: Long
+    private var ptr: Long
 
     init {
         if (assetManager != null) {
@@ -52,7 +52,15 @@ class SherpaNcnn(
     }
 
     protected fun finalize() {
-        delete(ptr)
+        release()
+    }
+
+    @Synchronized
+    fun release() {
+        val p = ptr
+        if (p == 0L) return
+        ptr = 0L
+        delete(p)
     }
 
     fun acceptSamples(samples: FloatArray) =

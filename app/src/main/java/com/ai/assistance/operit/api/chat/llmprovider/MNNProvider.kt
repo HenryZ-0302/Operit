@@ -49,6 +49,8 @@ class MNNProvider(
     // MNN LLM Session 实例
     private var llmSession: MNNLlmSession? = null
 
+    private var cachedModelMaxAllTokens: Int? = null
+
     // Token计数
     private var _inputTokenCount = 0
     private var _outputTokenCount = 0
@@ -177,11 +179,90 @@ class MNNProvider(
     private suspend fun countTokens(text: String): Int = withContext(Dispatchers.IO) {
         try {
             val session = llmSession ?: return@withContext estimateTokens(text)
-            session.tokenize(text).size
+            session.countTokens(text)
         } catch (e: Exception) {
             AppLogger.w(TAG, "Token计数失败，使用估算", e)
             estimateTokens(text)
         }
+    }
+
+    private fun readModelMaxAllTokens(modelDir: String): Int {
+        return try {
+            val configFile = File(modelDir, "llm_config.json")
+            if (!configFile.exists()) {
+                2048
+            } else {
+                val json = JSONObject(configFile.readText())
+                json.optInt("max_all_tokens", 2048)
+            }
+        } catch (_: Exception) {
+            2048
+        }
+    }
+
+    private fun trimHistoryToTokenBudget(
+        session: MNNLlmSession,
+        history: List<Pair<String, String>>,
+        maxPromptTokens: Int
+    ): List<Pair<String, String>> {
+        if (history.isEmpty()) return history
+
+        val systemPrefixCount = if (history.first().first == "system") 1 else 0
+
+        val fullTokens = kotlin.runCatching { session.countTokensWithHistory(history) }.getOrDefault(Int.MAX_VALUE)
+        if (fullTokens <= maxPromptTokens) return history
+
+        if (history.size <= systemPrefixCount + 1) {
+            if (systemPrefixCount == 1) {
+                val withoutSystem = history.drop(1)
+                val withoutSystemTokens = kotlin.runCatching { session.countTokensWithHistory(withoutSystem) }.getOrDefault(Int.MAX_VALUE)
+                if (withoutSystemTokens <= maxPromptTokens) {
+                    return withoutSystem
+                }
+            }
+            return history
+        }
+
+        var low = systemPrefixCount
+        var high = history.size - 1
+        while (low < high) {
+            val mid = (low + high) / 2
+            val candidate = ArrayList<Pair<String, String>>(history.size - (mid - systemPrefixCount))
+            if (systemPrefixCount == 1) {
+                candidate.add(history[0])
+            }
+            for (i in mid until history.size) {
+                candidate.add(history[i])
+            }
+
+            val tokens = kotlin.runCatching { session.countTokensWithHistory(candidate) }.getOrDefault(Int.MAX_VALUE)
+            if (tokens > maxPromptTokens) {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        val trimmed = ArrayList<Pair<String, String>>(history.size - (low - systemPrefixCount))
+        if (systemPrefixCount == 1) {
+            trimmed.add(history[0])
+        }
+        for (i in low until history.size) {
+            trimmed.add(history[i])
+        }
+
+        if (systemPrefixCount == 1) {
+            val trimmedTokens = kotlin.runCatching { session.countTokensWithHistory(trimmed) }.getOrDefault(Int.MAX_VALUE)
+            if (trimmedTokens > maxPromptTokens) {
+                val withoutSystem = trimmed.drop(1)
+                val withoutSystemTokens = kotlin.runCatching { session.countTokensWithHistory(withoutSystem) }.getOrDefault(Int.MAX_VALUE)
+                if (withoutSystemTokens <= maxPromptTokens) {
+                    return withoutSystem
+                }
+            }
+        }
+
+        return trimmed
     }
 
     /**
@@ -264,23 +345,28 @@ class MNNProvider(
             val fullHistory = chatHistory.toMutableList().apply {
                 add("user" to message)
             }
-            
-            // 估算输入token计数（用于显示）
-            val estimatedPrompt = buildPrompt(message, chatHistory)
-            _inputTokenCount = countTokens(estimatedPrompt)
+
+            val modelDir = getModelDir(context, modelName)
+            val maxAllTokens = cachedModelMaxAllTokens ?: readModelMaxAllTokens(modelDir).also { cachedModelMaxAllTokens = it }
+
+            val requestedMaxNewTokens = modelParameters
+                .find { it.name == "max_tokens" }
+                ?.let { (it.currentValue as? Number)?.toInt() }
+                ?: -1
+            val effectiveMaxNewTokens = (if (requestedMaxNewTokens > 0) requestedMaxNewTokens else 512).coerceAtMost(8192)
+            val maxPromptTokens = (maxAllTokens - effectiveMaxNewTokens).coerceAtLeast(128)
+
+            val safeHistory = trimHistoryToTokenBudget(session, fullHistory, maxPromptTokens)
+
+            _inputTokenCount = kotlin.runCatching { session.countTokensWithHistory(safeHistory) }
+                .getOrElse { countTokens(buildPrompt(message, chatHistory)) }
             onTokensUpdated(_inputTokenCount, 0, 0)
 
             AppLogger.d(TAG, "开始MNN LLM推理，历史消息数: ${fullHistory.size}, thinking模式: $enableThinking")
 
-            // 从模型参数中获取 max_tokens（如果有的话）
-            val maxTokens = modelParameters
-                .find { it.name == "max_tokens" }
-                ?.let { (it.currentValue as? Number)?.toInt() }
-                ?: -1  // -1 表示使用默认值
-
             // 使用流式生成（传递历史记录，让LLM内部应用chat template）
             var outputTokenCount = 0
-            val success = session.generateStream(fullHistory, maxTokens) { token ->
+            val success = session.generateStream(safeHistory, requestedMaxNewTokens) { token ->
                 if (isCancelled) {
                     false  // 停止生成
                 } else {
@@ -544,9 +630,33 @@ class MNNProvider(
         chatHistory: List<Pair<String, String>>,
         availableTools: List<ToolPrompt>?
     ): Int {
-        // MNN本地模型暂不支持工具调用，忽略availableTools参数
-        val prompt = buildPrompt(message, chatHistory)
-        return countTokens(prompt)
+        val initResult = initModel()
+        if (initResult.isFailure) {
+            val prompt = buildPrompt(message, chatHistory)
+            return countTokens(prompt)
+        }
+
+        val session = llmSession ?: run {
+            val prompt = buildPrompt(message, chatHistory)
+            return countTokens(prompt)
+        }
+
+        val modelDir = getModelDir(context, modelName)
+        val maxAllTokens = cachedModelMaxAllTokens ?: readModelMaxAllTokens(modelDir).also { cachedModelMaxAllTokens = it }
+
+        val fullHistory = chatHistory.toMutableList().apply {
+            if (message.isNotBlank()) {
+                add("user" to message)
+            }
+        }
+
+        val maxPromptTokens = (maxAllTokens - 512).coerceAtLeast(128)
+        val safeHistory = trimHistoryToTokenBudget(session, fullHistory, maxPromptTokens)
+        return kotlin.runCatching { session.countTokensWithHistory(safeHistory) }
+            .getOrElse {
+                val prompt = buildPrompt(message, chatHistory)
+                countTokens(prompt)
+            }
     }
 
     override suspend fun getModelsList(): Result<List<ModelOption>> {

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.log10
@@ -617,19 +618,31 @@ class SherpaMnnSpeechProvider(private val context: Context) : SpeechService {
     }
 
     override fun shutdown() {
-        scope.launch {
-            cancelRecognition()
+        runBlocking {
+            try {
+                cancelRecognition()
+            } catch (_: Exception) {
+            }
             withContext(Dispatchers.IO) {
-                stream?.release()
+                try {
+                    stream?.release()
+                } catch (_: Exception) {
+                }
                 stream = null
-                vad?.release()
+                try {
+                    vad?.release()
+                } catch (_: Exception) {
+                }
                 vad = null
                 try {
                     sileroVad?.close()
                 } catch (_: Exception) {
                 }
                 sileroVad = null
-                recognizer?.release()
+                try {
+                    recognizer?.release()
+                } catch (_: Exception) {
+                }
                 recognizer = null
             }
             _isInitialized.value = false

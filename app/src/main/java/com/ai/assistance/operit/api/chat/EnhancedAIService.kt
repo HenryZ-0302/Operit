@@ -425,6 +425,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         isSubTask: Boolean = false,
         characterName: String? = null,
         avatarUri: String? = null,
+        onToolInvocation: (suspend (String) -> Unit)? = null,
         stream: Boolean = true
     ): Stream<String> {
         AppLogger.d(
@@ -609,7 +610,24 @@ class EnhancedAIService private constructor(private val context: Context) {
                 // 确保流处理完成后调用
                 if (!hadFatalError) {
                     val collector = this
-                    withContext(Dispatchers.IO) { processStreamCompletion(context, functionType, collector, enableThinking, enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask, characterName, avatarUri, stream) }
+                    withContext(Dispatchers.IO) {
+                        processStreamCompletion(
+                            context,
+                            functionType,
+                            collector,
+                            enableThinking,
+                            enableMemoryQuery,
+                            onNonFatalError,
+                            onTokenLimitExceeded,
+                            maxTokens,
+                            tokenUsageThreshold,
+                            isSubTask,
+                            characterName,
+                            avatarUri,
+                            onToolInvocation,
+                            stream
+                        )
+                    }
                 }
             }
         }
@@ -721,6 +739,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             isSubTask: Boolean,
             characterName: String? = null,
             avatarUri: String? = null,
+            onToolInvocation: (suspend (String) -> Unit)? = null,
             stream: Boolean = true
     ) {
         try {
@@ -837,6 +856,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                         isSubTask,
                         characterName,
                         avatarUri,
+                        onToolInvocation,
                         stream = stream
                 )
                 return
@@ -940,9 +960,14 @@ class EnhancedAIService private constructor(private val context: Context) {
         isSubTask: Boolean,
         characterName: String? = null,
         avatarUri: String? = null,
+        onToolInvocation: (suspend (String) -> Unit)? = null,
         stream: Boolean = true
     ) {
         val startTime = System.currentTimeMillis()
+
+        toolInvocations.forEach { invocation ->
+            onToolInvocation?.invoke(invocation.tool.name)
+        }
 
         if (!isSubTask) {
             withContext(Dispatchers.Main) {
@@ -964,7 +989,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 processToolResults(
                     allToolResults, context, functionType, collector, enableThinking,
                     enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask,
-                    characterName, avatarUri, stream
+                    characterName, avatarUri, onToolInvocation, stream
                 )
             }
         }
@@ -995,6 +1020,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             isSubTask: Boolean,
             characterName: String? = null,
             avatarUri: String? = null,
+            onToolInvocation: (suspend (String) -> Unit)? = null,
             stream: Boolean = true
     ) {
         val startTime = System.currentTimeMillis()
@@ -1144,7 +1170,22 @@ class EnhancedAIService private constructor(private val context: Context) {
                 AppLogger.d(TAG, "工具结果AI处理完成，收到 $totalChars 字符，耗时: ${processingTime}ms")
 
                 // 流处理完成，处理完成逻辑
-                processStreamCompletion(context, functionType, collector, enableThinking, enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask, characterName, avatarUri, stream)
+                processStreamCompletion(
+                    context,
+                    functionType,
+                    collector,
+                    enableThinking,
+                    enableMemoryQuery,
+                    onNonFatalError,
+                    onTokenLimitExceeded,
+                    maxTokens,
+                    tokenUsageThreshold,
+                    isSubTask,
+                    characterName,
+                    avatarUri,
+                    onToolInvocation,
+                    stream
+                )
             } catch (e: Exception) {
                 AppLogger.e(TAG, "处理工具执行结果时出错", e)
                 withContext(Dispatchers.Main) {

@@ -5,6 +5,7 @@ import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.PromptFunctionType
+import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.ChatUtils
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.stream
@@ -12,6 +13,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.coroutineContext
 
 /**
@@ -187,9 +189,11 @@ class TaskExecutor(
             return
         }
 
+        val toolCount = AtomicInteger(0)
+
         runningTasks[task.id] = job
         try {
-            onMessage("""<update id="${task.id}" status="IN_PROGRESS"/>""" + "\n")
+            onMessage("""<update id="${task.id}" status="IN_PROGRESS" tool_count="0"/>""" + "\n")
             
             // 构建任务的上下文信息
             val contextInfo = buildTaskContext(task, originalMessage)
@@ -213,7 +217,11 @@ class TaskExecutor(
                 tokenUsageThreshold = tokenUsageThreshold,
                 onNonFatalError = onNonFatalError,
                 customSystemPromptTemplate = com.ai.assistance.operit.core.config.SystemPromptConfig.SUBTASK_AGENT_PROMPT_TEMPLATE,
-                isSubTask = true
+                isSubTask = true,
+                onToolInvocation = { toolName ->
+                    val count = toolCount.incrementAndGet()
+                    onMessage("""<update id="${task.id}" status="IN_PROGRESS" tool_count="$count"/>""" + "\n")
+                }
             )
             
             // 收集流式响应
@@ -224,30 +232,30 @@ class TaskExecutor(
             }
             
             // 删除 thinking 标签后再存储结果，避免传递给后续依赖任务
-            val result = ChatUtils.removeThinkingContent(resultBuilder.toString().trim())
-            
+            val result = extractFinalNonToolAssistantContent(resultBuilder.toString())
+
             // 存储任务结果
             taskMutex.withLock {
                 taskResults[task.id] = result
             }
             
-            onMessage("""<update id="${task.id}" status="COMPLETED"/>""" + "\n")
+            onMessage("""<update id="${task.id}" status="COMPLETED" tool_count="${toolCount.get()}"/>""" + "\n")
             
         } catch (e: Exception) {
             // 捕获并处理异常，包括取消异常
             if (e is CancellationException) {
                 AppLogger.d(TAG, "Task ${task.id} was cancelled.")
-                onMessage("""<update id="${task.id}" status="FAILED" error="任务已取消"/>""" + "\n")
+                onMessage("""<update id="${task.id}" status="FAILED" tool_count="${toolCount.get()}" error="任务已取消"/>""" + "\n")
             } else {
-            AppLogger.e(TAG, "执行任务 ${task.id} 时发生错误", e)
-            val errorMessage = e.message ?: "Unknown error"
-            val escapedError = errorMessage.replace("\"", "&quot;")
-            onMessage("""<update id="${task.id}" status="FAILED" error="$escapedError"/>""" + "\n")
-            
-            // 即使失败也要存储结果，避免阻塞其他任务
-            taskMutex.withLock {
-                taskResults[task.id] = "任务执行失败: ${e.message}"
-            }
+                AppLogger.e(TAG, "执行任务 ${task.id} 时发生错误", e)
+                val errorMessage = e.message ?: "Unknown error"
+                val escapedError = errorMessage.replace("\"", "&quot;")
+                onMessage("""<update id="${task.id}" status="FAILED" tool_count="${toolCount.get()}" error="$escapedError"/>""" + "\n")
+                
+                // 即使失败也要存储结果，避免阻塞其他任务
+                taskMutex.withLock {
+                    taskResults[task.id] = "任务执行失败: ${e.message}"
+                }
             }
         } finally {
             // 确保任务执行完毕后从正在运行的任务列表中移除
@@ -292,6 +300,47 @@ ${task.instruction}
 
 请专注于完成这个特定的子任务，你的回答将作为整个计划的一部分。
         """.trim()
+    }
+
+    private fun extractFinalNonToolAssistantContent(raw: String): String {
+        val noThinking = ChatUtils.removeThinkingContent(raw.trim())
+
+        val lastToolLike = ChatMarkupRegex.toolOrToolResultBlock.findAll(noThinking).lastOrNull()
+        val tail =
+            if (lastToolLike != null) {
+                noThinking.substring(lastToolLike.range.last + 1)
+            } else {
+                noThinking
+            }
+
+        fun stripMarkup(text: String): String {
+            return text
+                .replace(ChatMarkupRegex.toolTag, "")
+                .replace(ChatMarkupRegex.toolSelfClosingTag, "")
+                .replace(ChatMarkupRegex.toolResultTag, "")
+                .replace(ChatMarkupRegex.toolResultSelfClosingTag, "")
+                .replace(ChatMarkupRegex.statusTag, "")
+                .replace(ChatMarkupRegex.statusSelfClosingTag, "")
+                .trim()
+        }
+
+        val tailStripped = stripMarkup(tail)
+        if (tailStripped.isNotBlank()) {
+            return tailStripped
+        }
+
+        val fullStripped = stripMarkup(noThinking)
+        if (fullStripped.isBlank()) {
+            return ""
+        }
+
+        return fullStripped
+            .split(Regex("\\n\\s*\\n+"))
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .lastOrNull()
+            ?: fullStripped
     }
     
     /**

@@ -446,6 +446,51 @@ const UIAutomationSubAgentTools = (function () {
             return undefined;
         }
     }
+    function errorMessage(e) {
+        return e instanceof Error ? e.message : String(e);
+    }
+    function getStringArrayFromUnknown(v) {
+        if (!Array.isArray(v))
+            return [];
+        return v.map((x) => String(x || '').trim()).filter((s) => s.length > 0);
+    }
+    function parseInstalledAppEntry(raw) {
+        const s = String(raw || '').trim();
+        if (!s)
+            return { name: '', raw: '' };
+        const open = s.lastIndexOf('(');
+        const close = s.lastIndexOf(')');
+        if (open >= 0 && close === s.length - 1 && open < close) {
+            const name = s.slice(0, open).trim();
+            const pkg = s.slice(open + 1, close).trim();
+            if (name && pkg)
+                return { name, pkg, raw: s };
+        }
+        return { name: s, raw: s };
+    }
+    async function getInstalledApps() {
+        const appList = await Tools.System.listApps(false);
+        const rawItems = getStringArrayFromUnknown(appList === null || appList === void 0 ? void 0 : appList.packages);
+        const entries = rawItems.map(parseInstalledAppEntry).filter((e) => e.name);
+        const nameMap = new Map();
+        for (const e of entries)
+            nameMap.set(e.name.toLowerCase(), e.name);
+        const names = Array.from(nameMap.values()).sort((a, b) => a.localeCompare(b));
+        return { entries, names };
+    }
+    function matchTarget(targetApp, installed) {
+        const t = String(targetApp || '').trim();
+        if (!t)
+            return null;
+        const tl = t.toLowerCase();
+        const m = installed.find((a) => (a.pkg || '').toLowerCase() === tl) ||
+            installed.find((a) => a.name.toLowerCase() === tl) ||
+            installed.find((a) => a.raw.toLowerCase() === tl);
+        if (!m)
+            return null;
+        const run = m.pkg || m.name;
+        return { run, key: run.toLowerCase() };
+    }
     async function usage_advice(_params) {
         const state = getPackageState();
         const isMainScreen = String(state).toLowerCase() === 'main_screen';
@@ -472,10 +517,26 @@ const UIAutomationSubAgentTools = (function () {
     async function run_subagent(params) {
         const { intent, max_steps, agent_id, target_app } = params;
         const agentIdToUse = (agent_id && String(agent_id).length > 0) ? String(agent_id) : getCachedAgentId();
-        const result = await Tools.UI.runSubAgent(intent, max_steps, agentIdToUse, target_app);
-        if (result && result.agentId) {
-            setCachedAgentId(result.agentId);
+        let targetAppForRun = target_app;
+        if (target_app && String(target_app).trim().length > 0) {
+            const installed = await getInstalledApps();
+            const matched = matchTarget(target_app, installed.entries);
+            if (!matched) {
+                return {
+                    success: false,
+                    message: `目标应用不存在：当前给定的 target_app=“${String(target_app).trim()}” 未在已安装应用中找到。已返回已安装应用名列表。`,
+                    data: {
+                        target_app: String(target_app).trim(),
+                        installed_apps: installed.names,
+                    },
+                };
+            }
+            targetAppForRun = matched.run;
         }
+        const result = await Tools.UI.runSubAgent(intent, max_steps, agentIdToUse, targetAppForRun);
+        const agentId = result === null || result === void 0 ? void 0 : result.agentId;
+        if (agentId)
+            setCachedAgentId(agentId);
         return {
             success: true,
             message: 'UI子代理执行完成',
@@ -483,16 +544,17 @@ const UIAutomationSubAgentTools = (function () {
         };
     }
     async function run_subagent_parallel(params) {
+        var _a;
         const slots = [1, 2, 3, 4];
         const activeSlots = slots
             .map((i) => {
             const intent = params[`intent_${i}`];
-            if (!intent || String(intent).trim().length === 0)
+            if (!intent || intent.trim().length === 0)
                 return null;
             const targetApp = params[`target_app_${i}`];
             return { index: i, targetApp };
         })
-            .filter(Boolean);
+            .filter((x) => Boolean(x));
         const missingTargets = activeSlots
             .filter((s) => s.targetApp === undefined || s.targetApp === null || String(s.targetApp).trim().length === 0)
             .map((s) => s.index);
@@ -502,9 +564,30 @@ const UIAutomationSubAgentTools = (function () {
                 message: `并行参数错误：intent_${missingTargets.join(', intent_')} 缺少 target_app_${missingTargets.join(', target_app_')}（目标应用名）。并行时必须为每个启用分支传入目标应用名，用于检测“同一应用不能出现在两个虚拟屏/agent_id”的冲突。`,
             };
         }
+        const installed = await getInstalledApps();
+        const resolvedBySlot = new Map();
+        const missingApps = [];
+        for (const s of activeSlots) {
+            const t = String(s.targetApp || '').trim();
+            const m = matchTarget(t, installed.entries);
+            if (!m)
+                missingApps.push(t);
+            else
+                resolvedBySlot.set(s.index, m);
+        }
+        if (missingApps.length) {
+            return {
+                success: false,
+                message: `目标应用不存在：当前给定的 target_app 列表中包含未安装/不存在的应用：${missingApps.map((s) => `“${String(s).trim()}”`).join('，')}。已返回已安装应用名列表。`,
+                data: {
+                    missing_apps: missingApps,
+                    installed_apps: installed.names,
+                },
+            };
+        }
         const used = {};
         for (const s of activeSlots) {
-            const key = String(s.targetApp).trim().toLowerCase();
+            const key = ((_a = resolvedBySlot.get(s.index)) === null || _a === void 0 ? void 0 : _a.key) || String(s.targetApp).trim().toLowerCase();
             const prev = used[key];
             if (prev !== undefined) {
                 return {
@@ -516,22 +599,24 @@ const UIAutomationSubAgentTools = (function () {
         }
         const tasks = slots
             .map((i) => {
+            var _a, _b;
             const intent = params[`intent_${i}`];
-            if (!intent || String(intent).trim().length === 0)
+            if (!intent || intent.trim().length === 0)
                 return null;
             const maxSteps = params[`max_steps_${i}`];
             const agentId = params[`agent_id_${i}`];
+            const targetApp = (_b = (_a = resolvedBySlot.get(i)) === null || _a === void 0 ? void 0 : _a.run) !== null && _b !== void 0 ? _b : params[`target_app_${i}`];
             return (async () => {
                 try {
-                    const result = await Tools.UI.runSubAgent(String(intent), maxSteps === undefined ? undefined : Number(maxSteps), agentId === undefined || agentId === null || String(agentId).length === 0 ? undefined : String(agentId));
+                    const result = await Tools.UI.runSubAgent(String(intent), maxSteps === undefined ? undefined : Number(maxSteps), agentId === undefined || agentId === null || String(agentId).length === 0 ? undefined : String(agentId), targetApp);
                     return { index: i, success: true, result };
                 }
                 catch (e) {
-                    return { index: i, success: false, error: (e === null || e === void 0 ? void 0 : e.message) || String(e) };
+                    return { index: i, success: false, error: errorMessage(e) };
                 }
             })();
         })
-            .filter(Boolean);
+            .filter((x) => x !== null);
         const results = await Promise.all(tasks);
         const okCount = results.filter((r) => r.success).length;
         return {
@@ -551,7 +636,7 @@ const UIAutomationSubAgentTools = (function () {
             console.error(`Tool ${func.name} failed unexpectedly`, error);
             complete({
                 success: false,
-                message: `工具执行时发生意外错误: ${error.message}`,
+                message: `工具执行时发生意外错误: ${errorMessage(error)}`,
             });
         }
     }

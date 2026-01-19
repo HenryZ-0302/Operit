@@ -51,6 +51,9 @@ object MNNLlmNative {
      */
     @JvmStatic
     external fun nativeDetokenize(llmPtr: Long, token: Int): String?
+
+    @JvmStatic
+    external fun nativeCountTokens(llmPtr: Long, text: String): Int
     
     /**
      * 生成文本（非流式）
@@ -83,6 +86,17 @@ object MNNLlmNative {
         maxTokens: Int,
         callback: GenerationCallback
     ): Boolean
+
+    @JvmStatic
+    external fun nativeApplyChatTemplateWithHistory(
+        llmPtr: Long,
+        history: List<Pair<String, String>>
+    ): String?
+    @JvmStatic
+    external fun nativeCountTokensWithHistory(
+        llmPtr: Long,
+        history: List<Pair<String, String>>
+    ): Int
     
     /**
      * 应用聊天模板

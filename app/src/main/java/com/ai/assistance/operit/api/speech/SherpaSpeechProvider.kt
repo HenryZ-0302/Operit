@@ -19,7 +19,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.max
@@ -39,6 +42,26 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
     private var audioRecord: AudioRecord? = null
     private var recordingJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
+
+    private fun clearAndReleaseAudioRecord() {
+        val record = audioRecord
+        audioRecord = null
+
+        if (record != null) {
+            try {
+                if (record.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    record.stop()
+                }
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Error stopping AudioRecord", e)
+            }
+            try {
+                record.release()
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Error releasing AudioRecord", e)
+            }
+        }
+    }
 
     private val _recognitionState = MutableStateFlow(SpeechService.RecognitionState.UNINITIALIZED)
     override val currentState: SpeechService.RecognitionState
@@ -68,31 +91,36 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
     private val VOLUME_SMOOTHING_FACTOR = 0.1f // 平滑因子
     private var currentVolume = 0f
 
+    private val initializeMutex = Mutex()
+
     override suspend fun initialize(): Boolean {
         if (isInitialized.value) return true
-        AppLogger.d(TAG, "Initializing sherpa-ncnn...")
-        return try {
-            withContext(Dispatchers.IO) {
-                createRecognizer()
-                if (recognizer != null) {
-                    AppLogger.d(TAG, "sherpa-ncnn initialized successfully")
-                    _isInitialized.value = true
-                    _recognitionState.value = SpeechService.RecognitionState.IDLE
-                    true
-                } else {
-                    AppLogger.e(TAG, "Failed to create sherpa-ncnn recognizer")
-                    _recognitionState.value = SpeechService.RecognitionState.ERROR
-                    _recognitionError.value =
+        return initializeMutex.withLock {
+            if (isInitialized.value) return@withLock true
+            AppLogger.d(TAG, "Initializing sherpa-ncnn...")
+            try {
+                withContext(Dispatchers.IO) {
+                    createRecognizer()
+                    if (recognizer != null) {
+                        AppLogger.d(TAG, "sherpa-ncnn initialized successfully")
+                        _isInitialized.value = true
+                        _recognitionState.value = SpeechService.RecognitionState.IDLE
+                        true
+                    } else {
+                        AppLogger.e(TAG, "Failed to create sherpa-ncnn recognizer")
+                        _recognitionState.value = SpeechService.RecognitionState.ERROR
+                        _recognitionError.value =
                             SpeechService.RecognitionError(-1, "Failed to initialize recognizer")
-                    false
+                        false
+                    }
                 }
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Failed to initialize sherpa-ncnn", e)
-            _recognitionState.value = SpeechService.RecognitionState.ERROR
-            _recognitionError.value =
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to initialize sherpa-ncnn", e)
+                _recognitionState.value = SpeechService.RecognitionState.ERROR
+                _recognitionError.value =
                     SpeechService.RecognitionError(-1, e.message ?: "Unknown error")
-            false
+                false
+            }
         }
     }
 
@@ -406,17 +434,7 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
             val text = recognizer?.text ?: ""
             _recognitionResult.value = SpeechService.RecognitionResult(text = text, isFinal = true)
 
-            try {
-                audioRecord?.stop()
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "Error stopping AudioRecord", e)
-            }
-            try {
-                audioRecord?.release()
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "Error releasing AudioRecord", e)
-            }
-            audioRecord = null
+            clearAndReleaseAudioRecord()
             _recognitionState.value = SpeechService.RecognitionState.IDLE
             _volumeLevelFlow.value = 0f // 重置音量
             return true
@@ -427,18 +445,12 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
     override suspend fun cancelRecognition() {
         if (recordingJob?.isActive == true) {
             recordingJob?.cancel()
+            try {
+                recordingJob?.join()
+            } catch (_: Exception) {
+            }
         }
-        try {
-            audioRecord?.stop()
-        } catch (e: Exception) {
-            AppLogger.w(TAG, "Error stopping AudioRecord", e)
-        }
-        try {
-            audioRecord?.release()
-        } catch (e: Exception) {
-            AppLogger.w(TAG, "Error releasing AudioRecord", e)
-        }
-        audioRecord = null
+        clearAndReleaseAudioRecord()
         _recognitionState.value = SpeechService.RecognitionState.IDLE
         _volumeLevelFlow.value = 0f // 重置音量
         // 同步清空识别文本，避免下次订阅拿到旧文本
@@ -450,10 +462,16 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
     }
 
     override fun shutdown() {
-        scope.launch {
-            cancelRecognition()
+        runBlocking {
+            try {
+                cancelRecognition()
+            } catch (_: Exception) {
+            }
             withContext(Dispatchers.IO) {
-                // 不直接调用finalize方法，而是让GC自然处理
+                try {
+                    recognizer?.release()
+                } catch (_: Exception) {
+                }
                 recognizer = null
                 try {
                     vad?.close()

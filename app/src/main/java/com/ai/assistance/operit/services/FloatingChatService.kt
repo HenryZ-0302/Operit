@@ -8,23 +8,25 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
-import android.os.Binder
 import android.os.Build
+import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
-import com.ai.assistance.operit.util.AppLogger
 import android.view.View
+import android.widget.Toast
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
+import com.ai.assistance.operit.core.application.ForegroundServiceCompat
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.api.chat.AIForegroundService
+import com.ai.assistance.operit.api.speech.SpeechServiceFactory
+import com.ai.assistance.operit.api.voice.VoiceServiceFactory
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.InputProcessingState
@@ -34,17 +36,15 @@ import com.ai.assistance.operit.data.model.SerializableTypography
 import com.ai.assistance.operit.data.model.toComposeColorScheme
 import com.ai.assistance.operit.data.model.toComposeTypography
 import com.ai.assistance.operit.data.model.PromptFunctionType
-import com.ai.assistance.operit.api.chat.AIForegroundService
-import com.ai.assistance.operit.api.speech.SpeechServiceFactory
-import com.ai.assistance.operit.api.voice.VoiceServiceFactory
 import com.ai.assistance.operit.services.floating.FloatingWindowCallback
 import com.ai.assistance.operit.services.floating.FloatingWindowManager
 import com.ai.assistance.operit.services.floating.FloatingWindowState
 import com.ai.assistance.operit.services.floating.StatusIndicatorStyle
 import com.ai.assistance.operit.ui.floating.FloatingMode
-import android.widget.Toast
+import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.FileUtils
+import com.ai.assistance.operit.util.WaifuMessageProcessor
 import com.google.gson.Gson
-import com.google.gson.JsonSyntaxException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -310,39 +310,16 @@ class FloatingChatService : Service(), FloatingWindowCallback {
                     )
             createNotificationChannel()
             val notification = createNotification()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val types =
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                        } else {
-                            0
-                        } or
-                        if (
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                                hasRecordAudioPermission()
-                        ) {
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                        } else {
-                            0
-                        }
-                startForeground(NOTIFICATION_ID, notification, types)
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
-            }
+            ForegroundServiceCompat.startForeground(
+                service = this,
+                notificationId = NOTIFICATION_ID,
+                notification = notification,
+                types = ForegroundServiceCompat.buildTypes(dataSync = true, specialUse = true)
+            )
 
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error in onCreate", e)
             stopSelf()
-        }
-    }
-
-    private fun hasRecordAudioPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED
-        } else {
-            true
         }
     }
 

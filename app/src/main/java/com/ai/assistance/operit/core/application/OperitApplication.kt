@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.LocaleList
+import android.system.Os
 import com.ai.assistance.operit.util.AppLogger
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
@@ -85,10 +86,22 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
     // 懒加载数据库实例
     private val database by lazy { AppDatabase.getDatabase(this) }
 
+    private fun configureOpenMpEnvironment() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                Os.setenv("KMP_AFFINITY", "disabled", true)
+                Os.setenv("OMP_PROC_BIND", "false", true)
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         val startTime = System.currentTimeMillis()
         instance = this
+
+        configureOpenMpEnvironment()
 
         // 每次应用冷启动时重置上一轮日志，避免日志无限增长
         AppLogger.resetLogFile()
@@ -385,6 +398,7 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
     }
 
     override fun attachBaseContext(base: Context) {
+        configureOpenMpEnvironment()
         // 在基础上下文附加前应用语言设置
         try {
             val code = LocaleUtils.getCurrentLanguage(base)
