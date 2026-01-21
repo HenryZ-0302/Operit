@@ -56,6 +56,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.FileInputStream
 import java.io.InputStream
 
@@ -192,23 +194,31 @@ class AIForegroundService : Service() {
     }
     
     private fun applyWakeListeningState() {
-        serviceScope.launch {
-            val shouldListen =
-                wakeListeningEnabled &&
-                    !wakeListeningSuspendedForIme &&
-                    !wakeListeningSuspendedForExternalRecording &&
-                    !wakeListeningSuspendedForFloatingFullscreen
-
-            if (shouldListen) {
-                startWakeListening()
-            } else {
-                val shouldRelease = !wakeListeningEnabled || wakeListeningSuspendedForFloatingFullscreen
-                stopWakeListening(releaseProvider = shouldRelease)
+        wakeStateApplyJob?.cancel()
+        wakeStateApplyJob =
+            serviceScope.launch {
+                wakeStateMutex.withLock {
+                    applyWakeListeningStateLocked()
+                }
             }
+    }
 
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(NOTIFICATION_ID, createNotification())
+    private suspend fun applyWakeListeningStateLocked() {
+        val shouldListen =
+            wakeListeningEnabled &&
+                !wakeListeningSuspendedForIme &&
+                !wakeListeningSuspendedForExternalRecording &&
+                !wakeListeningSuspendedForFloatingFullscreen
+
+        if (shouldListen) {
+            startWakeListeningLocked()
+        } else {
+            val shouldRelease = !wakeListeningEnabled || wakeListeningSuspendedForFloatingFullscreen
+            stopWakeListeningLocked(releaseProvider = shouldRelease)
         }
+
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID, createNotification())
     }
 
     private fun startRecordingStateMonitoring() {
@@ -307,6 +317,10 @@ class AIForegroundService : Service() {
     private var wakeMonitorJob: Job? = null
     private var wakeListeningJob: Job? = null
     private var wakeResumeJob: Job? = null
+
+    private val wakeStateMutex = Mutex()
+    private var wakeStateApplyJob: Job? = null
+    private var wakeStateRetryJob: Job? = null
 
     private var personalWakeJob: Job? = null
     private var personalWakeListener: PersonalWakeListener? = null
@@ -796,17 +810,23 @@ class AIForegroundService : Service() {
     }
 
     private suspend fun startWakeListening() {
+        wakeStateMutex.withLock {
+            startWakeListeningLocked()
+        }
+    }
+
+    private suspend fun startWakeListeningLocked() {
         if (!wakeListeningEnabled) return
         if (wakeRecognitionMode == WakeWordPreferences.WakeRecognitionMode.STT) {
             if (personalWakeJob?.isActive == true) {
                 AppLogger.d(TAG, "Switching wake listener: stopping personal wake before starting STT")
-                stopWakeListening(releaseProvider = true)
+                stopWakeListeningLocked(releaseProvider = true)
             }
             if (wakeListeningJob?.isActive == true) return
         } else {
             if (wakeListeningJob?.isActive == true) {
                 AppLogger.d(TAG, "Switching wake listener: stopping STT wake before starting personal")
-                stopWakeListening(releaseProvider = true)
+                stopWakeListeningLocked(releaseProvider = true)
             }
             if (personalWakeJob?.isActive == true) return
         }
@@ -859,19 +879,30 @@ class AIForegroundService : Service() {
             )
             AppLogger.d(TAG, "唤醒识别器 startRecognition: ok=$startOk")
             if (!startOk) {
-                wakeListeningEnabled = false
-                try {
-                    wakePrefs.saveAlwaysListeningEnabled(false)
-                } catch (_: Exception) {
+                val alreadyRunning =
+                    provider.isRecognizing ||
+                        provider.currentState == SpeechService.RecognitionState.PREPARING ||
+                        provider.currentState == SpeechService.RecognitionState.PROCESSING ||
+                        provider.currentState == SpeechService.RecognitionState.RECOGNIZING
+                if (!alreadyRunning) {
+                    AppLogger.w(TAG, "唤醒识别器 startRecognition failed (will retry)")
+                    wakeStateRetryJob?.cancel()
+                    wakeStateRetryJob =
+                        serviceScope.launch {
+                            delay(650)
+                            wakeStateMutex.withLock {
+                                applyWakeListeningStateLocked()
+                            }
+                        }
+                    return
                 }
-                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                manager.notify(NOTIFICATION_ID, createNotification())
-                return
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "启动唤醒监听失败: ${e.message}", e)
             return
         }
+
+        if (wakeListeningJob?.isActive == true) return
 
         wakeListeningJob =
             serviceScope.launch {
@@ -978,9 +1009,18 @@ class AIForegroundService : Service() {
     }
 
     private suspend fun stopWakeListening(releaseProvider: Boolean = false) {
+        wakeStateMutex.withLock {
+            stopWakeListeningLocked(releaseProvider = releaseProvider)
+        }
+    }
+
+    private suspend fun stopWakeListeningLocked(releaseProvider: Boolean = false) {
         AppLogger.d(TAG, "stopWakeListening")
         wakeResumeJob?.cancel()
         wakeResumeJob = null
+
+        wakeStateRetryJob?.cancel()
+        wakeStateRetryJob = null
 
         wakeListeningJob?.cancel()
         wakeListeningJob = null
@@ -1032,8 +1072,8 @@ class AIForegroundService : Service() {
                     SpeechPrerollStore.clearPendingWakePhrase()
                 }
 
-                if (wakeListeningEnabled && !wakeListeningSuspendedForIme && !wakeListeningSuspendedForExternalRecording && !wakeListeningSuspendedForFloatingFullscreen) {
-                    startWakeListening()
+                wakeStateMutex.withLock {
+                    applyWakeListeningStateLocked()
                 }
             }
     }

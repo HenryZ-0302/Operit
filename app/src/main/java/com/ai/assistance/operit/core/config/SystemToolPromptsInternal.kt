@@ -1004,7 +1004,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "agent_id",
                                         type = "string",
-                                        description = "optional, reuse agent session id",
+                                        description = "optional, reuse agent session id. If omitted or 'default', uses the main screen. If provided and not 'default', the requested virtual screen session must be active/available; otherwise the run fails.",
                                         required = false
                                     ),
                                     ToolParameterSchema(
@@ -2273,7 +2273,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "agent_id",
                                         type = "string",
-                                        description = "可选，可复用的 agent 会话 ID",
+                                        description = "可选，可复用的 agent 会话 ID。不传或传 'default' 时使用主屏幕；传入且不为 'default' 时表示请求使用对应的虚拟屏幕会话，虚拟屏幕必须处于可用状态，否则本次运行将失败。",
                                         required = false
                                     ),
                                     ToolParameterSchema(

@@ -84,6 +84,8 @@ class PhoneAgent(
 
     private var pauseFlow: StateFlow<Boolean>? = null
 
+    private val requiresVirtualScreen: Boolean = agentId.isNotBlank() && agentId != "default"
+
     init {
         actionHandler.setAgentId(agentId)
     }
@@ -110,6 +112,93 @@ class PhoneAgent(
             AppLogger.e("PhoneAgent", "[$agentId] $logMessageSuffix", e)
             false
         }
+    }
+
+    private suspend fun ensureRequiredVirtualScreenOrError(): String? {
+        if (!requiresVirtualScreen) return null
+
+        if (hasShowerDisplay("Error checking Shower state before ensure")) {
+            return null
+        }
+
+        val preferredLevel = androidPermissionPreferences.getPreferredPermissionLevel()
+            ?: AndroidPermissionLevel.STANDARD
+
+        var isAdbOrHigher = when (preferredLevel) {
+            AndroidPermissionLevel.DEBUGGER,
+            AndroidPermissionLevel.ADMIN,
+            AndroidPermissionLevel.ROOT -> true
+            else -> false
+        }
+
+        if (isAdbOrHigher) {
+            val experimentalEnabled = try {
+                DisplayPreferencesManager.getInstance(context).isExperimentalVirtualDisplayEnabled()
+            } catch (_: Exception) {
+                true
+            }
+            if (!experimentalEnabled) {
+                isAdbOrHigher = false
+            }
+        }
+
+        if (!isAdbOrHigher) {
+            return "需要调试/管理员/Root 权限并启用实验虚拟屏幕，才能使用虚拟屏幕自动化。"
+        }
+
+        if (preferredLevel == AndroidPermissionLevel.DEBUGGER) {
+            val isShizukuRunning = ShizukuAuthorizer.isShizukuServiceRunning()
+            val hasShizukuPermission = if (isShizukuRunning) ShizukuAuthorizer.hasShizukuPermission() else false
+            if (!isShizukuRunning || !hasShizukuPermission) {
+                return "Shizuku 不可用，无法启动虚拟屏幕。"
+            }
+        }
+
+        val okServer = try {
+            ShowerServerManager.ensureServerStarted(context)
+        } catch (e: Exception) {
+            AppLogger.e("PhoneAgent", "[$agentId] ensureRequiredVirtualScreen: ensureServerStarted failed", e)
+            false
+        }
+
+        if (!okServer) {
+            return "虚拟屏幕服务启动失败。"
+        }
+
+        val metrics = context.resources.displayMetrics
+        val width = metrics.widthPixels
+        val height = metrics.heightPixels
+        val dpi = metrics.densityDpi
+        val bitrateKbps = try {
+            DisplayPreferencesManager.getInstance(context).getVirtualDisplayBitrateKbps()
+        } catch (_: Exception) {
+            3000
+        }
+
+        val okDisplay = try {
+            ShowerController.ensureDisplay(agentId, context, width, height, dpi, bitrateKbps = bitrateKbps)
+        } catch (e: Exception) {
+            AppLogger.e("PhoneAgent", "[$agentId] ensureRequiredVirtualScreen: ensureDisplay failed", e)
+            false
+        }
+
+        val displayId = try {
+            ShowerController.getDisplayId(agentId)
+        } catch (_: Exception) {
+            null
+        }
+
+        if (!okDisplay || displayId == null) {
+            return "虚拟屏幕创建失败。"
+        }
+
+        try {
+            VirtualDisplayOverlay.getInstance(context, agentId).show(displayId)
+        } catch (e: Exception) {
+            AppLogger.e("PhoneAgent", "[$agentId] ensureRequiredVirtualScreen: error showing overlay", e)
+        }
+
+        return null
     }
 
     private suspend fun prewarmShowerIfNeeded(
@@ -199,6 +288,11 @@ class PhoneAgent(
             PhoneAgentJobRegistry.register(agentId, job)
         } else {
             AppLogger.w("PhoneAgent", "[$agentId] run: no Job in coroutineContext, registry disabled")
+        }
+
+        val requiredVirtualScreenError = ensureRequiredVirtualScreenOrError()
+        if (requiredVirtualScreenError != null) {
+            return requiredVirtualScreenError
         }
 
         var hasShowerDisplayAtStart = hasShowerDisplay("Error checking Shower virtual display state")
@@ -1017,8 +1111,7 @@ class ActionHandler(
             if (showerId != null) {
                 params + ToolParameter("display", showerId.toString())
             } else {
-                val id = VirtualDisplayManager.getInstance(context).getDisplayId()
-                if (id != null) params + ToolParameter("display", id.toString()) else params
+                params
             }
         } catch (e: Exception) {
             params

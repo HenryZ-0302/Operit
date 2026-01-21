@@ -448,11 +448,7 @@ open class StandardUITools(protected val context: Context) : ToolImplementations
                 toolImplementations = this
             )
 
-            val agentId = if (!requestedAgentId.isNullOrBlank()) {
-                requestedAgentId
-            } else {
-                java.util.UUID.randomUUID().toString().take(8)
-            }
+            val agentId = if (!requestedAgentId.isNullOrBlank()) requestedAgentId else "default"
             val agent = PhoneAgent(
                 context = context,
                 config = agentConfig,

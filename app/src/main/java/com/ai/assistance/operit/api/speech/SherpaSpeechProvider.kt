@@ -92,6 +92,7 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
     private var currentVolume = 0f
 
     private val initializeMutex = Mutex()
+    private val recognitionMutex = Mutex()
 
     override suspend fun initialize(): Boolean {
         if (isInitialized.value) return true
@@ -248,79 +249,119 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
             continuousMode: Boolean,
             partialResults: Boolean
     ): Boolean {
-        if (!isInitialized.value) {
-            if (!initialize()) return false
-        }
-        if (isRecognizing) return false
-
-        _recognitionState.value = SpeechService.RecognitionState.PREPARING
-        // 清空上一轮的识别结果，避免新的订阅者立刻收到旧的 StateFlow 值
-        _recognitionResult.value = SpeechService.RecognitionResult(text = "", isFinal = false, confidence = 0f)
-        recognizer?.reset(false) // 使用SherpaNcnn中的reset方法，参数为false不重新创建识别器
-
-        val pendingPcm = SpeechPrerollStore.consumePending()
-        if (pendingPcm != null && pendingPcm.isNotEmpty()) {
-            try {
-                recognizer?.let { recognizerInstance ->
-                    val samples = FloatArray(pendingPcm.size) { i -> pendingPcm[i] / 32768.0f }
-                    recognizerInstance.acceptSamples(samples)
-                    while (recognizerInstance.isReady()) {
-                        recognizerInstance.decode()
-                    }
-                }
-                AppLogger.d(TAG, "Applied preroll: samples=${pendingPcm.size}")
-            } catch (e: Exception) {
-                AppLogger.w(TAG, "Failed to apply preroll", e)
+        return recognitionMutex.withLock {
+            if (!isInitialized.value) {
+                if (!initialize()) return@withLock false
             }
-        }
+            if (
+                currentState == SpeechService.RecognitionState.PREPARING ||
+                    currentState == SpeechService.RecognitionState.PROCESSING ||
+                    currentState == SpeechService.RecognitionState.RECOGNIZING ||
+                    recordingJob?.isActive == true
+            ) {
+                return@withLock false
+            }
 
-        val sampleRateInHz = 16000
-        val channelConfig = AudioFormat.CHANNEL_IN_MONO
-        val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-        val minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
+            // 防御性清理：避免上一次异常/竞态导致 AudioRecord 遗留
+            clearAndReleaseAudioRecord()
 
-        audioRecord =
-                AudioRecord(
-                        MediaRecorder.AudioSource.VOICE_COMMUNICATION,
-                        sampleRateInHz,
-                        channelConfig,
-                        audioFormat,
-                        minBufferSize * 2
-                )
-        audioRecord?.startRecording()
-        _recognitionState.value = SpeechService.RecognitionState.RECOGNIZING
-        // 重置音量
-        currentVolume = 0f
-        _volumeLevelFlow.value = 0f
-        AppLogger.d(TAG, "Started recording")
+            _recognitionState.value = SpeechService.RecognitionState.PREPARING
+            // 清空上一轮的识别结果，避免新的订阅者立刻收到旧的 StateFlow 值
+            _recognitionResult.value = SpeechService.RecognitionResult(text = "", isFinal = false, confidence = 0f)
+            recognizer?.reset(false) // 使用SherpaNcnn中的reset方法，参数为false不重新创建识别器
 
-        recordingJob =
-                scope.launch {
-                    val bufferSize = minBufferSize
-                    val audioBuffer = ShortArray(bufferSize)
-                    var lastText = ""
-
-                    val vadInstance = try {
-                        (vad ?: OnnxSileroVad(context = context, speechDurationMs = 0)).also { created ->
-                            vad = created
-                            created.reset()
+            val pendingPcm = SpeechPrerollStore.consumePending()
+            if (pendingPcm != null && pendingPcm.isNotEmpty()) {
+                try {
+                    recognizer?.let { recognizerInstance ->
+                        val samples = FloatArray(pendingPcm.size) { i -> pendingPcm[i] / 32768.0f }
+                        recognizerInstance.acceptSamples(samples)
+                        while (recognizerInstance.isReady()) {
+                            recognizerInstance.decode()
                         }
-                    } catch (e: Exception) {
-                        AppLogger.w(TAG, "Failed to initialize Silero VAD, falling back to non-VAD mode", e)
-                        null
                     }
+                    AppLogger.d(TAG, "Applied preroll: samples=${pendingPcm.size}")
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Failed to apply preroll", e)
+                }
+            }
 
-                    val vadFrameSize = 512
-                    val vadFrame = ShortArray(vadFrameSize)
-                    var vadFramePos = 0
-                    var vadSpeechActive = false
+            val sampleRateInHz = 16000
+            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+            val minBufferSize = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
 
-                    while (isActive &&
-                            _recognitionState.value == SpeechService.RecognitionState.RECOGNIZING) {
-                        val ret = audioRecord?.read(audioBuffer, 0, audioBuffer.size) ?: 0
-                        if (ret > 0) {
+            if (minBufferSize <= 0) {
+                AppLogger.e(TAG, "AudioRecord.getMinBufferSize returned invalid size: $minBufferSize")
+                _recognitionState.value = SpeechService.RecognitionState.ERROR
+                _recognitionError.value = SpeechService.RecognitionError(-2, "Invalid AudioRecord buffer size")
+                return@withLock false
+            }
+
+            audioRecord =
+                    AudioRecord(
+                            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                            sampleRateInHz,
+                            channelConfig,
+                            audioFormat,
+                            minBufferSize * 2
+                    )
+            val recordInstance = audioRecord
+            if (recordInstance == null || recordInstance.state != AudioRecord.STATE_INITIALIZED) {
+                AppLogger.e(TAG, "AudioRecord is not initialized (state=${recordInstance?.state})")
+                clearAndReleaseAudioRecord()
+                _recognitionState.value = SpeechService.RecognitionState.ERROR
+                _recognitionError.value = SpeechService.RecognitionError(-3, "AudioRecord not initialized")
+                return@withLock false
+            }
+            try {
+                recordInstance.startRecording()
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "AudioRecord.startRecording failed", e)
+                clearAndReleaseAudioRecord()
+                _recognitionState.value = SpeechService.RecognitionState.ERROR
+                _recognitionError.value = SpeechService.RecognitionError(-4, e.message ?: "AudioRecord start failed")
+                return@withLock false
+            }
+            _recognitionState.value = SpeechService.RecognitionState.RECOGNIZING
+            // 重置音量
+            currentVolume = 0f
+            _volumeLevelFlow.value = 0f
+            AppLogger.d(TAG, "Started recording")
+
+            recordingJob =
+                    scope.launch {
+                    try {
+                        val bufferSize = minBufferSize
+                        val audioBuffer = ShortArray(bufferSize)
+                        var lastText = ""
+
+                        val vadInstance = try {
+                            (vad ?: OnnxSileroVad(context = context, speechDurationMs = 0)).also { created ->
+                                vad = created
+                                created.reset()
+                            }
+                        } catch (e: Exception) {
+                            AppLogger.w(TAG, "Failed to initialize Silero VAD, falling back to non-VAD mode", e)
+                            null
+                        }
+
+                        val vadFrameSize = 512
+                        val vadFrame = ShortArray(vadFrameSize)
+                        var vadFramePos = 0
+                        var vadSpeechActive = false
+
+                        while (isActive &&
+                                _recognitionState.value == SpeechService.RecognitionState.RECOGNIZING) {
+                            val ret = try {
+                                audioRecord?.read(audioBuffer, 0, audioBuffer.size) ?: 0
+                            } catch (e: Exception) {
+                                AppLogger.w(TAG, "AudioRecord.read failed", e)
+                                break
+                            }
+                            if (ret <= 0) break
+
                             SpeechPrerollStore.appendPcm(audioBuffer, ret)
-                            // 计算并更新音量级别
                             val volumeLevel = calculateVolumeLevel(audioBuffer, ret)
                             _volumeLevelFlow.value = volumeLevel
 
@@ -409,55 +450,78 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
                                 }
                             }
                         }
+                    } catch (e: Exception) {
+                        AppLogger.e(TAG, "Recording loop failed", e)
+                    } finally {
+                        withContext(Dispatchers.Main) {
+                            _recognitionState.value = SpeechService.RecognitionState.IDLE
+                            _volumeLevelFlow.value = 0f
+                        }
+                        AppLogger.d(TAG, "Stopped recording.")
                     }
-
-                    withContext(Dispatchers.Main) {
-                        _recognitionState.value = SpeechService.RecognitionState.IDLE
-                        _volumeLevelFlow.value = 0f // 重置音量
                     }
-                    AppLogger.d(TAG, "Stopped recording.")
-                }
-        return true
+            return@withLock true
+        }
     }
 
     override suspend fun stopRecognition(): Boolean {
-        if (recordingJob?.isActive == true &&
-                        _recognitionState.value == SpeechService.RecognitionState.RECOGNIZING
-        ) {
-            AppLogger.d(TAG, "Stopping recognition...")
-            recordingJob?.cancel()
-            _recognitionState.value =
-                    SpeechService.RecognitionState.PROCESSING // Indicate processing then idle
+        return recognitionMutex.withLock {
+            if (recordingJob?.isActive == true &&
+                            _recognitionState.value == SpeechService.RecognitionState.RECOGNIZING
+            ) {
+                AppLogger.d(TAG, "Stopping recognition...")
+                try {
+                    audioRecord?.stop()
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Error stopping AudioRecord", e)
+                }
+                _recognitionState.value =
+                        SpeechService.RecognitionState.PROCESSING // Indicate processing then idle
 
-            // Finalize recognition
-            recognizer?.inputFinished()
-            val text = recognizer?.text ?: ""
-            _recognitionResult.value = SpeechService.RecognitionResult(text = text, isFinal = true)
+                recordingJob?.cancel()
+                try {
+                    recordingJob?.join()
+                } catch (_: Exception) {
+                }
+                recordingJob = null
 
-            clearAndReleaseAudioRecord()
-            _recognitionState.value = SpeechService.RecognitionState.IDLE
-            _volumeLevelFlow.value = 0f // 重置音量
-            return true
+                // Finalize recognition
+                try {
+                    recognizer?.inputFinished()
+                    val text = recognizer?.text ?: ""
+                    _recognitionResult.value = SpeechService.RecognitionResult(text = text, isFinal = true)
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Finalize recognition failed", e)
+                }
+
+                clearAndReleaseAudioRecord()
+                _recognitionState.value = SpeechService.RecognitionState.IDLE
+                _volumeLevelFlow.value = 0f // 重置音量
+                return@withLock true
+            }
+            return@withLock false
         }
-        return false
     }
 
     override suspend fun cancelRecognition() {
-        if (recordingJob?.isActive == true) {
-            recordingJob?.cancel()
+        recognitionMutex.withLock {
+            if (recordingJob?.isActive == true) {
+                recordingJob?.cancel()
+                try {
+                    recordingJob?.join()
+                } catch (_: Exception) {
+                }
+            }
+            recordingJob = null
+            clearAndReleaseAudioRecord()
+            _recognitionState.value = SpeechService.RecognitionState.IDLE
+            _volumeLevelFlow.value = 0f // 重置音量
+            // 同步清空识别文本，避免下次订阅拿到旧文本
+            _recognitionResult.value = SpeechService.RecognitionResult(text = "", isFinal = false, confidence = 0f)
             try {
-                recordingJob?.join()
+                vad?.reset()
             } catch (_: Exception) {
             }
-        }
-        clearAndReleaseAudioRecord()
-        _recognitionState.value = SpeechService.RecognitionState.IDLE
-        _volumeLevelFlow.value = 0f // 重置音量
-        // 同步清空识别文本，避免下次订阅拿到旧文本
-        _recognitionResult.value = SpeechService.RecognitionResult(text = "", isFinal = false, confidence = 0f)
-        try {
-            vad?.reset()
-        } catch (_: Exception) {
         }
     }
 

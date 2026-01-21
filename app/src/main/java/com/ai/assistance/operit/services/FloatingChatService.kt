@@ -53,7 +53,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class FloatingChatService : Service(), FloatingWindowCallback {
@@ -646,12 +645,18 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             }
 
             try {
-                runBlocking(Dispatchers.IO) {
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     try {
-                        SpeechServiceFactory.getInstance(applicationContext).cancelRecognition()
+                        try {
+                            SpeechServiceFactory.getInstance(applicationContext).cancelRecognition()
+                        } catch (_: Exception) {
+                        }
+                        try {
+                            VoiceServiceFactory.getInstance(applicationContext).stop()
+                        } catch (_: Exception) {
+                        }
                     } catch (_: Exception) {
                     }
-                    VoiceServiceFactory.getInstance(applicationContext).stop()
                 }
             } catch (_: Exception) {
             }

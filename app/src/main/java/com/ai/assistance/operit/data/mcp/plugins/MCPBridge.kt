@@ -438,13 +438,7 @@ class MCPBridge private constructor(private val context: Context) {
                 withContext(Dispatchers.IO) {
                     try {
                         AppLogger.d(TAG, "重置桥接器 - 关闭所有服务并清空注册表...")
-                        val command =
-                                JSONObject().apply {
-                                    put("command", "reset")
-                                    put("id", UUID.randomUUID().toString())
-                                }
-
-                        val response = sendCommand(command)
+                        val response = sendCommand(MCPBridgeClient.buildResetCommand())
                         if (response?.optBoolean("success", false) == true) {
                             AppLogger.i(TAG, "桥接器重置成功")
                         } else {
@@ -594,47 +588,23 @@ class MCPBridge private constructor(private val context: Context) {
 
     // 注册新的MCP服务
     suspend fun registerMcpService(
-            name: String,
-            command: String,
-            args: List<String> = emptyList(),
-            description: String? = null,
-            env: Map<String, String>? = null,
-            cwd: String? = null
+        name: String,
+        command: String,
+        args: List<String> = emptyList(),
+        description: String? = null,
+        env: Map<String, String> = emptyMap(),
+        cwd: String? = null
     ): JSONObject? {
-        val params =
-                JSONObject().apply {
-                    put("type", "local") // Explicitly set type for local services
-                    put("name", name)
-                    put("command", command)
-                    if (args.isNotEmpty()) {
-                        // 显式创建JSONArray
-                        val argsArray = JSONArray()
-                        for (arg in args) {
-                            argsArray.put(arg)
-                        }
-                        put("args", argsArray)
-                    }
-                    if (description != null) {
-                        put("description", description)
-                    }
-                    if (env != null && env.isNotEmpty()) {
-                        val envObj = JSONObject()
-                        env.forEach { (key, value) -> envObj.put(key, value) }
-                        put("env", envObj)
-                    }
-                    if (cwd != null) {
-                        put("cwd", cwd)
-                    }
-                }
-
-        val commandObj =
-                JSONObject().apply {
-                    put("command", "register")
-                    put("id", UUID.randomUUID().toString())
-                    put("params", params)
-                }
-
-        return sendCommand(commandObj)
+        return sendCommand(
+            MCPBridgeClient.buildRegisterLocalCommand(
+                name = name,
+                command = command,
+                args = args,
+                description = description,
+                env = env,
+                cwd = cwd
+            )
+        )
     }
 
     // Overload for remote services
@@ -642,194 +612,75 @@ class MCPBridge private constructor(private val context: Context) {
         name: String,
         type: String,
         endpoint: String,
-        connectionType: String?,
+        connectionType: String? = null,
         description: String? = null,
         bearerToken: String? = null,
         headers: Map<String, String>? = null
     ): JSONObject? {
-        val params =
-            JSONObject().apply {
-                put("type", type)
-                put("name", name)
-                put("endpoint", endpoint)
-                if (connectionType != null) {
-                    put("connectionType", connectionType)
-                }
-                if (description != null) {
-                    put("description", description)
-                }
-                if (bearerToken != null) {
-                    put("bearerToken", bearerToken)
-                }
-                if (headers != null && headers.isNotEmpty()) {
-                    val headersObj = JSONObject()
-                    headers.forEach { (key, value) -> headersObj.put(key, value) }
-                    put("headers", headersObj)
-                }
-            }
-
-        val commandObj =
-            JSONObject().apply {
-                put("command", "register")
-                put("id", UUID.randomUUID().toString())
-                put("params", params)
-            }
-
-        return sendCommand(commandObj)
+        return sendCommand(
+            MCPBridgeClient.buildRegisterRemoteCommand(
+                name = name,
+                type = type,
+                endpoint = endpoint,
+                connectionType = connectionType,
+                description = description,
+                bearerToken = bearerToken,
+                headers = headers
+            )
+        )
     }
 
     // 取消注册MCP服务
     suspend fun unregisterMcpService(name: String): JSONObject? {
-        val command =
-                JSONObject().apply {
-                    put("command", "unregister")
-                    put("id", UUID.randomUUID().toString())
-                    put("params", JSONObject().apply { put("name", name) })
-                }
-
-        return sendCommand(command)
+        return sendCommand(MCPBridgeClient.buildUnregisterCommand(name))
     }
 
     // 列出所有注册的MCP服务或查询单个服务
     suspend fun listMcpServices(serviceName: String? = null): JSONObject? {
-        val command =
-                JSONObject().apply {
-                    put("command", "list")
-                    put("id", UUID.randomUUID().toString())
-                    if (serviceName != null) {
-                        put("params", JSONObject().apply { put("name", serviceName) })
-                    }
-                }
-
-        return sendCommand(command)
+        return sendCommand(MCPBridgeClient.buildListServicesCommand(serviceName))
     }
 
     // 启动MCP服务
     suspend fun spawnMcpService(
-            name: String? = null,
-            command: String? = null,
-            args: List<String>? = null,
-            env: Map<String, String>? = null,
-            cwd: String? = null,
-            timeoutMs: Long? = null
+        name: String? = null,
+        command: String? = null,
+        args: List<String>? = null,
+        env: Map<String, String>? = null,
+        cwd: String? = null,
+        timeoutMs: Long? = null
     ): JSONObject? {
-        val params = JSONObject()
-
-        if (name != null) {
-            params.put("name", name)
-        }
-        // Command and args are now only relevant for direct, unregistered local spawns
-        if (command != null) {
-            params.put("command", command)
-        }
-        if (args != null && args.isNotEmpty()) {
-            // 使用JSONArray来正确处理数组
-            val jsonArray = JSONArray()
-            for (arg in args) {
-                jsonArray.put(arg)
-            }
-            params.put("args", jsonArray)
-        }
-        if (env != null && env.isNotEmpty()) {
-            val envObj = JSONObject()
-            env.forEach { (key, value) -> envObj.put(key, value) }
-            params.put("env", envObj)
-        }
-        if (cwd != null) {
-            params.put("cwd", cwd)
-        }
-
-        if (timeoutMs != null) {
-            params.put("timeoutMs", timeoutMs)
-        }
-
-        val commandObj =
-                JSONObject().apply {
-                    put("command", "spawn")
-                    put("id", UUID.randomUUID().toString())
-                    put("params", params)
-                }
-
-        return sendCommand(commandObj)
+        return sendCommand(
+            MCPBridgeClient.buildSpawnCommand(
+                name = name,
+                command = command,
+                args = args,
+                env = env,
+                cwd = cwd,
+                timeoutMs = timeoutMs
+            )
+        )
     }
 
     // 停止MCP服务（不注销）
     suspend fun unspawnMcpService(name: String): JSONObject? {
-        val command =
-                JSONObject().apply {
-                    put("command", "unspawn")
-                    put("id", UUID.randomUUID().toString())
-                    put("params", JSONObject().apply { put("name", name) })
-                }
-
-        return sendCommand(command)
+        return sendCommand(MCPBridgeClient.buildUnspawnCommand(name))
     }
 
     // 获取工具列表
     suspend fun listTools(serviceName: String? = null): JSONObject? {
-        val params = JSONObject()
-
-        // Add service name if provided
-        if (serviceName != null) {
-            params.put("name", serviceName)
-        }
-
-        val command =
-                JSONObject().apply {
-                    put("command", "listtools")
-                    put("id", UUID.randomUUID().toString())
-
-                    // Only add params if we have any
-                    if (params.length() > 0) {
-                        put("params", params)
-                    }
-                }
-
-        // Enhanced logging with service name
         AppLogger.d(TAG, "获取工具列表${if (serviceName != null) " 服务: $serviceName" else " (默认服务)"}")
-
-        return sendCommand(command)
+        return sendCommand(MCPBridgeClient.buildListToolsCommand(serviceName))
     }
 
     // 缓存工具列表到bridge（用于已有缓存的插件）
     suspend fun cacheTools(serviceName: String, tools: List<JSONObject>): JSONObject? {
-        val toolsArray = JSONArray()
-        tools.forEach { tool ->
-            toolsArray.put(tool)
-        }
-
-        val params = JSONObject().apply {
-            put("name", serviceName)
-            put("tools", toolsArray)
-        }
-
-        val command = JSONObject().apply {
-            put("command", "cachetools")
-            put("id", UUID.randomUUID().toString())
-            put("params", params)
-        }
-
         AppLogger.d(TAG, "缓存工具列表到bridge 服务: $serviceName 工具数: ${tools.size}")
-
-        return sendCommand(command)
+        return sendCommand(MCPBridgeClient.buildCacheToolsCommand(serviceName, tools))
     }
 
     // 调用工具
     suspend fun callTool(method: String, params: JSONObject): JSONObject? {
-        val command =
-                JSONObject().apply {
-                    put("command", "toolcall")
-                    put("id", UUID.randomUUID().toString())
-                    put(
-                            "params",
-                            JSONObject().apply {
-                                put("method", method)
-                                put("params", params)
-                            }
-                    )
-                }
-
-        return sendCommand(command)
+        return sendCommand(MCPBridgeClient.buildToolCallCommand(name = null, method = method, params = params))
     }
 
     // 简化调用工具的方法
@@ -846,55 +697,41 @@ class MCPBridge private constructor(private val context: Context) {
      * @return 服务信息响应，如果失败则返回null
      */
     suspend fun getServiceStatus(serviceName: String): JSONObject? =
-            withContext(Dispatchers.IO) {
-                try {
-                    AppLogger.d(TAG, "查询服务 $serviceName 的状态")
-                    return@withContext listMcpServices(serviceName)
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "查询服务状态时出错: ${e.message}")
-                    return@withContext null
-                }
+        withContext(Dispatchers.IO) {
+            try {
+                AppLogger.d(TAG, "查询服务 $serviceName 的状态")
+                return@withContext listMcpServices(serviceName)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "查询服务状态时出错: ${e.message}")
+                return@withContext null
             }
+        }
 
     suspend fun getServiceLogs(serviceName: String): JSONObject? {
-        val command =
-            JSONObject().apply {
-                put("command", "logs")
-                put("id", UUID.randomUUID().toString())
-                put("params", JSONObject().apply { put("name", serviceName) })
-            }
-
-        return sendCommand(command)
+        return sendCommand(MCPBridgeClient.buildLogsCommand(serviceName))
     }
 
     /**
      * 重置桥接器 - 关闭所有服务、清空注册表和池子
-     * 
+     *
      * @return 重置是否成功
      */
     suspend fun resetBridge(): JSONObject? =
-            withContext(Dispatchers.IO) {
-                try {
-                    AppLogger.d(TAG, "开始重置桥接器，关闭所有服务并清空注册表...")
+        withContext(Dispatchers.IO) {
+            try {
+                AppLogger.d(TAG, "开始重置桥接器，关闭所有服务并清空注册表...")
+                val response = sendCommand(MCPBridgeClient.buildResetCommand())
 
-                    val command =
-                            JSONObject().apply {
-                                put("command", "reset")
-                                put("id", UUID.randomUUID().toString())
-                            }
-
-                    val response = sendCommand(command)
-
-                    if (response?.optBoolean("success", false) == true) {
-                        AppLogger.i(TAG, "桥接器重置成功")
-                        return@withContext response
-                    } else {
-                        AppLogger.w(TAG, "桥接器重置失败")
-                        return@withContext null
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "重置桥接器时出错: ${e.message}")
+                if (response?.optBoolean("success", false) == true) {
+                    AppLogger.i(TAG, "桥接器重置成功")
+                    return@withContext response
+                } else {
+                    AppLogger.w(TAG, "桥接器重置失败")
                     return@withContext null
                 }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "重置桥接器时出错: ${e.message}")
+                return@withContext null
             }
+        }
 }

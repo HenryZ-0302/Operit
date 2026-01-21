@@ -54,6 +54,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.ai.assistance.operit.services.ServiceLifecycleOwner
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.agent.ShowerController
+import com.ai.assistance.operit.core.tools.agent.PhoneAgentJobRegistry
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
@@ -290,10 +291,13 @@ class VirtualDisplayOverlay private constructor(private val context: Context, pr
         }
     }
 
-    fun hide() {
+    fun hide(cancelAutomation: Boolean = false, cancelReason: String = "User closed virtual screen") {
         Companion.instances.remove(agentId, this)
         runOnMainThread {
             try {
+                if (cancelAutomation) {
+                    PhoneAgentJobRegistry.cancelAgent(agentId, cancelReason)
+                }
                 ShowerController.shutdown(agentId)
                 overlayView?.let { view ->
                     lifecycleOwner?.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
@@ -591,8 +595,16 @@ class VirtualDisplayOverlay private constructor(private val context: Context, pr
             ) {
                 var hasShowerDisplay by remember { mutableStateOf(ShowerController.getVideoSize(agentId) != null) }
                 LaunchedEffect(Unit) {
+                    var lastReady = hasShowerDisplay
                     while (true) {
                         val ready = ShowerController.getVideoSize(agentId) != null
+                        if (lastReady && !ready) {
+                            AppLogger.w(
+                                "VirtualDisplayOverlay",
+                                "OverlayCard: Shower 虚拟屏已关闭/断开，取消自动化任务 agentId=$agentId"
+                            )
+                            PhoneAgentJobRegistry.cancelAgent(agentId, "Virtual screen closed")
+                        }
                         if (hasShowerDisplay != ready) {
                             AppLogger.d(
                                 "VirtualDisplayOverlay",
@@ -600,6 +612,7 @@ class VirtualDisplayOverlay private constructor(private val context: Context, pr
                             )
                             hasShowerDisplay = ready
                         }
+                        lastReady = ready
                         delay(500)
                     }
                 }
@@ -807,7 +820,7 @@ class VirtualDisplayOverlay private constructor(private val context: Context, pr
                                         }
                                         // Close
                                         IconButton(
-                                            onClick = { hide() },
+                                            onClick = { hide(cancelAutomation = true) },
                                             modifier = Modifier.size(32.dp),
                                             colors = IconButtonDefaults.iconButtonColors(
                                                 contentColor = Color.White,
@@ -850,7 +863,7 @@ class VirtualDisplayOverlay private constructor(private val context: Context, pr
                                                 modifier = Modifier.size(32.dp)
                                             )
                                         }
-                                        IconButton(onClick = { hide() }) {
+                                        IconButton(onClick = { hide(cancelAutomation = true) }) {
                                             Icon(
                                                 imageVector = Icons.Filled.Close,
                                                 contentDescription = stringResource(R.string.vd_overlay_a11y_close),
@@ -1091,7 +1104,7 @@ class VirtualDisplayOverlay private constructor(private val context: Context, pr
                                             )
                                         }
                                         IconButton(
-                                            onClick = { hide() },
+                                            onClick = { hide(cancelAutomation = true) },
                                             modifier = Modifier.size(32.dp),
                                             colors = IconButtonDefaults.iconButtonColors(
                                                 contentColor = Color.White,
@@ -1152,7 +1165,7 @@ class VirtualDisplayOverlay private constructor(private val context: Context, pr
                                             )
                                         }
                                         IconButton(
-                                            onClick = { hide() },
+                                            onClick = { hide(cancelAutomation = true) },
                                             modifier = Modifier.size(32.dp),
                                             colors = IconButtonDefaults.iconButtonColors(
                                                 contentColor = Color.White,
@@ -1194,7 +1207,7 @@ class VirtualDisplayOverlay private constructor(private val context: Context, pr
                                                 modifier = Modifier.size(32.dp)
                                             )
                                         }
-                                        IconButton(onClick = { hide() }) {
+                                        IconButton(onClick = { hide(cancelAutomation = true) }) {
                                             Icon(
                                                 imageVector = Icons.Filled.Close,
                                                 contentDescription = stringResource(R.string.vd_overlay_a11y_close),
