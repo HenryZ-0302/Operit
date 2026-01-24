@@ -49,6 +49,7 @@ import com.ai.assistance.operit.ui.components.CustomScaffold
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.widget.Toast
+import java.io.File
 
 private const val GITHUB_PROJECT_URL = "https://github.com/AAswordman/Operit"
 
@@ -407,6 +408,11 @@ fun AboutScreen(
     // 保存 patch info
     var patchUrl by remember { mutableStateOf("") }
     var metaUrl by remember { mutableStateOf("") }
+    var patchNewVersion by remember { mutableStateOf("") }
+
+    var showPatchInstallConfirm by remember { mutableStateOf(false) }
+    var pendingPatchApkPath by remember { mutableStateOf<String?>(null) }
+    var pendingPatchApkVersion by remember { mutableStateOf("") }
 
     // 添加开源许可对话框状态
     var showLicenseDialog by remember { mutableStateOf(false) }
@@ -455,6 +461,7 @@ fun AboutScreen(
             is UpdateStatus.PatchAvailable -> {
                 patchUrl = status.patchUrl
                 metaUrl = status.metaUrl
+                patchNewVersion = status.newVersion
                 showPatchSourceMenu = true
             }
             else -> return
@@ -478,13 +485,26 @@ fun AboutScreen(
         showUpdateDialog = false
         scope.launch {
             try {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, context.getString(R.string.prepare_patch_update), Toast.LENGTH_SHORT).show()
+                val cached = PatchUpdateInstaller.getPreparedRebuiltApkIfMatchesVersion(context, patchNewVersion)
+                val preparedApk: File
+                val preparedVersion: String
+                if (cached != null) {
+                    preparedApk = cached
+                    preparedVersion = patchNewVersion
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, context.getString(R.string.prepare_patch_update), Toast.LENGTH_SHORT).show()
+                    }
+                    val result = PatchUpdateInstaller.downloadAndPreparePatchUpdateAutoResult(context, mirrorKey)
+                    preparedApk = result.apkFile
+                    preparedVersion = result.finalVersion.ifBlank { patchNewVersion }
                 }
-                val apkFile = PatchUpdateInstaller.downloadAndPreparePatchUpdateAuto(context, mirrorKey)
+
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, context.getString(R.string.patch_update_success), Toast.LENGTH_LONG).show()
-                    PatchUpdateInstaller.installApk(context, apkFile)
+                    pendingPatchApkPath = preparedApk.absolutePath
+                    pendingPatchApkVersion = preparedVersion
+                    showPatchInstallConfirm = true
                 }
             } catch (e: Exception) {
                 AppLogger.e("AboutScreen", "patch update failed", e)
@@ -535,6 +555,32 @@ fun AboutScreen(
             metaUrl = metaUrl,
             onDismiss = { showPatchSourceMenu = false },
             onDownload = { key -> downloadPatchAndInstallFromMirror(key) }
+        )
+    }
+
+    if (showPatchInstallConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPatchInstallConfirm = false },
+            title = { Text(text = stringResource(R.string.patch_update)) },
+            text = { Text(text = pendingPatchApkVersion) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val path = pendingPatchApkPath
+                        if (path != null) {
+                            PatchUpdateInstaller.installApk(context, File(path))
+                        }
+                        showPatchInstallConfirm = false
+                    }
+                ) {
+                    Text(text = stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPatchInstallConfirm = false }) {
+                    Text(text = stringResource(R.string.cancel))
+                }
+            }
         )
     }
 

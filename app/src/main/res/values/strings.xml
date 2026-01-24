@@ -740,6 +740,7 @@
     <!-- Package Manager Screen -->
     <string name="packages">包管理</string>
     <string name="skills">技能</string>
+    <string name="show_to_ai_short">AI</string>
     <string name="package_manager">包管理器</string>
     <string name="available_packages">可用包</string>
     <string name="imported_packages">已导入包</string>
@@ -1234,7 +1235,9 @@
     <string name="patch_update_desc">下载补丁并在本机合成 APK 后安装</string>
     <string name="prepare_patch_update">准备补丁更新...</string>
     <string name="patch_update_failed">补丁更新失败: %1$s</string>
-    <string name="patch_update_success">补丁更新已准备完成，正在打开安装界面</string>
+    <string name="patch_update_success">补丁更新已准备完成</string>
+    <string name="patch_install_confirm_title">安装补丁更新</string>
+    <string name="patch_install_confirm_message">检测到新补丁版本：%1$s\n\n是否现在安装？</string>
     <string name="developer">开发者</string>
     <string name="contact">联系方式</string>
     <string name="project_url">项目地址</string>

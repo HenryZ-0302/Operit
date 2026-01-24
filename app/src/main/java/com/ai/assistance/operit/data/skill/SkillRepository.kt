@@ -3,7 +3,9 @@ package com.ai.assistance.operit.data.skill
 import android.content.Context
 import com.ai.assistance.operit.core.tools.skill.SkillManager
 import com.ai.assistance.operit.core.tools.skill.SkillPackage
+import com.ai.assistance.operit.data.preferences.SkillVisibilityPreferences
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.SkillRepoZipPoolManager
 import com.google.gson.JsonParser
 import java.io.BufferedInputStream
 import java.io.File
@@ -12,6 +14,7 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -34,6 +37,10 @@ class SkillRepository private constructor(private val context: Context) {
 
     private val skillManager by lazy { SkillManager.getInstance(context) }
 
+    private val skillVisibilityPreferences by lazy { SkillVisibilityPreferences.getInstance(context) }
+
+    private val defaultBranchCache = ConcurrentHashMap<String, String>()
+
     private data class GitHubSkillTarget(
         val owner: String,
         val repo: String,
@@ -44,6 +51,12 @@ class SkillRepository private constructor(private val context: Context) {
     fun getSkillsDirectoryPath(): String = skillManager.getSkillsDirectoryPath()
 
     fun getAvailableSkillPackages(): Map<String, SkillPackage> = skillManager.getAvailableSkills()
+
+    fun getAiVisibleSkillPackages(): Map<String, SkillPackage> {
+        return skillManager.getAvailableSkills().filter { (skillName, _) ->
+            skillVisibilityPreferences.isSkillVisibleToAi(skillName)
+        }
+    }
 
     fun readSkillContent(skillName: String): String? = skillManager.readSkillContent(skillName)
 
@@ -62,29 +75,47 @@ class SkillRepository private constructor(private val context: Context) {
 
             val owner = target.owner
             val repoName = target.repo
-            val ref = target.ref ?: getGithubDefaultBranch(owner, repoName)
+            val repoKey = "$owner/$repoName"
+            val ref = target.ref
+                ?: defaultBranchCache[repoKey]
+                ?: getGithubDefaultBranch(owner, repoName)?.also { defaultBranchCache[repoKey] = it }
                 ?: return@withContext "无法确定 $owner/$repoName 的默认分支"
 
             val encodedRef = encodePathSegment(ref)
             val zipUrl = "https://codeload.github.com/$owner/$repoName/zip/$encodedRef"
+            val repoRefKey = "$owner/$repoName@$ref"
+            val pooledZip = SkillRepoZipPoolManager.getOrDownloadZip(repoRefKey) { outFile ->
+                downloadFromUrl(zipUrl, outFile)
+            }
+
             val suffix = (target.subDir ?: "repo")
                 .replace('/', '_')
                 .take(60)
-            val tempFile = File(context.cacheDir, "skill_${owner}_${repoName}_$suffix.zip")
-            if (tempFile.exists()) tempFile.delete()
+            val fallbackTempFile = File(context.cacheDir, "skill_${owner}_${repoName}_$suffix.zip")
+            if (pooledZip == null) {
+                if (fallbackTempFile.exists()) fallbackTempFile.delete()
+            }
 
             try {
                 val skillsRootDir = File(getSkillsDirectoryPath())
                 val beforeDirs = skillsRootDir.listFiles()?.filter { it.isDirectory }?.map { it.name }?.toSet() ?: emptySet()
 
-                val downloaded = downloadFromUrl(zipUrl, tempFile)
-                if (!downloaded || !tempFile.exists() || tempFile.length() <= 0L) {
-                    if (tempFile.exists()) tempFile.delete()
-                    return@withContext "下载仓库 ZIP 文件失败"
+                val zipFile = if (pooledZip != null) {
+                    pooledZip
+                } else {
+                    val downloaded = downloadFromUrl(zipUrl, fallbackTempFile)
+                    if (!downloaded || !fallbackTempFile.exists() || fallbackTempFile.length() <= 0L) {
+                        if (fallbackTempFile.exists()) fallbackTempFile.delete()
+                        return@withContext "下载仓库 ZIP 文件失败"
+                    }
+                    fallbackTempFile
                 }
 
-                val result = skillManager.importSkillFromZip(tempFile, target.subDir)
-                tempFile.delete()
+                val result = skillManager.importSkillFromZip(zipFile, target.subDir)
+
+                if (pooledZip == null) {
+                    runCatching { fallbackTempFile.delete() }
+                }
 
                 // Write repoUrl marker for reliable installed-state detection.
                 if (result.startsWith("已导入 Skill:")) {
@@ -105,7 +136,7 @@ class SkillRepository private constructor(private val context: Context) {
                 result
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to import skill from GitHub repo", e)
-                if (tempFile.exists()) tempFile.delete()
+                if (pooledZip == null && fallbackTempFile.exists()) fallbackTempFile.delete()
                 "导入失败: ${e.message}"
             }
         }

@@ -766,6 +766,7 @@
     <!-- Package Manager Screen -->
     <string name="packages">Packages</string>
     <string name="skills">Skills</string>
+    <string name="show_to_ai_short">AI</string>
     <string name="package_manager">Package Manager</string>
     <string name="available_packages">Available Packages</string>
     <string name="imported_packages">Imported Packages</string>
@@ -4139,7 +4140,9 @@
     <string name="patch_update">Patch Update</string>
     <string name="patch_update_desc">Download patch and install after synthesizing APK locally</string>
     <string name="patch_update_failed">Patch update failed: %1$s</string>
-    <string name="patch_update_success">Patch update prepared, opening installation interface</string>
+    <string name="patch_update_success">Patch update prepared</string>
+    <string name="patch_install_confirm_title">Install patch update</string>
+    <string name="patch_install_confirm_message">New patch version detected: %1$s\n\nInstall now?</string>
     <string name="prepare_patch_update">Preparing patch update...</string>
     <string name="publish_new_skill">Publish New Skill</string>
     <string name="screen_title_autoglm_one_click">AutoGLM One-Click Config</string>

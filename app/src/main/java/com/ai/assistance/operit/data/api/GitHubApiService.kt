@@ -5,11 +5,13 @@ import com.ai.assistance.operit.data.preferences.GitHubAuthPreferences
 import com.ai.assistance.operit.data.preferences.GitHubUser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import okhttp3.*
+
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
@@ -95,7 +97,9 @@ data class CreateCommentRequest(
 @Serializable
 data class GitHubReactions(
     val total_count: Int = 0,
+    @SerialName("+1")
     val thumbs_up: Int = 0, // +1
+    @SerialName("-1")
     val thumbs_down: Int = 0, // -1
     val laugh: Int = 0,
     val hooray: Int = 0,
@@ -154,10 +158,12 @@ class GitHubApiService(private val context: Context) {
         .writeTimeout(30, TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val request = chain.request()
-            val newRequest = request.newBuilder()
-                .addHeader("Accept", "application/vnd.github.v3+json")
+            val builder = request.newBuilder()
                 .addHeader("User-Agent", "Operit-MCP-Client")
-                .build()
+            if (request.header("Accept") == null) {
+                builder.addHeader("Accept", "application/vnd.github.v3+json")
+            }
+            val newRequest = builder.build()
             chain.proceed(newRequest)
         }
         .build()
@@ -358,17 +364,21 @@ class GitHubApiService(private val context: Context) {
                     creator?.let { addQueryParameter("creator", it) }
                 }
                 .build()
-            
+
             val requestBuilder = Request.Builder()
                 .url(url)
-            
+                .addHeader(
+                    "Accept",
+                    "application/vnd.github+json, application/vnd.github.squirrel-girl-preview+json"
+                )
+
             // 如果用户已登录，添加认证头以提高API配额
             authPreferences.getAuthorizationHeader()?.let { authHeader ->
                 requestBuilder.addHeader("Authorization", authHeader)
             }
-            
+
             val response = client.newCall(requestBuilder.build()).execute()
-            
+
             if (response.isSuccessful) {
                 val responseBody = response.body?.string()
                 if (responseBody != null) {

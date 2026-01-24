@@ -8,6 +8,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.FileProvider
@@ -60,6 +62,100 @@ object PatchUpdateInstaller {
         val apkFile: File,
         val finalVersion: String
     )
+
+    private data class PatchCandidate(
+        val version: String,
+        val tag: String,
+        val metaUrl: String,
+        val patchUrl: String,
+        val baseSha256: String,
+        val targetSha256: String,
+        val patchSha256: String
+    )
+
+    private fun baseVersionOf(version: String): String {
+        if (version.isBlank()) return ""
+        return version.substringBefore('+')
+    }
+
+    private fun getInstalledVersionName(context: Context): String {
+        return try {
+            val pm = context.packageManager
+            val pkg = context.packageName
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageInfo(pkg, 0)
+            }
+            info.versionName ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun getApkVersionName(context: Context, apkFile: File): String {
+        return try {
+            val pm = context.packageManager
+            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getPackageArchiveInfo(apkFile.absolutePath, 0)
+            }
+            info?.versionName ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    fun getPreparedRebuiltApkIfMatchesVersion(context: Context, expectedVersionName: String): File? {
+        if (expectedVersionName.isBlank()) return null
+        val workDir = File(context.cacheDir, "patch_update")
+        val apk = File(workDir, "rebuilt.apk")
+        if (!apk.exists() || apk.length() <= 0L) return null
+        val actual = getApkVersionName(context, apk)
+        if (actual.isBlank()) return null
+        return if (actual == expectedVersionName) apk else null
+    }
+
+    fun installApk(context: Context, apkFile: File) {
+        val apkUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                apkFile
+            )
+        } else {
+            Uri.fromFile(apkFile)
+        }
+
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+
+        context.startActivity(intent)
+    }
+
+    private fun ensureDownloadChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = context.getSystemService(NotificationManager::class.java)
+            val existing = manager.getNotificationChannel(DOWNLOAD_CHANNEL_ID)
+            if (existing == null) {
+                manager.createNotificationChannel(
+                    NotificationChannel(
+                        DOWNLOAD_CHANNEL_ID,
+                        DOWNLOAD_CHANNEL_NAME,
+                        NotificationManager.IMPORTANCE_LOW
+                    )
+                )
+            }
+        }
+    }
 
     suspend fun autoPreparePatchAndNotifyInstallResult(
         context: Context,
@@ -445,75 +541,6 @@ object PatchUpdateInstaller {
         return bestKey
     }
 
-    private data class PatchCandidate(
-        val version: String,
-        val tag: String,
-        val metaUrl: String,
-        val patchUrl: String,
-        val baseSha256: String,
-        val targetSha256: String,
-        val patchSha256: String
-    )
-
-    private fun baseVersionOf(version: String): String {
-        if (version.isBlank()) return ""
-        return version.substringBefore('+')
-    }
-
-    private fun getInstalledVersionName(context: Context): String {
-        return try {
-            val pm = context.packageManager
-            val pkg = context.packageName
-            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
-            } else {
-                @Suppress("DEPRECATION")
-                pm.getPackageInfo(pkg, 0)
-            }
-            info.versionName ?: ""
-        } catch (_: Exception) {
-            ""
-        }
-    }
-
-    fun installApk(context: Context, apkFile: File) {
-        val apkUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                apkFile
-            )
-        } else {
-            Uri.fromFile(apkFile)
-        }
-
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(apkUri, "application/vnd.android.package-archive")
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-        }
-
-        context.startActivity(intent)
-    }
-
-    private fun ensureDownloadChannel(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val manager = context.getSystemService(NotificationManager::class.java)
-            val existing = manager.getNotificationChannel(DOWNLOAD_CHANNEL_ID)
-            if (existing == null) {
-                manager.createNotificationChannel(
-                    NotificationChannel(
-                        DOWNLOAD_CHANNEL_ID,
-                        DOWNLOAD_CHANNEL_NAME,
-                        NotificationManager.IMPORTANCE_LOW
-                    )
-                )
-            }
-        }
-    }
-
     private fun ensureInstallChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(NotificationManager::class.java)
@@ -561,6 +588,15 @@ object PatchUpdateInstaller {
 
             NotificationManagerCompat.from(context)
                 .notify(INSTALL_NOTIFICATION_ID, builder.build())
+
+            Handler(Looper.getMainLooper()).post {
+                val overlay = PatchInstallConfirmOverlay.getInstance(context)
+                if (overlay.hasOverlayPermission()) {
+                    overlay.show(apkFile = apkFile, version = version) {
+                        installApk(context, apkFile)
+                    }
+                }
+            }
         } catch (_: SecurityException) {
         } catch (_: Exception) {
         }

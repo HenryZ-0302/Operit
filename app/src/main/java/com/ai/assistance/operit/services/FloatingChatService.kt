@@ -96,6 +96,9 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         @Volatile
         private var instance: FloatingChatService? = null
 
+        const val ACTION_FLOATING_CHAT_SERVICE_STARTED = "com.ai.assistance.operit.action.FLOATING_CHAT_SERVICE_STARTED"
+        const val ACTION_FLOATING_CHAT_SERVICE_STOPPED = "com.ai.assistance.operit.action.FLOATING_CHAT_SERVICE_STOPPED"
+
         const val EXTRA_AUTO_ENTER_VOICE_CHAT = "AUTO_ENTER_VOICE_CHAT"
         const val EXTRA_WAKE_LAUNCHED = "WAKE_LAUNCHED"
         const val EXTRA_AUTO_EXIT_AFTER_MS = "AUTO_EXIT_AFTER_MS"
@@ -215,6 +218,14 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         AppLogger.d(TAG, "onCreate")
 
         instance = this
+
+        try {
+            sendBroadcast(
+                Intent(ACTION_FLOATING_CHAT_SERVICE_STARTED)
+                    .setPackage(packageName)
+            )
+        } catch (_: Exception) {
+        }
 
         Thread.setDefaultUncaughtExceptionHandler(customExceptionHandler)
 
@@ -673,6 +684,14 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             prefs.edit().putInt("view_creation_retry", 0).apply()
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error in onDestroy", e)
+        }
+
+        try {
+            sendBroadcast(
+                Intent(ACTION_FLOATING_CHAT_SERVICE_STOPPED)
+                    .setPackage(packageName)
+            )
+        } catch (_: Exception) {
         }
         instance = null
     }

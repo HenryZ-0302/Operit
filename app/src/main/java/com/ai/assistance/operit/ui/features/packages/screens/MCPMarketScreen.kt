@@ -358,11 +358,6 @@ private fun MCPBrowseTab(
                             onNavigateToDetail = onNavigateToDetail,
                             viewModel = viewModel
                         )
-                        
-                        // 加载reactions数据
-                        LaunchedEffect(issue.number) {
-                            viewModel.loadIssueReactions(issue.number)
-                        }
                     }
 
                     if (isLoadingMore) {
@@ -567,279 +562,191 @@ private fun MCPIssueCard(
     viewModel: MCPMarketViewModel
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onViewDetails() },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // 标题和作者
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = issue.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        // 显示作者（仓库所有者）
-                        if (pluginInfo.repositoryOwner.isNotBlank()) {
-                            // 获取用户头像
-                            LaunchedEffect(pluginInfo.repositoryOwner) {
-                                viewModel.fetchUserAvatar(pluginInfo.repositoryOwner)
-                            }
-                            
-                            val avatarUrl by viewModel.userAvatarCache.collectAsState()
-                            
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val userAvatarUrl = avatarUrl[pluginInfo.repositoryOwner]
-                                if (userAvatarUrl != null) {
-                                    Image(
-                                        painter = rememberAsyncImagePainter(userAvatarUrl),
-                                        contentDescription = stringResource(R.string.author_avatar),
-                                        modifier = Modifier
-                                            .size(12.dp)
-                                            .clip(CircleShape),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Icon(
-                                        Icons.Default.Person,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.author_colon) + " ${pluginInfo.repositoryOwner}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-                        
-                        // 显示分享者
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Image(
-                                painter = rememberAsyncImagePainter(issue.user.avatarUrl),
-                                contentDescription = stringResource(R.string.sharer_avatar),
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = stringResource(R.string.share_colon) + " ${issue.user.login}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-                
-                // 状态标签
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = when (issue.state) {
-                        "open" -> Color(0xFF22C55E).copy(alpha = 0.1f)
-                        else -> Color(0xFF64748B).copy(alpha = 0.1f)
-                    }
-                ) {
-                    Text(
-                        text = when (issue.state) {
-                            "open" -> stringResource(R.string.available)
-                            else -> stringResource(R.string.closed)
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = when (issue.state) {
-                            "open" -> Color(0xFF22C55E)
-                            else -> Color(0xFF64748B)
-                        },
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        fontSize = 10.sp
-                    )
-                }
-            }
-
-            // 描述
-            if (pluginInfo.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = pluginInfo.description.take(80) + if (pluginInfo.description.length > 80) "..." else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    text = issue.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
 
-            // Reactions显示
-            val reactionsMap by viewModel.issueReactions.collectAsState()
-            val reactions = reactionsMap[issue.number] ?: emptyList()
-            val thumbsUpCount = reactions.count { it.content == "+1" }
-            val heartCount = reactions.count { it.content == "heart" }
-            
-            if (thumbsUpCount > 0 || heartCount > 0) {
-                Spacer(modifier = Modifier.height(4.dp))
+                if (pluginInfo.description.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = pluginInfo.description.take(100) + if (pluginInfo.description.length > 100) "..." else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                val avatarUrl by viewModel.userAvatarCache.collectAsState()
+                LaunchedEffect(pluginInfo.repositoryOwner) {
+                    if (pluginInfo.repositoryOwner.isNotBlank()) {
+                        viewModel.fetchUserAvatar(pluginInfo.repositoryOwner)
+                    }
+                }
+
+                // Reactions（合并到同一行，避免额外高度）
+                val thumbsUpCount = issue.reactions?.thumbs_up ?: 0
+                val heartCount = issue.reactions?.heart ?: 0
+
+                Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    if (thumbsUpCount > 0) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.ThumbUp,
-                                contentDescription = "点赞",
-                                modifier = Modifier.size(12.dp),
-                                tint = MaterialTheme.colorScheme.primary
+                    if (pluginInfo.repositoryOwner.isNotBlank()) {
+                        val userAvatarUrl = avatarUrl[pluginInfo.repositoryOwner]
+                        if (userAvatarUrl != null) {
+                            Image(
+                                painter = rememberAsyncImagePainter(userAvatarUrl),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop
                             )
-                            Text(
-                                text = thumbsUpCount.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
+                        } else {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
-                    
+                    Image(
+                        painter = rememberAsyncImagePainter(issue.user.avatarUrl),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp).clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+
+                    if (thumbsUpCount > 0) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.ThumbUp,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = thumbsUpCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
                     if (heartCount > 0) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Favorite,
-                                contentDescription = "喜欢",
-                                modifier = Modifier.size(12.dp),
-                                tint = Color(0xFFE91E63)
-                            )
-                            Text(
-                                text = heartCount.toString(),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFFE91E63)
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = Color(0xFFE91E63)
+                        )
+                        Text(
+                            text = heartCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFE91E63)
+                        )
                     }
                 }
             }
 
+            val circleSize = 34.dp
+            val containerColor = when {
+                isInstalled -> MaterialTheme.colorScheme.secondaryContainer
+                isInstalling -> MaterialTheme.colorScheme.primaryContainer
+                issue.state == "open" -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }
 
+            val contentColor = when {
+                isInstalled -> MaterialTheme.colorScheme.onSecondaryContainer
+                isInstalling -> MaterialTheme.colorScheme.onPrimaryContainer
+                issue.state == "open" -> MaterialTheme.colorScheme.onPrimary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
 
-            // 操作按钮
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onViewDetails,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(stringResource(R.string.details), fontSize = 11.sp)
-                }
-                
-                if (issue.state == "open") {
-                    if (isInstalled) {
-                        Button(
-                            onClick = { /* No-op */ },
-                            modifier = Modifier.weight(1f),
-                            enabled = false,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                disabledContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                disabledContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(stringResource(R.string.installed), fontSize = 11.sp)
+            Surface(shape = CircleShape, color = containerColor) {
+                IconButton(
+                    onClick = {
+                        if (issue.state == "open" && !isInstalled && !isInstalling) {
+                            onInstall()
                         }
-                    } else if (isInstalling) {
-                        // 显示安装进度，使用Button样式保持一致性
-                        Button(
-                            onClick = { /* 安装中时不可点击 */ },
-                            modifier = Modifier.weight(1f),
-                            enabled = false,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                disabledContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                disabledContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        ) {
+                    },
+                    modifier = Modifier.size(circleSize)
+                ) {
+                    when {
+                        isInstalling -> {
+
                             when (installProgress) {
                                 is com.ai.assistance.operit.data.mcp.InstallProgress.Downloading -> {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        stringResource(R.string.downloading_progress, if (installProgress.progress >= 0) "${installProgress.progress}%" else ""),
-                                        fontSize = 11.sp
-                                    )
-                                }
-                                is com.ai.assistance.operit.data.mcp.InstallProgress.Extracting -> {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        stringResource(R.string.extracting_progress),
-                                        fontSize = 11.sp
-                                    )
+                                    val p = installProgress.progress
+                                    if (p in 0..100) {
+                                        CircularProgressIndicator(
+                                            progress = { p / 100f },
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp,
+                                            color = contentColor
+                                        )
+                                    } else {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp,
+                                            color = contentColor
+                                        )
+                                    }
                                 }
                                 else -> {
                                     CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
+                                        modifier = Modifier.size(18.dp),
                                         strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        stringResource(R.string.installing_progress),
-                                        fontSize = 11.sp
+                                        color = contentColor
                                     )
                                 }
                             }
                         }
-                    } else {
-                        Button(
-                            onClick = onInstall,
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(stringResource(R.string.install), fontSize = 11.sp)
+                        isInstalled -> {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = contentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        issue.state == "open" -> {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = null,
+                                tint = contentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        else -> {
+                            Icon(
+                                Icons.Default.Info,
+                                contentDescription = null,
+                                tint = contentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }
@@ -924,5 +831,3 @@ private fun GitHubLoginDialog(
         }
     )
 }
-
- 

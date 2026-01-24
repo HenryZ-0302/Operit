@@ -43,6 +43,7 @@ import com.ai.assistance.operit.util.GlobalExceptionHandler
 import com.ai.assistance.operit.util.ImagePoolManager
 import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.util.MediaPoolManager
+import com.ai.assistance.operit.util.SkillRepoZipPoolManager
 import com.ai.assistance.operit.util.SerializationSetup
 import com.ai.assistance.operit.util.TextSegmenter
 import com.ai.assistance.operit.util.WaifuMessageProcessor
@@ -245,6 +246,8 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
         // 初始化媒体池管理器（音频/视频），支持本地持久化缓存
         MediaPoolManager.initialize(filesDir, preloadNow = false)
         AppLogger.d(TAG, "【启动计时】媒体池管理器初始化完成 - ${System.currentTimeMillis() - startTime}ms")
+
+        SkillRepoZipPoolManager.initialize(filesDir)
 
         // 启动后重任务统一后台串行执行，避免多个大任务同时跑导致首屏掉帧
         applicationScope.launch(Dispatchers.Default) {

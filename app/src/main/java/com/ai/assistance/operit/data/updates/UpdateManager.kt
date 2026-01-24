@@ -228,7 +228,7 @@ class UpdateManager private constructor(private val context: Context) {
                             if (last != finalStatus.newVersion) {
                                 CoroutineScope(Dispatchers.IO).launch {
                                     try {
-                                        val prepared = PatchUpdateInstaller.autoPreparePatchAndStartInstallResult(
+                                        val prepared = PatchUpdateInstaller.autoPreparePatchAndNotifyInstallResult(
                                             context = context,
                                             patchUrl = finalStatus.patchUrl,
                                             metaUrl = finalStatus.metaUrl,
@@ -252,7 +252,7 @@ class UpdateManager private constructor(private val context: Context) {
                         if (last != finalStatus.newVersion) {
                             CoroutineScope(Dispatchers.IO).launch {
                                 try {
-                                    val prepared = PatchUpdateInstaller.autoPreparePatchAndStartInstallResult(
+                                    val prepared = PatchUpdateInstaller.autoPreparePatchAndNotifyInstallResult(
                                         context = context,
                                         patchUrl = finalStatus.patchUrl,
                                         metaUrl = finalStatus.metaUrl,
@@ -275,7 +275,7 @@ class UpdateManager private constructor(private val context: Context) {
                         if (last != finalStatus.newVersion) {
                             CoroutineScope(Dispatchers.IO).launch {
                                 try {
-                                    val prepared = PatchUpdateInstaller.autoPreparePatchAndStartInstallResult(
+                                    val prepared = PatchUpdateInstaller.autoPreparePatchAndNotifyInstallResult(
                                         context = context,
                                         patchUrl = finalStatus.patchUrl,
                                         metaUrl = finalStatus.metaUrl,
