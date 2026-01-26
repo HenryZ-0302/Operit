@@ -81,9 +81,7 @@ android {
             }
         }
         debug {
-            if (releaseSigningConfig != null) {
-                signingConfig = releaseSigningConfig
-            }
+            signingConfig = signingConfigs.getByName("debug")
         }
         create("nightly") {
             isMinifyEnabled = false
