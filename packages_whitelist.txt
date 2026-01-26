@@ -5,6 +5,9 @@ code_runner.js
 crossref.js
 daily_life.js
 duckduckgo.js
+extended_memory_tools.js
+extended_http_tools.js
+extended_file_tools.js
 ffmpeg.js
 file_converter.js
 google_search.js

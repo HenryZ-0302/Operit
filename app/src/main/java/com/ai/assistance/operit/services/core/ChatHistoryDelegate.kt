@@ -473,7 +473,12 @@ class ChatHistoryDelegate(
         coroutineScope.launch {
             val chatId = chatIdOverride ?: _currentChatId.value
             chatId?.let {
-                if (_chatHistory.value.isNotEmpty()) {
+                if (
+                    _chatHistory.value.isNotEmpty() ||
+                        inputTokens != 0 ||
+                        outputTokens != 0 ||
+                        actualContextWindowSize != 0
+                ) {
                     chatHistoryManager.updateChatTokenCounts(
                         it,
                         inputTokens,

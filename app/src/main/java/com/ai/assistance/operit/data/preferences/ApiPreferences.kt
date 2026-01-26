@@ -102,7 +102,6 @@ class ApiPreferences private constructor(private val context: Context) {
         val MAX_FILE_SIZE_BYTES = intPreferencesKey("max_file_size_bytes")
         val PART_SIZE = intPreferencesKey("part_size")
         val MAX_TEXT_RESULT_LENGTH = intPreferencesKey("max_text_result_length")
-        val MAX_HTTP_RESPONSE_LENGTH = intPreferencesKey("max_http_response_length")
         val MAX_IMAGE_HISTORY_USER_TURNS = intPreferencesKey("max_image_history_user_turns")
         val MAX_MEDIA_HISTORY_USER_TURNS = intPreferencesKey("max_media_history_user_turns")
 
@@ -132,7 +131,6 @@ class ApiPreferences private constructor(private val context: Context) {
         const val DEFAULT_MAX_FILE_SIZE_BYTES = 32000  // 文件读取操作的最大字节数限制
         const val DEFAULT_PART_SIZE = 200  // 分段读取文件时，每个部分的行数
         const val DEFAULT_MAX_TEXT_RESULT_LENGTH = 5000  // 通用文本结果的最大字符数限制
-        const val DEFAULT_MAX_HTTP_RESPONSE_LENGTH = 5000000  // 网络请求响应的最大字符数限制（5MB）
         const val DEFAULT_MAX_IMAGE_HISTORY_USER_TURNS = 2
         const val DEFAULT_MAX_MEDIA_HISTORY_USER_TURNS = 1
 
@@ -244,11 +242,6 @@ class ApiPreferences private constructor(private val context: Context) {
     val maxTextResultLengthFlow: Flow<Int> =
         context.apiDataStore.data.map { preferences ->
             preferences[MAX_TEXT_RESULT_LENGTH] ?: DEFAULT_MAX_TEXT_RESULT_LENGTH
-        }
-
-    val maxHttpResponseLengthFlow: Flow<Int> =
-        context.apiDataStore.data.map { preferences ->
-            preferences[MAX_HTTP_RESPONSE_LENGTH] ?: DEFAULT_MAX_HTTP_RESPONSE_LENGTH
         }
 
     val maxImageHistoryUserTurnsFlow: Flow<Int> =
@@ -636,13 +629,6 @@ class ApiPreferences private constructor(private val context: Context) {
         }
     }
 
-    // 保存HTTP响应最大长度
-    suspend fun saveMaxHttpResponseLength(length: Int) {
-        context.apiDataStore.edit { preferences ->
-            preferences[MAX_HTTP_RESPONSE_LENGTH] = length
-        }
-    }
-
     suspend fun saveMaxImageHistoryUserTurns(turns: Int) {
         context.apiDataStore.edit { preferences ->
             preferences[MAX_IMAGE_HISTORY_USER_TURNS] = turns
@@ -673,12 +659,6 @@ class ApiPreferences private constructor(private val context: Context) {
         return preferences[MAX_TEXT_RESULT_LENGTH] ?: DEFAULT_MAX_TEXT_RESULT_LENGTH
     }
 
-    // 获取HTTP响应最大长度
-    suspend fun getMaxHttpResponseLength(): Int {
-        val preferences = context.apiDataStore.data.first()
-        return preferences[MAX_HTTP_RESPONSE_LENGTH] ?: DEFAULT_MAX_HTTP_RESPONSE_LENGTH
-    }
-
     suspend fun getMaxImageHistoryUserTurns(): Int {
         val preferences = context.apiDataStore.data.first()
         return preferences[MAX_IMAGE_HISTORY_USER_TURNS] ?: DEFAULT_MAX_IMAGE_HISTORY_USER_TURNS
@@ -695,7 +675,6 @@ class ApiPreferences private constructor(private val context: Context) {
             preferences[MAX_FILE_SIZE_BYTES] = DEFAULT_MAX_FILE_SIZE_BYTES
             preferences[PART_SIZE] = DEFAULT_PART_SIZE
             preferences[MAX_TEXT_RESULT_LENGTH] = DEFAULT_MAX_TEXT_RESULT_LENGTH
-            preferences[MAX_HTTP_RESPONSE_LENGTH] = DEFAULT_MAX_HTTP_RESPONSE_LENGTH
             preferences[MAX_IMAGE_HISTORY_USER_TURNS] = DEFAULT_MAX_IMAGE_HISTORY_USER_TURNS
             preferences[MAX_MEDIA_HISTORY_USER_TURNS] = DEFAULT_MAX_MEDIA_HISTORY_USER_TURNS
         }
@@ -705,14 +684,12 @@ class ApiPreferences private constructor(private val context: Context) {
     suspend fun saveTruncationSettings(
         maxFileSizeBytes: Int,
         partSize: Int,
-        maxTextResultLength: Int,
-        maxHttpResponseLength: Int
+        maxTextResultLength: Int
     ) {
         context.apiDataStore.edit { preferences ->
             preferences[MAX_FILE_SIZE_BYTES] = maxFileSizeBytes
             preferences[PART_SIZE] = partSize
             preferences[MAX_TEXT_RESULT_LENGTH] = maxTextResultLength
-            preferences[MAX_HTTP_RESPONSE_LENGTH] = maxHttpResponseLength
         }
     }
 }

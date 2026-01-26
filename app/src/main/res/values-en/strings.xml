@@ -36,20 +36,172 @@
     <string name="workflow_delete">Delete Workflow</string>
     <string name="workflow_empty_state">No workflows yet, click the button in the top right to create one</string>
     <string name="workflow_nodes_empty">No nodes yet</string>
+    <string name="workflow_nodes_empty_hint_add">Tap the + button in the top right to add nodes</string>
     <string name="workflow_create_connection">Create Connection</string>
     <string name="workflow_delete_connection">Delete Connection</string>
     <string name="workflow_select_target_node">Select Target Node</string>
     <string name="workflow_manage_connections">Manage Connections</string>
     <string name="workflow_existing_connections">Existing Connections</string>
     <string name="workflow_close">Close</string>
-    <string name="workflow_execution_running">Running…</string>
-    <string name="workflow_execution_success">Execution Successful</string>
-    <string name="workflow_execution_failed">Execution Failed</string>
-    <string name="workflow_node_pending">Pending</string>
-    <string name="workflow_node_running">Running</string>
-    <string name="workflow_node_success">Success</string>
-    <string name="workflow_node_failed">Failed</string>
-    
+    <string name="workflow_action_trigger">Trigger Workflow</string>
+    <string name="workflow_action_add_node">Add Node</string>
+    <string name="workflow_action_edit_workflow">Edit Workflow</string>
+    <string name="workflow_open_action_menu">Open action menu</string>
+    <string name="workflow_action_edit_node">Edit node</string>
+    <string name="workflow_action_delete_node">Delete node</string>
+    <string name="workflow_source_node_format">Source node: %1$s</string>
+    <string name="workflow_no_connectable_nodes">No connectable nodes</string>
+    <string name="workflow_connection_condition_arrow_format">→ %1$s</string>
+    <string name="workflow_edit_connection_condition">Edit</string>
+    <string name="workflow_edit_connection_condition_title">Edit connection condition</string>
+    <string name="workflow_connection_condition_default_true">true (default)</string>
+    <string name="workflow_connection_condition_default_none">No condition</string>
+    <string name="workflow_connection_condition_regex_format">Regex: %1$s</string>
+    <string name="workflow_connection_condition_default_true_branch">Default (true branch)</string>
+    <string name="workflow_connection_condition_default_no_condition">Default (no condition)</string>
+    <string name="workflow_connection_condition_false_branch">false branch</string>
+    <string name="workflow_connection_condition_custom">Custom (regex/text)</string>
+    <string name="workflow_schedule_dialog_title">Schedule</string>
+    <string name="workflow_schedule_type_label">Schedule type</string>
+    <string name="workflow_schedule_type_interval">Fixed interval</string>
+    <string name="workflow_schedule_type_specific_time">Specific time</string>
+    <string name="workflow_schedule_type_cron">Cron expression</string>
+    <string name="workflow_interval_unit_minutes">Minutes</string>
+    <string name="workflow_interval_unit_hours">Hours</string>
+    <string name="workflow_interval_unit_days">Days</string>
+    <string name="workflow_interval_config_title">Fixed Interval</string>
+    <string name="workflow_interval_value_label">Interval</string>
+    <string name="workflow_interval_unit_label">Unit</string>
+    <string name="workflow_schedule_min_interval_hint">Note: WorkManager minimum interval is 15 minutes</string>
+    <string name="workflow_specific_time_config_title">Specific Time</string>
+    <string name="workflow_date_label">Date</string>
+    <string name="workflow_time_label">Time</string>
+    <string name="workflow_select_date">Select date</string>
+    <string name="workflow_select_time">Select time</string>
+    <string name="workflow_schedule_execute_time_format">Execution time: %1$s</string>
+    <string name="workflow_cron_config_title">Cron Expression</string>
+    <string name="workflow_select_preset_template">Select preset</string>
+    <string name="workflow_preset_template_label">Preset</string>
+    <string name="workflow_cron_expression_label">Cron expression</string>
+    <string name="workflow_cron_expression_placeholder">0 0 * * *</string>
+    <string name="workflow_cron_format_help">Format: min hour day month weekday\nSupports: fixed value, *, */N</string>
+    <string name="workflow_common_settings_title">Common settings</string>
+    <string name="workflow_repeat_label">Repeat</string>
+    <string name="workflow_schedule_enabled_label">Enable schedule</string>
+    <string name="workflow_cron_preset_daily_midnight">Daily at midnight</string>
+    <string name="workflow_cron_preset_daily_9am">Daily at 9 AM</string>
+    <string name="workflow_cron_preset_daily_noon">Daily at noon</string>
+    <string name="workflow_cron_preset_daily_6pm">Daily at 6 PM</string>
+    <string name="workflow_cron_preset_every_2_hours">Every 2 hours</string>
+    <string name="workflow_cron_preset_every_6_hours">Every 6 hours</string>
+    <string name="workflow_cron_preset_every_15_minutes">Every 15 minutes</string>
+    <string name="workflow_cron_preset_every_30_minutes">Every 30 minutes</string>
+    <string name="workflow_cron_preset_every_monday_midnight">Every Monday at midnight</string>
+    <string name="workflow_cron_preset_workday_9am">Weekdays at 9 AM</string>
+    <string name="workflow_node_label_trigger">Trigger</string>
+    <string name="workflow_node_label_execute">Execute</string>
+    <string name="workflow_node_label_condition">Condition</string>
+    <string name="workflow_node_label_logic">Logic</string>
+    <string name="workflow_node_label_extract">Compute</string>
+    <string name="workflow_node_label_unknown">Unknown</string>
+    <string name="workflow_node_skipped">Skipped</string>
+    <string name="workflow_not_found">Workflow not found</string>
+    <string name="workflow_confirm_delete_title">Confirm deletion</string>
+    <string name="workflow_confirm_delete_workflow_message">Are you sure you want to delete workflow "%1$s"? This action cannot be undone.</string>
+    <string name="workflow_confirm_delete_node_message">Are you sure you want to delete node "%1$s"?</string>
+    <string name="workflow_execution_result_title">Execution Result</string>
+    <string name="workflow_edit_dialog_title">Edit Workflow</string>
+    <string name="workflow_enabled_label">Enable workflow</string>
+
+    <string name="workflow_node_dialog_title_add">Add Node</string>
+    <string name="workflow_node_dialog_title_edit">Edit Node</string>
+    <string name="workflow_node_type_label">Node type</string>
+    <string name="workflow_node_name_label">Node name (auto-generate if empty)</string>
+    <string name="workflow_node_description_label">Description (optional)</string>
+    <string name="workflow_node_type_trigger">Trigger Node</string>
+    <string name="workflow_node_type_execute">Execute Node</string>
+    <string name="workflow_node_type_condition">Condition Node</string>
+    <string name="workflow_node_type_logic">Logic Node</string>
+    <string name="workflow_node_type_extract">Compute Node</string>
+    <string name="workflow_trigger_type_label">Trigger type</string>
+    <string name="workflow_trigger_type_manual">Manual</string>
+    <string name="workflow_trigger_type_schedule">Schedule</string>
+    <string name="workflow_trigger_type_tasker">Tasker</string>
+    <string name="workflow_trigger_type_intent">Intent</string>
+    <string name="workflow_trigger_type_speech">Speech</string>
+    <string name="workflow_trigger_fallback">Trigger</string>
+
+    <string name="workflow_execute_config_title">Execution Config</string>
+    <string name="workflow_tool_name_label">Tool name</string>
+    <string name="workflow_tool_name_placeholder">e.g.: execute_shell</string>
+    <string name="workflow_tool_params_title">Tool parameters</string>
+    <string name="workflow_param_name_label">Parameter name</string>
+    <string name="workflow_param_value_label">Parameter value</string>
+    <string name="workflow_add_param">Add parameter</string>
+    <string name="workflow_delete_param">Delete parameter</string>
+
+    <string name="workflow_condition_config_title">Condition Config</string>
+    <string name="workflow_operator_label">Operator</string>
+    <string name="workflow_left_value_label">Left</string>
+    <string name="workflow_right_value_label">Right</string>
+    <string name="workflow_condition_contains">Contains</string>
+    <string name="workflow_condition_not_contains">Does not contain</string>
+
+    <string name="workflow_logic_config_title">Logic Config</string>
+    <string name="workflow_logic_operator_label">Logic operator</string>
+
+    <string name="workflow_extract_config_title">Compute Config</string>
+    <string name="workflow_mode_label">Mode</string>
+    <string name="workflow_extract_mode_regex">Regex</string>
+    <string name="workflow_extract_mode_sub">Substring</string>
+    <string name="workflow_extract_mode_concat">Concatenate</string>
+    <string name="workflow_extract_mode_random_int">Random integer</string>
+    <string name="workflow_extract_mode_random_string">Random string</string>
+    <string name="workflow_regex_expression_label">Regex expression</string>
+    <string name="workflow_json_path_label">JSON path</string>
+    <string name="workflow_group_index_label">Group index</string>
+    <string name="workflow_default_value_label">Default value</string>
+    <string name="workflow_start_index_label">Start index</string>
+    <string name="workflow_length_label">Length (-1 to end)</string>
+    <string name="workflow_source_label">Source</string>
+    <string name="workflow_concat_item_label">Item</string>
+    <string name="workflow_add_concat_item">Add item</string>
+    <string name="workflow_delete_concat_item">Delete item</string>
+    <string name="workflow_use_fixed_value">Use fixed value</string>
+    <string name="workflow_use_random_value">Use random value</string>
+    <string name="workflow_fixed_integer_label">Fixed integer</string>
+    <string name="workflow_min_value_label">Min</string>
+    <string name="workflow_max_value_label">Max</string>
+    <string name="workflow_fixed_string_label">Fixed string</string>
+    <string name="workflow_string_length_label">Length</string>
+    <string name="workflow_charset_label">Charset</string>
+
+    <string name="workflow_configure_schedule_trigger">Configure schedule trigger</string>
+    <string name="workflow_schedule_configured">Schedule configured</string>
+    <string name="workflow_trigger_config_title">Trigger Config</string>
+    <string name="workflow_trigger_config_json_label">Trigger config (JSON)</string>
+    <string name="workflow_trigger_config_json_placeholder">{"key": "value"}</string>
+    <string name="workflow_speech_trigger_help">Note: Speech trigger matches pattern against the background STT (speech-to-text) output events (partial/final). You must enable “Always listen” and set wake-up recognition mode to “STT”. If you are using “Personalized template wake-up”, no STT text events are produced, so this trigger will not work.</string>
+
+    <string name="workflow_select_predecessor_node">Select predecessor node</string>
+    <string name="workflow_no_available_predecessor_nodes">No available predecessor nodes</string>
+    <string name="workflow_use_static_value">Use static value</string>
+    <string name="workflow_unknown_node">[Unknown node]</string>
+
+    <string name="workflow_schema_required">Required</string>
+    <string name="workflow_schema_optional">Optional</string>
+    <string name="workflow_schema_default_format">, default: %1$s</string>
+    <string name="workflow_schema_hint_format">%1$s (%2$s): %3$s%4$s</string>
+
+    <string name="workflow_example_format">e.g.: %1$s</string>
+    <string name="workflow_default_execute_action">Execute action</string>
+    <string name="workflow_node_default_name_condition">Condition</string>
+    <string name="workflow_node_default_name_logic">Logic</string>
+    <string name="workflow_node_default_name_extract">Compute</string>
+    <string name="workflow_node_fallback">Node</string>
+
+    <string name="error_title">Error</string>
+
     <!-- Attachment Panel -->
     <string name="screen_content">Screen Content</string>
     <string name="current_notifications">Current Notifications</string>
@@ -124,6 +276,20 @@
     <string name="voice_wakeup_phrase_supporting">Example: Xiao Ou</string>
     <string name="voice_wakeup_regex_title">Regex</string>
     <string name="voice_wakeup_regex_desc">Match recognition results using a regular expression</string>
+    <string name="voice_wakeup_mode_label">Wake-up mode</string>
+    <string name="voice_wakeup_mode_stt">STT (text)</string>
+    <string name="voice_wakeup_mode_personal">Personal template (3 recordings)</string>
+    <string name="voice_wakeup_personal_no_templates">No templates recorded. Personal wake-up is unavailable.</string>
+    <string name="voice_wakeup_personal_configure">Record personal wake-up templates</string>
+    <string name="voice_wakeup_personal_clear">Clear personal templates</string>
+    <string name="voice_wakeup_personal_config_dialog_title">Personal wake-up setup</string>
+    <string name="voice_wakeup_personal_config_dialog_desc">Say the wake phrase three times. We will record your voice features for wake-up detection.</string>
+    <string name="voice_wakeup_personal_config_step">Attempt %1$d</string>
+    <string name="voice_wakeup_personal_config_record">Record</string>
+    <string name="voice_wakeup_personal_config_recording">Recording…</string>
+    <string name="voice_wakeup_personal_config_record_done">Done</string>
+    <string name="voice_wakeup_personal_config_save">Save</string>
+    <string name="voice_wakeup_personal_config_cancel">Cancel</string>
     <string name="voice_wakeup_inactivity_timeout_label">Inactivity timeout (seconds)</string>
     <string name="voice_wakeup_inactivity_timeout_supporting">Range: 1-600</string>
     <string name="voice_wakeup_greeting_title">Speak after wake-up</string>
@@ -146,6 +312,18 @@
     <string name="voice_keyword_attachments_notifications_title">Notifications</string>
     <string name="voice_keyword_attachments_notifications_desc">Attach current notifications</string>
     <string name="voice_keyword_attachments_notifications_keyword_label">Notification keywords</string>
+
+    <string name="voice_keyword_attachments_location_title">Location</string>
+    <string name="voice_keyword_attachments_location_desc">Attach current location</string>
+    <string name="voice_keyword_attachments_location_keyword_label">Location keywords</string>
+
+    <string name="voice_keyword_attachments_time_title">Time</string>
+    <string name="voice_keyword_attachments_time_desc">Attach current time</string>
+    <string name="voice_keyword_attachments_time_keyword_label">Time keywords</string>
+
+    <string name="voice_keyword_attachments_add_title">Add</string>
+    <string name="voice_keyword_attachments_add_item_title">Add attachment item</string>
+    <string name="voice_keyword_attachments_type_label">Type</string>
 
     <!-- NavItem class identifiers -->
     <string name="shizuku_commands">Permissions</string>
@@ -290,15 +468,15 @@
     <string name="plugin_starting_plugins">Preparing to start plugins...</string>
     <string name="plugin_starting_number">Starting plugin (%1$d/%2$d)%3$s...</string>
     <string name="plugin_disabled_suffix"> (Plugin disabled)</string>
-    <string name="plugin_termux_not_running">Termux is not running, cannot start plugins</string>
-    <string name="plugin_termux_not_authorized">Termux not authorized, please authorize Termux before using plugins</string>
-    <string name="plugin_nodejs_missing">Node.js is not installed in Termux, please install Node.js before using plugins</string>
+    <string name="plugin_termux_not_running">Terminal service is not running, cannot start plugins</string>
+    <string name="plugin_termux_not_authorized">Terminal service is not ready, please start it before using plugins</string>
+    <string name="plugin_nodejs_missing">pnpm is not installed in the terminal environment (Node.js required). Please install it before using plugins</string>
     <string name="plugin_bridge_failed">Bridge initialization failed, unable to start plugins</string>
     <string name="plugin_other_error">Error occurred while starting plugins, you can click \"Skip\" in the top right corner to continue</string>
     <string name="plugin_complete_with_failures">Startup completed, success rate: %1$d%%. Some plugins failed to load</string>
     <string name="plugin_complete_success">Startup completed, success rate: %1$d%%</string>
     <string name="plugin_no_plugins_to_start">No plugins to start</string>
-    <string name="plugin_copyright">© 2023 AI Assistance</string>
+    <string name="plugin_copyright"> 2023 AI Assistance</string>
     <string name="plugin_registered">Registered</string>
     <string name="plugin_registration_failed">Registration Failed</string>
     <string name="plugin_verification_failed">Verification Failed</string>
@@ -588,6 +766,7 @@
     <!-- Package Manager Screen -->
     <string name="packages">Packages</string>
     <string name="skills">Skills</string>
+    <string name="show_to_ai_short">AI</string>
     <string name="package_manager">Package Manager</string>
     <string name="available_packages">Available Packages</string>
     <string name="imported_packages">Imported Packages</string>
@@ -1055,6 +1234,7 @@
     <string name="check_complete">Check Complete</string>
     <string name="check_failed">Check Failed</string>
     <string name="update_check">Update Check</string>
+    <string name="unknown_value">Unknown</string>
     <string name="current_version">Current version: %1$s</string>
     <string name="new_version">Current version: %1$s\nNew version: %2$s</string>
     <string name="update_content">Update Content:</string>
@@ -1065,9 +1245,15 @@
     <string name="select_download_source_desc">Please select a download source suitable for your network:</string>
     <string name="mirror_download">%1$s Mirror Download</string>
     <string name="china_mirror">China Accelerated Mirror</string>
-    <string name="china_mirror_desc">Accelerated via ghfast.top, recommended for users in China</string>
+    <string name="china_mirror_desc">Accelerated download for mainland China</string>
     <string name="github_source">GitHub Original Link</string>
-    <string name="github_source_desc">Download directly from GitHub official servers, may be slower</string>
+    <string name="github_source_desc">Download from GitHub official servers</string>
+    <string name="main_github_login_success">Login successful, welcome %1$s!</string>
+    <string name="main_github_get_user_failed">Failed to get user info: %1$s</string>
+    <string name="main_github_login_failed">Login failed: %1$s</string>
+    <string name="main_github_login_error">Error during login: %1$s</string>
+    <string name="main_update_available_toast">New version %1$s found. Please check details on the "About" page.</string>
+
     <string name="developer">Developer</string>
     <string name="contact">Contact</string>
     <string name="project_url">Project URL</string>
@@ -1121,6 +1307,15 @@
     <string name="command_execution_failed">Command execution failed</string>
     <string name="please_start_termux_first">Please start Termux first</string>
     <string name="all_tools_reregistered">All tools reregistered</string>
+    <string name="webview_ssl_cert_error">SSL certificate error</string>
+    <string name="webview_ssl_error_untrusted">Certificate authority is not trusted</string>
+    <string name="webview_ssl_error_expired">Certificate has expired</string>
+    <string name="webview_ssl_error_idmismatch">Hostname mismatch</string>
+    <string name="webview_ssl_error_notyetvalid">Certificate is not yet valid</string>
+    <string name="webview_ssl_error_date_invalid">Invalid certificate date</string>
+    <string name="webview_ssl_error_unknown">Unknown SSL error</string>
+    <string name="webview_security_warning_title">Security warning</string>
+    <string name="webview_choose_file">Choose file</string>
     <string name="downloaded_file">Downloaded: %1$s</string>
     <string name="download_failed">Download failed: %1$s</string>
     <string name="download_started">Download started: %1$s</string>
@@ -2291,6 +2486,81 @@
     <string name="memory_desc">Memory selection includes user preferences and memory base under that preference. To create a new memory base, go to settings to create a new user preference and select it here</string>
     <string name="memory_attachment">Memory Attachment</string>
     <string name="memory_attachment_desc">When enabled, relevant content will be automatically retrieved from the memory base and attached when sending messages, but this may affect AI response focus.</string>
+    <string name="chat_summarizing_memory">Summarizing memory...</string>
+    <string name="chat_input_processing_collect_failed">Failed to collect input processing state: %1$s</string>
+    <string name="chat_use_default_config_continue">Continue with default configuration</string>
+    <string name="chat_default_config_incomplete">Default configuration is incomplete. Please fill in required information.</string>
+    <string name="chat_locked_cannot_delete">This chat is locked and cannot be deleted</string>
+    <string name="chat_cleared">Chat history cleared</string>
+    <string name="chat_branch_created">Chat branch created</string>
+    <string name="chat_no_active_conversation">No active conversation</string>
+    <string name="chat_summarizing_generating">Generating summary...</string>
+    <string name="chat_no_messages_to_summarize">No messages to summarize</string>
+    <string name="chat_ai_service_not_initialized">AI service is not initialized</string>
+    <string name="chat_summary_inserted">Summary inserted</string>
+    <string name="chat_summary_generation_failed">Failed to generate summary</string>
+    <string name="chat_insert_summary_failed">Failed to insert summary: %1$s</string>
+    <string name="chat_invalid_message_index">Invalid message index</string>
+    <string name="chat_message_updated">Message updated</string>
+    <string name="chat_update_message_failed">Failed to update message: %1$s</string>
+    <string name="chat_only_user_message_allowed">This action can only be performed on user messages</string>
+    <string name="chat_rewind_failed">Failed to rewind: %1$s</string>
+    <string name="chat_preparing_resend">Preparing to resend message</string>
+    <string name="chat_rolled_back_message_in_input">Rolled back. Message content has been placed into the input box.</string>
+    <string name="chat_rollback_failed">Rollback failed: %1$s</string>
+    <string name="chat_cancelled_current_conversation">Cancelled current conversation</string>
+    <string name="chat_inserted_attachment_ref">Inserted attachment reference: %1$s</string>
+    <string name="chat_fetching_screen_content">Fetching screen content...</string>
+    <string name="chat_capture_screen_failed">Failed to capture screen content: %1$s</string>
+    <string name="chat_fetching_notifications">Fetching current notifications...</string>
+    <string name="chat_fetch_notifications_failed">Failed to fetch notifications: %1$s</string>
+    <string name="chat_fetching_location">Fetching location information...</string>
+    <string name="chat_fetch_location_failed">Failed to fetch location: %1$s</string>
+    <string name="chat_attaching_memory_folders">Attaching memory folders...</string>
+    <string name="chat_attach_memory_folders_failed">Failed to attach memory folders: %1$s</string>
+    <string name="chat_prefill_check_file">Please take a look at this file</string>
+    <string name="chat_added_files_count">Added %1$d file(s)</string>
+    <string name="chat_process_shared_files_failed">Failed to process shared files: %1$s</string>
+    <string name="chat_ai_service_init_network_hint">Failed to initialize AI service. Please check network and API settings.</string>
+    <string name="chat_ai_service_init_failed">Failed to initialize AI service: %1$s</string>
+    <string name="chat_need_overlay_permission_start_voice_assistant">Overlay permission is required to start the voice assistant</string>
+    <string name="chat_clipboard_label_message">Chat message</string>
+    <string name="export_in_progress_title">Exporting</string>
+    <string name="export_prepare_base_apk">Preparing base APK...</string>
+    <string name="export_extract_apk">Extracting APK...</string>
+    <string name="export_modify_app_info">Updating app info...</string>
+    <string name="export_change_app_icon">Changing app icon...</string>
+    <string name="export_pack_web_content">Packaging web content...</string>
+    <string name="export_prepare_signing">Preparing signing...</string>
+    <string name="export_signing_apk">Signing APK...</string>
+    <string name="export_finish_packaging">Finishing packaging...</string>
+    <string name="export_completed">Export complete!</string>
+    <string name="export_sign_apk_failed">APK signing failed: %1$s</string>
+    <string name="export_failed_with_reason">Export failed: %1$s</string>
+    <string name="export_prepare_windows_template">Preparing Windows app template...</string>
+    <string name="export_copy_template">Copying app template...</string>
+    <string name="export_extract_template">Extracting app template...</string>
+    <string name="export_copy_web_content">Copying web content...</string>
+    <string name="export_pack_app">Packaging app...</string>
+    <string name="export_cleanup_temp_files">Cleaning up temporary files...</string>
+    <string name="export_process_failed">Export process failed: %1$s</string>
+    <string name="export_invalid_package_name_format">Invalid format. Example: com.example.app</string>
+    <string name="export_invalid_version_format">Invalid format. Example: 1.0.0</string>
+    <string name="export_apk_extract_dir_missing">APK extracted directory does not exist</string>
+    <string name="chat_generate_share_image_failed">Failed to generate image: %1$s</string>
+    <string name="chat_processing_attachment">Processing attachment...</string>
+    <string name="chat_attachment_processing_failed">Failed to process attachment: %1$s</string>
+    <string name="chat_create_failed">Failed to create a new chat</string>
+    <string name="chat_processing_shared_files">Processing shared files...</string>
+    <string name="chat_start_workspace_server_failed">Failed to start workspace service</string>
+    <string name="chat_update_workspace_server_failed">Failed to update web workspace: %1$s</string>
+    <string name="chat_stop_workspace_server_failed">Failed to stop web workspace: %1$s</string>
+    <string name="chat_terminal_requires_android_8">Terminal features require Android 8.0 or higher</string>
+    <string name="chat_create_dedicated_terminal_session_failed">Failed to create dedicated terminal session</string>
+    <string name="chat_create_workspace_terminal_session_failed">Failed to create workspace terminal session</string>
+    <string name="chat_execute_command_failed">Command execution failed: %1$s</string>
+    <string name="chat_start_ai_computer_failed">Failed to start AI computer: %1$s</string>
+    <string name="chat_ai_computer_closed_due_to_workspace">AI computer closed (workspace opened)</string>
     <string name="ai_planning_desc">Will perform task decomposition and trigger multiple sub-agents to collect information, then summarize. Sub-agents have the same tool-calling capabilities as the chat agent. This can be very time-consuming, only recommended when collecting information.</string>
     <string name="thinking_mode">Thinking Mode</string>
     <string name="thinking_mode_desc">Currently supports Gemini, Qwen3, Claude, Doubao, SiliconFlow and MNN local models, enabling built-in thinking.</string>
@@ -2365,8 +2635,6 @@
     <string name="settings_part_size_subtitle">Number of lines per section when reading files partially</string>
     <string name="settings_max_text_result">Max Text Result Length</string>
     <string name="settings_max_text_result_subtitle">Maximum character limit for generic text results</string>
-    <string name="settings_max_http_response">Max HTTP Response Length</string>
-    <string name="settings_max_http_response_subtitle">Maximum character limit for network request responses</string>
     <string name="settings_max_image_history_user_turns">Keep Image History Turns</string>
     <string name="settings_max_image_history_user_turns_subtitle">Only keep images from the last N user turns to avoid resending old images</string>
     <string name="settings_max_media_history_user_turns">Keep Media History Turns</string>
@@ -2710,8 +2978,20 @@
     <string name="provider_ppinfra">PPInfra Cloud</string>
     <string name="provider_openai_generic">OpenAI (Generic)</string>
     <string name="provider_other">Other Providers</string>
+    <string name="provider_doubao">Doubao</string>
+    <string name="provider_llama_cpp">llama.cpp Local Inference</string>
+    <string name="provider_mnn">MNN Local Inference</string>
     <string name="select_api_provider_title">Select API Provider</string>
     <string name="search_providers">Search providers</string>
+
+    <!-- llama.cpp Local Inference -->
+    <string name="llama_local_model_tip">Local models are usually weaker. Consider disabling memory links and disabling tools for chat.</string>
+    <string name="llama_local_model_download_tip">llama.cpp models must be downloaded manually (.gguf). Put the model file in the folder below, then enter the file name in “Model name”:</string>
+    <string name="llama_local_model_dir">Default model folder: %1$s</string>
+    <string name="llama_select_downloaded_model">Select downloaded model</string>
+    <string name="llama_thread_count">Thread count</string>
+    <string name="llama_context_size">Context size</string>
+
     <!-- ModelParametersSection strings -->
     <string name="max_tokens_name">Max Tokens</string>
     <string name="max_tokens_description">Controls the maximum number of tokens AI generates each time</string>
@@ -3139,6 +3419,78 @@
     <string name="publish_failed_with_error">Publish failed: %1$s</string>
     <string name="mcp_plugin_update_success_message">Your MCP plugin information has been successfully updated.</string>
     <string name="mcp_plugin_publish_success_message">Your MCP plugin has been successfully published to the market and is awaiting approval before being discoverable by other users.</string>
+
+    <string name="mcp_market_api_rate_limited_login_required">API rate limit reached. Please login to GitHub and try again.</string>
+    <string name="mcp_market_load_failed_with_error">Failed to load MCP market data: %1$s</string>
+    <string name="mcp_market_load_more_failed_with_error">Failed to load more: %1$s</string>
+    <string name="mcp_market_network_error_with_error">Network error: %1$s</string>
+    <string name="mcp_market_github_login_required">Please login to GitHub</string>
+    <string name="mcp_market_publish_success_toast">MCP plugin published successfully!</string>
+    <string name="mcp_market_github_login_start_failed">Failed to start login: %1$s</string>
+    <string name="mcp_market_config_import_failed_with_error">Failed to import config: %1$s</string>
+    <string name="mcp_market_config_import_success_with_count">Imported %1$s config successfully. Merged %2$d server(s).</string>
+    <string name="mcp_market_install_success">Installed %1$s successfully</string>
+    <string name="mcp_market_install_failed_with_error">Install failed: %1$s</string>
+    <string name="mcp_market_parse_install_info_failed">Failed to parse installation info. Please view the Issue details and install manually.</string>
+    <string name="mcp_market_github_logout_success">Logged out</string>
+    <string name="mcp_market_github_logout_failed_with_error">Logout failed: %1$s</string>
+    <string name="mcp_market_get_user_info_failed">Failed to get user info</string>
+    <string name="mcp_market_load_published_failed_with_error">Failed to load published plugins: %1$s</string>
+    <string name="mcp_market_update_plugin_success_toast">Plugin information updated successfully!</string>
+    <string name="mcp_market_plugin_removed_from_market">Plugin "%1$s" has been removed from the market</string>
+
+    <string name="mcp_market_plugin_republished_to_market">Plugin "%1$s" has been republished to the market</string>
+    <string name="mcp_market_republish_failed_with_error">Republish failed: %1$s</string>
+    <string name="mcp_market_parse_plugin_desc_failed_fallback">Failed to parse plugin description. Please fill it in manually.</string>
+
+    <string name="mcp_market_comment_empty">Comment cannot be empty</string>
+    <string name="mcp_market_comment_post_success">Comment posted successfully!</string>
+    <string name="mcp_market_comment_post_failed_with_error">Failed to post comment: %1$s</string>
+    <string name="mcp_market_comment_post_error_with_error">Error while posting comment: %1$s</string>
+
+    <string name="mcp_market_load_comments_failed_with_error">Failed to load comments: %1$s</string>
+    <string name="mcp_market_load_comments_error_with_error">Error while loading comments: %1$s</string>
+
+    <string name="mcp_market_reaction_success">Liked!</string>
+    <string name="mcp_market_reaction_failed_with_error">Like failed: %1$s</string>
+    <string name="mcp_market_reaction_error_with_error">Error while liking: %1$s</string>
+
+    <string name="mcp_issue_body_title_description">## MCP Plugin Description</string>
+    <string name="mcp_issue_body_title_install_info">## Installation Info</string>
+    <string name="mcp_issue_body_repo_address">**Repository:** %1$s</string>
+    <string name="mcp_issue_body_title_install_method">### Installation</string>
+    <string name="mcp_issue_body_install_step1">1. Open Operit MCP configuration screen and tap "Import"</string>
+    <string name="mcp_issue_body_install_step2">2. Select "Import from Repo"</string>
+    <string name="mcp_issue_body_install_step3">3. Enter repository URL: `%1$s`</string>
+    <string name="mcp_issue_body_install_step4">4. Set plugin name and tap import</string>
+    <string name="mcp_issue_body_title_tech_info">## Technical Info</string>
+    <string name="mcp_issue_body_tech_platform">- **Platform:** Operit MCP Market</string>
+    <string name="mcp_issue_body_tech_publish_time">- **Published at:** %1$s</string>
+    <string name="mcp_issue_body_footer_note">*This Issue was generated automatically by Operit*</string>
+
+    <string name="mcp_publish_body_section_plugin_info">## 📋 Plugin Info</string>
+    <string name="mcp_publish_body_label_description">**Description:** %1$s</string>
+    <string name="mcp_publish_body_section_repo_info">## 🔗 Repository Info</string>
+    <string name="mcp_publish_body_label_repo_url">**Repository:** %1$s</string>
+    <string name="mcp_publish_body_section_quick_install">## ⚡ Quick Install</string>
+    <string name="mcp_publish_body_section_install_method">## 📦 Installation</string>
+    <string name="mcp_publish_body_method_repo_import_title">### Method 1: Import from Repo</string>
+    <string name="mcp_publish_body_method_repo_import_step1">1. Open Operit MCP configuration screen</string>
+    <string name="mcp_publish_body_method_repo_import_step2">2. Tap "Import" → "Import from Repo"</string>
+    <string name="mcp_publish_body_method_repo_import_step3">3. Enter repository URL: `%1$s`</string>
+    <string name="mcp_publish_body_method_repo_import_step4">4. Set plugin name and import</string>
+    <string name="mcp_publish_body_method_config_import_title">### Method 2: Import Config</string>
+    <string name="mcp_publish_body_method_config_import_step1">1. Open Operit MCP configuration screen</string>
+    <string name="mcp_publish_body_method_config_import_step2">2. Tap "Import" → "Import Config"</string>
+    <string name="mcp_publish_body_method_config_import_step3">3. Paste the following config:</string>
+    <string name="mcp_publish_body_section_tech_info">## 🛠️ Technical Info</string>
+    <string name="mcp_publish_body_table_header">| Item | Value |</string>
+    <string name="mcp_publish_body_table_separator">|------|-----|</string>
+    <string name="mcp_publish_body_table_row_platform">| Platform | Operit MCP Market |</string>
+    <string name="mcp_publish_body_table_row_parser_version">| Parser Version | 1.0 |</string>
+    <string name="mcp_publish_body_table_row_publish_time">| Published at | %1$s |</string>
+    <string name="mcp_publish_body_table_row_status_pending">| Status | ⏳ Pending Review |</string>
+    <string name="mcp_publish_body_footer_note">*🤖 This Issue was generated automatically by Operit and is awaiting admin approval*</string>
     
     <!-- MCP Plugin Detail Screen -->
     <string name="mcp_plugin_detail_title">Plugin Details</string>
@@ -3180,10 +3532,27 @@
     <string name="select_txt_file">Select Text File</string>
     <string name="batch_import_success">Batch Import Successful</string>
     <string name="batch_import_failed">Batch Import Failed</string>
+    <string name="export_keys">Export keys</string>
+    <string name="exported_keys_count">Exported %1$d keys</string>
+    <string name="export_keys_failed">Export keys failed</string>
     <string name="import_format_desc">Please select a text file containing API keys, one key per line</string>
     <string name="imported_keys_count">Successfully imported %1$d keys</string>
     <string name="invalid_file_format">Invalid file format, please select a text file</string>
     <string name="no_valid_keys_found">No valid keys found</string>
+
+    <string name="api_key_pool_keys_count">%1$d keys in the pool</string>
+    <string name="api_key_pool_large_hint">When there are more than %1$d keys, the per-key editing list will be hidden</string>
+    <string name="clear_api_key_pool">Clear key pool</string>
+    <string name="clear_api_key_pool_confirm_message">Delete all %1$d keys? This cannot be undone.</string>
+    <string name="api_key_pool_cleared">Key pool cleared</string>
+
+    <string name="api_key_pool_test_progress">Available: %1$d, Unavailable: %2$d, Untested: %3$d</string>
+    <string name="api_key_pool_test_run_progress">Test progress: %1$d / %2$d</string>
+    <string name="api_key_pool_test_start">Start testing</string>
+    <string name="api_key_pool_test_continue">Continue testing</string>
+    <string name="api_key_pool_test_pause">Pause</string>
+    <string name="api_key_pool_clear_marks">Clear marks</string>
+    <string name="api_key_pool_test_failed">Test failed: %1$s</string>
 
     <!-- Custom Emoji Management -->
     <string name="manage_custom_emoji">Manage Custom Emojis</string>
@@ -3239,7 +3608,6 @@
     <string name="go_clear">Clear Now</string>
     
     <!-- MNN Local Inference -->
-    <string name="provider_mnn">MNN (Local Inference)</string>
     <string name="screen_title_mnn_model_download">MNN Model Download</string>
     <string name="mnn_model_download">Download MNN Model</string>
     <string name="mnn_model_management">Model Management</string>
@@ -3343,7 +3711,43 @@
     <string name="dialog_message_orientation_change">Screen orientation has changed. Reload the page?</string>
     <string name="dialog_button_confirm">Reload</string>
     <string name="dialog_button_dismiss">Cancel</string>
-    
+
+    <string name="migration_import_failed">Import failed</string>
+    <string name="migration_import_error">Import error: %1$s</string>
+    <string name="migration_open_file_failed">Cannot open file: %1$s</string>
+    <string name="migration_info_cd">Migration info</string>
+    <string name="migration_found_old_chat_title">Old chat history found</string>
+    <string name="migration_found_old_chat_desc">We found chat history data from a previous version. You can import it into this version.</string>
+    <string name="migration_error_during_migration">An error occurred during migration</string>
+    <string name="migration_start">Start migration</string>
+    <string name="migration_skip">Skip</string>
+    <string name="migration_advanced_options">Advanced options</string>
+    <string name="migration_manual_backup_desc">You can also back up or import chat history manually:</string>
+    <string name="migration_export_cd">Export</string>
+    <string name="migration_export_backup">Export backup</string>
+    <string name="migration_import_cd">Import</string>
+    <string name="migration_import_backup">Import backup</string>
+    <string name="migration_in_progress_title">Migrating data...</string>
+    <string name="migration_in_progress_desc">Please wait. Do not close the app during migration.</string>
+    <string name="migration_completed_cd">Migration completed</string>
+    <string name="migration_completed_title">Migration completed</string>
+    <string name="migration_completed_desc">Successfully migrated %1$d chat records</string>
+    <string name="migration_continue">Continue</string>
+    <string name="migration_failed_cd">Migration failed</string>
+    <string name="migration_failed_title">Migration failed</string>
+    <string name="migration_retry">Retry</string>
+    <string name="migration_exporting_title">Exporting backup...</string>
+    <string name="migration_export_failed">Export failed</string>
+    <string name="migration_exported_cd">Export completed</string>
+    <string name="migration_exported_title">Export completed</string>
+    <string name="migration_exported_desc">Backup file saved to:\n%1$s</string>
+    <string name="migration_back">Back</string>
+    <string name="migration_importing_title">Importing backup...</string>
+    <string name="migration_imported_cd">Import completed</string>
+    <string name="migration_imported_title">Import completed</string>
+    <string name="migration_imported_desc">Successfully imported %1$d chat records</string>
+    <string name="migration_back_to_screen">Back to migration screen</string>
+
     <!-- Chat binding announcement -->
     <string name="chat_binding_announcement_title">Notice</string>
     <string name="chat_binding_announcement_body">This app is free. If you bought it from someone, you were scammed. Beware of impersonation/reselling.</string>
@@ -3602,6 +4006,7 @@
     <string name="status_info_block">Status Info</string>
     <string name="html_content_block">HTML Content</string>
     <string name="mood_tag_block">Mood Tag</string>
+    <string name="thinking_tools_group_title_with_count">Thinking &amp; Tool Calls (%1$d)</string>
     
     <!-- Backup Settings Screen -->
     <string name="backup_data_overview">Data Overview</string>
@@ -3709,7 +4114,38 @@
     <string name="backup_import_result_skipped">\n- Skipped invalid records: %1$d</string>
     <string name="backup_import_result_failed">Import failed: No valid chat history found</string>
     <string name="backup_export_result_success">Successfully exported to: %1$s</string>
-    
+
+    <string name="backup_character_cards_title">Character Cards</string>
+    <string name="backup_character_cards_subtitle">Backup and restore character card settings</string>
+    <string name="backup_character_cards_current_count">Currently %1$d character card(s). Exported files will be saved in the "Download/Operit" folder.</string>
+    <string name="backup_character_card_count">Character Cards</string>
+    <string name="backup_character_card_files">Character Cards</string>
+
+    <string name="backup_character_cards_export_result_success">Successfully exported %1$d character card(s) to:\n%2$s</string>
+    <string name="backup_character_cards_import_result_success">Successfully imported character cards:\n- New: %1$d\n- Updated: %2$d%3$s</string>
+    <string name="backup_character_cards_import_result_skipped">\n- Skipped invalid cards: %1$d</string>
+    <string name="backup_character_cards_import_result_failed">Import failed: no valid character cards found</string>
+
+    <string name="backup_export_failed_create_file">Export failed: unable to create file</string>
+    <string name="backup_export_failed_with_reason">Export failed: %1$s</string>
+    <string name="backup_import_failed_unreadable_file">Import failed: unable to read file</string>
+    <string name="backup_import_failed_with_reason">Import failed: %1$s</string>
+    <string name="backup_clear_failed_with_reason">Clear failed: %1$s</string>
+    <string name="backup_delete_skipped_locked">\nSkipped locked chats: %1$d</string>
+
+    <string name="backup_open_file_failed">Unable to open file</string>
+    <string name="backup_import_file_empty">The imported file is empty</string>
+
+    <string name="backup_memory_import_result_success">Imported into profile "%1$s":\n- New memories: %2$d\n- Updated memories: %3$d\n- Skipped memories: %4$d\n- New links: %5$d</string>
+    <string name="backup_memory_export_result_success">Exported from profile "%1$s": %2$d memory(ies) and %3$d link(s) to:\n%4$s</string>
+
+    <string name="backup_model_config_import_result_success">Successfully imported model configurations:\n- New: %1$d\n- Updated: %2$d%3$s</string>
+    <string name="backup_model_config_import_result_skipped">\n- Skipped invalid configs: %1$d</string>
+
+    <string name="backup_chat_export_result_success">Successfully exported %1$d chat record(s) as %2$s to:\n%3$s</string>
+    <string name="backup_format_unknown">Unknown format</string>
+    <string name="backup_format_claude">Claude</string>
+
     <!-- Delete Confirmation Dialog -->
     <string name="backup_delete_confirm_title">Confirm Delete</string>
     <string name="backup_delete_confirm_message">Deleting all chat history cannot be undone. It is recommended to export a backup before performing this operation.\n\nAre you sure you want to delete?</string>
@@ -3730,9 +4166,15 @@
     <!-- Memory Import Strategy -->
     <string name="backup_memory_import_strategy_title">Select Import Strategy</string>
     <string name="backup_memory_import_profile_title">Select Profile</string>
+    <string name="backup_memory_import_strategy_question">How should duplicates be handled (same UUID)?</string>
+    <string name="backup_memory_import_strategy_skip_title">Skip (Recommended)</string>
+    <string name="backup_memory_import_strategy_skip_desc">Keep existing memories and do not import duplicates</string>
+    <string name="backup_memory_import_strategy_update_title">Update</string>
+    <string name="backup_memory_import_strategy_update_desc">Update existing memories with imported data</string>
+    <string name="backup_memory_import_strategy_create_new_title">Create New</string>
+    <string name="backup_memory_import_strategy_create_new_desc">Create new memories even if UUIDs are the same (may cause duplicates)</string>
     <string name="backup_confirm">Confirm</string>
     <string name="backup_cancel">Cancel</string>
-    <string name="provider_doubao">Doubao (Volcano Model)</string>
 
     <!-- Help Screen - Mirror Selection Dialog -->
     <string name="help_loading_message">Loading user guide...</string>
@@ -3876,5 +4318,80 @@
     <string name="toolreg_ffmpeg_execute_desc">Execute FFmpeg command: %1$s</string>
     <string name="toolreg_ffmpeg_info_desc">Get FFmpeg info</string>
     <string name="toolreg_ffmpeg_convert_desc">Convert video: %1$s → %2$s</string>
+
+    <!-- AutoGLM One-Click Configuration -->
+    <string name="autoglm_config_name">AutoGLM Configuration</string>
+    <string name="autoglm_one_click_title">AutoGLM One-Click Config</string>
+    <string name="autoglm_one_click_subtitle">Automatically create Zhipu autoglm-phone model configuration for UI controller and switch to AutoGLM toolkit.</string>
+    <string name="autoglm_open_apikey_center">Go to Zhipu API Key Page</string>
+    <string name="autoglm_open_apikey_tip">After logging in, create and copy your API Key on the Zhipu platform</string>
+    <string name="autoglm_api_key_placeholder">Paste your Zhipu API Key here</string>
+    <string name="autoglm_one_click_button">One-Click AutoGLM Config</string>
+    <string name="autoglm_status_running">Running one-click configuration, please wait...</string>
+    <string name="autoglm_status_success">AutoGLM one-click configuration completed:\nModel: %1$s\nAPI Key: %2$s\nToolkit: AutoGLM\n\nYou can now use AutoGLM mode in the chat interface.</string>
+    <string name="autoglm_status_error">One-click configuration failed: %1$s</string>
+    <string name="autoglm_error_empty_api_key">Please fill in the Zhipu API Key first.</string>
+
+    <!-- Skill Market -->
+    <string name="available_skills_market">Available Skills</string>
+    <string name="beta_plan">Beta Program</string>
+    <string name="beta_plan_desc">After joining, when there are updated test versions, patch updates of about 30MB will be automatically downloaded over WiFi.</string>
+    <string name="beta_plan_enabled">Joined Beta Program</string>
+    <string name="beta_plan_disabled">Not in Beta Program</string>
+    <string name="beta_plan_join">Join</string>
+    <string name="beta_plan_leave">Leave</string>
+    <string name="click_button_publish_first_skill">Click the button above to publish your first Skill</string>
+    <string name="confirm_remove_skill_from_market">Are you sure you want to remove Skill "%1$s" from the market? This will close the corresponding Issue but will not delete your code repository.</string>
+    <string name="confirm_skill_git_import_deployment">I confirm that this Skill can be properly installed and used through the app\'s Git repository import method</string>
+    <string name="experimental_virtual_display">Experimental Virtual Display</string>
+    <string name="experimental_virtual_display_description">Use ADB+Shizuku automation based on virtual display. This feature is still experimental and may be unstable.</string>
+    <string name="get_skill">Get Skill</string>
+    <string name="import_or_install_skill">Import Skill</string>
+    <string name="login_github_for_skill_market">Login to GitHub for better Skill market experience</string>
+    <string name="manage_my_skills">Manage My Skills</string>
+    <string name="need_login_github_manage_skills">Need to login to GitHub to manage your published Skills</string>
+    <string name="no_matching_skills_found">No matching Skills found</string>
+    <string name="skill_market_search_placeholder">Search Skill name, description, author...</string>
+    <string name="skill_repo_url_not_found">Repository URL not found</string>
+    <string name="skill_repo_url_not_found_cannot_install">Repository URL not found, unable to install</string>
+    <string name="no_published_skills_yet">No Skills published yet</string>
+    <string name="no_skills_available">No Skills available</string>
+    <string name="overwrite_existing">Overwrite existing Skill with same name</string>
+    <string name="patch_update">Patch Update</string>
+    <string name="patch_update_desc">Download patch and install after synthesizing APK locally</string>
+    <string name="patch_update_failed">Patch update failed: %1$s</string>
+    <string name="patch_update_success">Patch update prepared</string>
+    <string name="patch_install_confirm_title">Install patch update</string>
+    <string name="patch_install_confirm_message">New patch version detected: %1$s\n\nInstall now?</string>
+    <string name="prepare_patch_update">Preparing patch update...</string>
+    <string name="publish_new_skill">Publish New Skill</string>
+    <string name="screen_title_autoglm_one_click">AutoGLM One-Click Config</string>
+    <string name="screen_title_autoglm_tool">AutoGLM Execution</string>
+    <string name="screen_title_skill_detail">Skill Detail</string>
+    <string name="screen_title_skill_manage">Manage My Skills</string>
+    <string name="screen_title_skill_market">Skill Market</string>
+    <string name="screen_title_skill_publish">Publish Skill</string>
+    <string name="select_skill_plugin_zip">Select Skill ZIP package</string>
+    <string name="skill_description_required">Skill Description *</string>
+    <string name="skill_edit_info_description">You are editing published Skill information. Modified information will be updated to the corresponding Issue in the market repository.</string>
+    <string name="skill_name_required">Skill Name *</string>
+    <string name="skill_publish_info_description">Your Skill information will be published as a GitHub Issue to the market repository. Please ensure the information provided is accurate and complete. Form content will be automatically saved as a draft until successfully published.</string>
+    <string name="skill_publish_success_message">Your Skill has been successfully published to the market and will be available for other users to discover and use after approval.</string>
+    <string name="skill_repo_address_required">GitHub Repository Address *</string>
+    <string name="skill_update_success_message">Your Skill information has been successfully updated.</string>
+    <string name="skill_zip_package">Skill ZIP Package</string>
+    <string name="tool_autoglm_one_click">AutoGLM One-Click Config</string>
+    <string name="tool_autoglm_one_click_desc">One-click configure autoglm-phone model for UI controller and switch to AutoGLM toolkit</string>
+    <string name="tool_autoglm_tool">AutoGLM Execution</string>
+    <string name="tool_autoglm_tool_desc">Use autoglm-phone agent to execute mobile automation tasks step by step</string>
+    <string name="ui_accessibility_mode">Accessibility Mode</string>
+    <string name="ui_accessibility_mode_description">Optimize UI automation behavior for accessibility users like TalkBack, prioritize providing readable operation steps, and carefully execute automatic taps.</string>
+    <string name="workflow_execution_failed">Execution Failed</string>
+    <string name="workflow_execution_running">Running…</string>
+    <string name="workflow_execution_success">Execution Successful</string>
+    <string name="workflow_node_failed">Failed</string>
+    <string name="workflow_node_pending">Pending</string>
+    <string name="workflow_node_running">Running</string>
+    <string name="workflow_node_success">Success</string>
 
 </resources>

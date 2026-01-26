@@ -138,6 +138,12 @@ class SpeechInteractionManager(
         coroutineScope.launch {
             try {
                 try {
+                    AIForegroundService.ensureMicrophoneForeground(context)
+                } catch (e: Exception) {
+                    AppLogger.w(TAG, "Failed to request microphone foreground", e)
+                }
+
+                try {
                     context.startService(Intent(context, AIForegroundService::class.java).apply {
                         action = AIForegroundService.ACTION_PREPARE_WAKE_HANDOFF
                     })
@@ -145,13 +151,14 @@ class SpeechInteractionManager(
                     AppLogger.w(TAG, "Failed to request wake handoff prepare", e)
                 }
 
+                // Give AIForegroundService a moment to stop wake listening and release microphone
+                delay(180)
+
                 var ok = false
                 var attempt = 0
-                while (!ok && attempt < 4) {
+                while (!ok && attempt < 12) {
                     if (attempt > 0) {
-                        delay(120)
-                    } else {
-                        delay(80)
+                        delay(160)
                     }
                     ok = speechService.startRecognition(
                         languageCode = "zh-CN",

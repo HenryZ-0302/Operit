@@ -161,7 +161,7 @@ fun GridWorkflowCanvas(
     fun isConnectionActive(connection: WorkflowNodeConnection): Boolean {
         val sourceState = nodeExecutionStates[connection.sourceNodeId]
         val sourceResult = (sourceState as? NodeExecutionState.Success)?.result ?: return false
-        if (sourceResult == "跳过") return false
+        if (sourceResult == NodeExecutionState.Skipped().reason) return false
 
         val rawCondition = connection.condition?.trim().orEmpty()
         val sourceNode = nodeById[connection.sourceNodeId]

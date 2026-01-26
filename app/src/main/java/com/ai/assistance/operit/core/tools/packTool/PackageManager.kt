@@ -16,6 +16,7 @@ import com.ai.assistance.operit.core.tools.mcp.MCPPackage
 import com.ai.assistance.operit.core.tools.mcp.MCPServerConfig
 import com.ai.assistance.operit.core.tools.mcp.MCPToolExecutor
 import com.ai.assistance.operit.core.tools.skill.SkillManager
+import com.ai.assistance.operit.data.preferences.SkillVisibilityPreferences
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import com.ai.assistance.operit.core.tools.system.ShizukuAuthorizer
 import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
@@ -75,6 +76,8 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     private val initLock = Any()
 
     private val skillManager by lazy { SkillManager.getInstance(context) }
+
+    private val skillVisibilityPreferences by lazy { SkillVisibilityPreferences.getInstance(context) }
 
     // JavaScript engine for executing JS package code
     private val jsEngine by lazy { JsEngine(context) }
@@ -535,6 +538,12 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         }
 
         // Then check if it's a Skill package
+        if (skillManager.getAvailableSkills().containsKey(packageName) &&
+            !skillVisibilityPreferences.isSkillVisibleToAi(packageName)
+        ) {
+            return "Skill '$packageName' 已设置为不展示给AI"
+        }
+
         val skillPrompt = skillManager.getSkillSystemPrompt(packageName)
         if (skillPrompt != null) {
             return skillPrompt
@@ -565,6 +574,18 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                 error = "缺少必需参数: package_name"
             )
         }
+
+        if (skillManager.getAvailableSkills().containsKey(packageName) &&
+            !skillVisibilityPreferences.isSkillVisibleToAi(packageName)
+        ) {
+            return ToolResult(
+                toolName = toolName,
+                success = false,
+                result = StringResultData(""),
+                error = "Skill '$packageName' 已设置为不展示给AI"
+            )
+        }
+
         val text = usePackage(packageName)
         return ToolResult(
             toolName = toolName,

@@ -1740,16 +1740,46 @@ fun ChatHistorySelector(
                                                         )
                                                     }
                                                     Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(
-                                                        text = item.history.title,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        color = contentColor,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
+                                                    Column(
                                                         modifier = Modifier
                                                             .weight(1f)
                                                             .semantics { contentDescription = "" }
-                                                    )
+                                                    ) {
+                                                        Text(
+                                                            text = item.history.title,
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = contentColor,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+
+                                                        // 如果是分支，在右侧显示分支图标和父对话标题
+                                                        if (item.history.parentChatId != null) {
+                                                            val parentChat = chatHistories.find { it.id == item.history.parentChatId }
+                                                            if (parentChat != null) {
+                                                                Spacer(modifier = Modifier.height(2.dp))
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    modifier = Modifier.semantics { contentDescription = "" }
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.AccountTree,
+                                                                        contentDescription = null,
+                                                                        tint = contentColor.copy(alpha = 0.6f),
+                                                                        modifier = Modifier.size(14.dp)
+                                                                    )
+                                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                                    Text(
+                                                                        text = parentChat.title,
+                                                                        style = MaterialTheme.typography.bodySmall,
+                                                                        color = contentColor.copy(alpha = 0.6f),
+                                                                        maxLines = 1,
+                                                                        overflow = TextOverflow.Ellipsis
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                     if (activeStreamingChatIds.contains(item.history.id)) {
                                                         Spacer(modifier = Modifier.width(4.dp))
                                                         CircularProgressIndicator(
@@ -1766,30 +1796,6 @@ fun ChatHistorySelector(
                                                             tint = contentColor.copy(alpha = 0.6f),
                                                             modifier = Modifier.size(16.dp)
                                                         )
-                                                    }
-                                                    // 如果是分支，在右侧显示分支图标和父对话标题
-                                                    if (item.history.parentChatId != null) {
-                                                        val parentChat = chatHistories.find { it.id == item.history.parentChatId }
-                                                        if (parentChat != null) {
-                                                            Spacer(modifier = Modifier.width(8.dp))
-                                                            Icon(
-                                                                imageVector = Icons.Default.AccountTree,
-                                                                contentDescription = null,
-                                                                tint = contentColor.copy(alpha = 0.6f),
-                                                                modifier = Modifier.size(16.dp)
-                                                            )
-                                                            Spacer(modifier = Modifier.width(4.dp))
-                                                            Text(
-                                                                text = parentChat.title,
-                                                                style = MaterialTheme.typography.bodySmall,
-                                                                color = contentColor.copy(alpha = 0.6f),
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis,
-                                                                modifier = Modifier
-                                                                    .widthIn(max = 120.dp)
-                                                                    .semantics { contentDescription = "" } // 限制最大宽度以便省略
-                                                            )
-                                                        }
                                                     }
                                                 }
                                             }

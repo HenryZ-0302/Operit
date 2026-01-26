@@ -117,12 +117,16 @@ fun MCPConfigScreen(
     var isToolsLoading by remember { mutableStateOf(false) }
     var pendingPluginId by remember { mutableStateOf<String?>(null) }
 
+    // Freeze list order within this screen session (avoid jumping when status changes)
+    var lockedPluginOrder by remember { mutableStateOf<List<String>?>(null) }
+
     suspend fun refreshMcpScreen() {
         if (isRefreshing) return
         isRefreshing = true
         try {
             mcpRepository.syncBridgeStatus()
             mcpRepository.refreshPluginList()
+            lockedPluginOrder = null
         } finally {
             isRefreshing = false
         }
@@ -241,28 +245,47 @@ fun MCPConfigScreen(
         successfulToolRequests.value = pluginToolsMap.filter { it.value.isNotEmpty() }.size
     }
 
-    val sortedPluginIds by remember(
+    val computedSortedPluginIds = remember(
         installedPlugins,
         pluginToolsMap,
         serverStatusMap,
         mcpConfigSnapshot
     ) {
-        derivedStateOf {
-            installedPlugins
-                .toList()
-                .sortedWith(
-                    compareBy<String> { pluginId ->
-                        val enabled = mcpLocalServer.isServerEnabled(pluginId)
-                        val loaded = pluginToolsMap[pluginId]?.isNotEmpty() == true
-                        when {
-                            enabled && loaded -> 0
-                            enabled -> 1
-                            else -> 2
-                        }
-                    }.thenBy { pluginId ->
-                        getPluginDisplayName(pluginId, mcpRepository).lowercase(Locale.getDefault())
+        installedPlugins
+            .toList()
+            .sortedWith(
+                compareBy<String> { pluginId ->
+                    val enabled = mcpLocalServer.isServerEnabled(pluginId)
+                    val loaded = pluginToolsMap[pluginId]?.isNotEmpty() == true
+                    when {
+                        enabled && loaded -> 0
+                        enabled -> 1
+                        else -> 2
                     }
-                )
+                }.thenBy { pluginId ->
+                    getPluginDisplayName(pluginId, mcpRepository).lowercase(Locale.getDefault())
+                }
+            )
+    }
+
+    // Lock order once tools are loaded (so the initial "good" sort is applied, then frozen)
+    LaunchedEffect(isToolsLoading, installedPlugins, toolRefreshTrigger) {
+        if (lockedPluginOrder == null && installedPlugins.isNotEmpty() && !isToolsLoading) {
+            lockedPluginOrder = computedSortedPluginIds
+        }
+    }
+
+    val sortedPluginIds = remember(lockedPluginOrder, installedPlugins, computedSortedPluginIds) {
+        val installedSet = installedPlugins.toSet()
+        val base = (lockedPluginOrder ?: computedSortedPluginIds)
+        val kept = base.filter { installedSet.contains(it) }
+        val missing = installedSet - kept.toSet()
+        if (missing.isEmpty()) {
+            kept
+        } else {
+            kept + missing.sortedBy { pluginId ->
+                getPluginDisplayName(pluginId, mcpRepository).lowercase(Locale.getDefault())
+            }
         }
     }
 

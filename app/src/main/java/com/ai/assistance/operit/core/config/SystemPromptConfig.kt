@@ -1,9 +1,11 @@
 package com.ai.assistance.operit.core.config
 
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
+import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.skill.SkillRepository
+import com.ai.assistance.operit.util.LocaleUtils
+import java.io.File
 
-/** Configuration class for system prompts and other related settings */
 object SystemPromptConfig {
 
     private const val BEHAVIOR_GUIDELINES_EN = """
@@ -297,7 +299,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     val skillPackages = try {
         SkillRepository.getInstance(
             com.ai.assistance.operit.core.application.OperitApplication.instance.applicationContext
-        ).getAvailableSkillPackages()
+        ).getAiVisibleSkillPackages()
     } catch (_: Exception) {
         emptyMap()
     }

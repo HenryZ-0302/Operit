@@ -50,7 +50,6 @@ fun ContextSummarySettingsScreen(
         var maxFileSizeBytesInput by remember { mutableStateOf("") }
         var partSizeInput by remember { mutableStateOf("") }
         var maxTextResultLengthInput by remember { mutableStateOf("") }
-        var maxHttpResponseLengthInput by remember { mutableStateOf("") }
         var maxImageHistoryUserTurnsInput by remember { mutableStateOf("") }
         var maxMediaHistoryUserTurnsInput by remember { mutableStateOf("") }
 
@@ -61,7 +60,6 @@ fun ContextSummarySettingsScreen(
             maxFileSizeBytesInput = (apiPreferences.maxFileSizeBytesFlow.first() / 1000).toString() // Display as KB
             partSizeInput = (apiPreferences.partSizeFlow.first()).toString()
             maxTextResultLengthInput = (apiPreferences.maxTextResultLengthFlow.first() / 1000).toString() // Display as KB
-            maxHttpResponseLengthInput = (apiPreferences.maxHttpResponseLengthFlow.first() / 1000).toString() // Display as KB
             maxImageHistoryUserTurnsInput = apiPreferences.maxImageHistoryUserTurnsFlow.first().toString()
             maxMediaHistoryUserTurnsInput = apiPreferences.maxMediaHistoryUserTurnsFlow.first().toString()
         }
@@ -102,7 +100,6 @@ fun ContextSummarySettingsScreen(
             if (!validateInt(maxFileSizeBytesInput, "最大文件大小")) return false
             if (!validateInt(partSizeInput, "分片大小")) return false
             if (!validateInt(maxTextResultLengthInput, "最大文本结果长度")) return false
-            if (!validateInt(maxHttpResponseLengthInput, "最大HTTP响应长度")) return false
             if (!validateNonNegativeInt(maxImageHistoryUserTurnsInput, "历史图片保留回合数")) return false
             if (!validateNonNegativeInt(maxMediaHistoryUserTurnsInput, "历史音视频保留回合数")) return false
 
@@ -122,7 +119,6 @@ fun ContextSummarySettingsScreen(
                 apiPreferences.saveMaxFileSizeBytes(maxFileSizeBytesInput.toInt() * 1000) // Convert KB to Bytes
                 apiPreferences.savePartSize(partSizeInput.toInt())
                 apiPreferences.saveMaxTextResultLength(maxTextResultLengthInput.toInt() * 1000) // Convert KB to Bytes
-                apiPreferences.saveMaxHttpResponseLength(maxHttpResponseLengthInput.toInt() * 1000) // Convert KB to Bytes
                 apiPreferences.saveMaxImageHistoryUserTurns(maxImageHistoryUserTurnsInput.toInt())
                 apiPreferences.saveMaxMediaHistoryUserTurns(maxMediaHistoryUserTurnsInput.toInt())
                 showSaveSuccessMessage = true
@@ -188,16 +184,6 @@ fun ContextSummarySettingsScreen(
                             backgroundColor = componentBackgroundColor
                         )
 
-                        // HTTP响应最大长度滑块
-                        SettingsInputField(
-                            title = stringResource(id = R.string.settings_max_http_response),
-                            subtitle = stringResource(id = R.string.settings_max_http_response_subtitle),
-                            value = maxHttpResponseLengthInput,
-                            onValueChange = { maxHttpResponseLengthInput = it },
-                            unitText = "k",
-                            backgroundColor = componentBackgroundColor
-                        )
-
                         SettingsInputField(
                             title = stringResource(id = R.string.settings_max_image_history_user_turns),
                             subtitle = stringResource(id = R.string.settings_max_image_history_user_turns_subtitle),
@@ -224,7 +210,6 @@ fun ContextSummarySettingsScreen(
                                                 maxFileSizeBytesInput = (apiPreferences.maxFileSizeBytesFlow.first() / 1000).toString()
                                                 partSizeInput = apiPreferences.partSizeFlow.first().toString()
                                                 maxTextResultLengthInput = (apiPreferences.maxTextResultLengthFlow.first() / 1000).toString()
-                                                maxHttpResponseLengthInput = (apiPreferences.maxHttpResponseLengthFlow.first() / 1000).toString()
                                                 maxImageHistoryUserTurnsInput = apiPreferences.maxImageHistoryUserTurnsFlow.first().toString()
                                                 maxMediaHistoryUserTurnsInput = apiPreferences.maxMediaHistoryUserTurnsFlow.first().toString()
                                                 showSaveSuccessMessage = true

@@ -26,7 +26,7 @@ android {
             cmake {
                 cppFlags += listOf("-std=c++17", "-fno-emulated-tls")
                 arguments += listOf(
-                    "-DANDROID_STL=c++_shared",
+                    "-DANDROID_STL=c++_static",
                     "-DANDROID_PLATFORM=android-26",
                     "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON",
                     "-DMNN_BUILD_SHARED_LIBS=ON",

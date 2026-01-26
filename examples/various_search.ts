@@ -1,7 +1,7 @@
 /* METADATA
 {
   name: various_search
-  description: { zh: "提供多平台搜索功能，支持从必应、百度、搜狗、夸克等平台获取搜索结果。", en: "Multi-platform search tools that fetch results from Bing, Baidu, Sogou, Quark, and more." }
+  description: { zh: "提供多平台搜索功能（含图片搜索），支持从必应、百度、搜狗、夸克等平台获取搜索结果。", en: "Multi-platform search tools (including image search) that fetch results from Bing, Baidu, Sogou, Quark, and more." }
   enabledByDefault: true
   
   tools: [
@@ -118,6 +118,78 @@
           required: false
         }
       ]
+    },
+    {
+      name: search_bing_images
+      description: { zh: "使用必应图片搜索引擎进行图片搜索。返回内容会包含 visitKey 和 Images 编号；下载图片请用 download_file 的 visit_key + image_number（不要用 link_number 乱点页面链接）。", en: "Search images using Bing Images. The result includes visitKey and indexed Images; download images via download_file with visit_key + image_number (do not follow random page links via link_number)." }
+      parameters: [
+        {
+          name: query
+          description: { zh: "搜索关键词", en: "Search query keywords." }
+          type: string
+          required: true
+        }
+      ]
+    },
+    {
+      name: search_wikimedia_images
+      description: { zh: "使用 Wikimedia Commons 进行图片搜索（公共资源）。返回 visitKey + Images 编号；下载图片用 download_file(visit_key + image_number)。", en: "Search images using Wikimedia Commons (public domain/commons). Use visitKey + image_number with download_file to download images." }
+      parameters: [
+        {
+          name: query
+          description: { zh: "搜索关键词", en: "Search query keywords." }
+          type: string
+          required: true
+        }
+      ]
+    },
+    {
+      name: search_duckduckgo_images
+      description: { zh: "使用 DuckDuckGo Images 进行图片搜索。返回 visitKey + Images 编号；下载图片用 download_file(visit_key + image_number)。", en: "Search images using DuckDuckGo Images. Use visitKey + image_number with download_file to download images." }
+      parameters: [
+        {
+          name: query
+          description: { zh: "搜索关键词", en: "Search query keywords." }
+          type: string
+          required: true
+        }
+      ]
+    },
+    {
+      name: search_ecosia_images
+      description: { zh: "使用 Ecosia Images 进行图片搜索。返回 visitKey + Images 编号；下载图片用 download_file(visit_key + image_number)。", en: "Search images using Ecosia Images. Use visitKey + image_number with download_file to download images." }
+      parameters: [
+        {
+          name: query
+          description: { zh: "搜索关键词", en: "Search query keywords." }
+          type: string
+          required: true
+        }
+      ]
+    },
+    {
+      name: search_pexels_images
+      description: { zh: "使用 Pexels 进行图片搜索（高质量图库）。返回 visitKey + Images 编号；下载图片请用 download_file 的 visit_key + image_number。", en: "Search images using Pexels (high-quality stock). Use visitKey + image_number with download_file to download images." }
+      parameters: [
+        {
+          name: query
+          description: { zh: "搜索关键词", en: "Search query keywords." }
+          type: string
+          required: true
+        }
+      ]
+    },
+    {
+      name: search_pixabay_images
+      description: { zh: "使用 Pixabay 进行图片搜索（图库）。返回 visitKey + Images 编号；下载图片请用 download_file 的 visit_key + image_number。", en: "Search images using Pixabay (stock). Use visitKey + image_number with download_file to download images." }
+      parameters: [
+        {
+          name: query
+          description: { zh: "搜索关键词", en: "Search query keywords." }
+          type: string
+          required: true
+        }
+      ]
     }
   ]
 }
@@ -158,6 +230,46 @@ const various_search = (function () {
     }
   }
 
+  async function performImageSearch(platform: string, url: string, query: string) {
+    try {
+      const response = await Tools.Net.visit({ url, include_image_links: true });
+      if (!response) {
+        throw new Error(`无法获取 ${platform} 图片搜索结果`);
+      }
+
+      let parts: string[] = [];
+
+      if (response.visitKey !== undefined) {
+        parts.push(String(response.visitKey));
+      }
+
+      if (response.imageLinks && Array.isArray(response.imageLinks) && response.imageLinks.length > 0) {
+        const maxItems = 20;
+        const imagesLines = response.imageLinks.slice(0, maxItems).map((link: string, index: number) => {
+          const lastSeg = String(link).split('/').pop() || 'image';
+          const name = lastSeg.split('?')[0] || 'image';
+          return `[${index + 1}] ${name}`;
+        });
+        parts.push("Images:");
+        parts.push(imagesLines.join('\n'));
+      }
+
+      if (response.content !== undefined) {
+        parts.push(String(response.content));
+      }
+
+      return {
+        platform,
+        content: parts.join('\n')
+      };
+    } catch (error: any) {
+      return {
+        platform,
+        content: `${platform} 图片搜索失败: ${error.message}`
+      };
+    }
+  }
+
   async function search_bing(query: string, includeLinks: boolean = false) {
     const encodedQuery = encodeURIComponent(query);
     const url = `https://cn.bing.com/search?q=${encodedQuery}&FORM=HDRSC1`;
@@ -193,6 +305,42 @@ const various_search = (function () {
     const encodedQuery = encodeURIComponent(query);
     const url = `https://quark.sm.cn/s?q=${encodedQuery}&page=${page}`;
     return performSearch('quark', url, query, page, includeLinks);
+  }
+
+  async function search_bing_images(query: string) {
+    const encodedQuery = encodeURIComponent(query);
+    const url = `https://www.bing.com/images/search?q=${encodedQuery}`;
+    return performImageSearch('bing_images', url, query);
+  }
+
+  async function search_wikimedia_images(query: string) {
+    const encodedQuery = encodeURIComponent(query);
+    const url = `https://commons.wikimedia.org/wiki/Special:MediaSearch?type=image&search=${encodedQuery}`;
+    return performImageSearch('wikimedia_images', url, query);
+  }
+
+  async function search_duckduckgo_images(query: string) {
+    const encodedQuery = encodeURIComponent(query);
+    const url = `https://duckduckgo.com/?q=${encodedQuery}&iax=images&ia=images`;
+    return performImageSearch('duckduckgo_images', url, query);
+  }
+
+  async function search_ecosia_images(query: string) {
+    const encodedQuery = encodeURIComponent(query);
+    const url = `https://www.ecosia.org/images?q=${encodedQuery}`;
+    return performImageSearch('ecosia_images', url, query);
+  }
+
+  async function search_pexels_images(query: string) {
+    const encodedQuery = encodeURIComponent(query);
+    const url = `https://www.pexels.com/search/${encodedQuery}/`;
+    return performImageSearch('pexels_images', url, query);
+  }
+
+  async function search_pixabay_images(query: string) {
+    const encodedQuery = encodeURIComponent(query);
+    const url = `https://pixabay.com/images/search/${encodedQuery}/`;
+    return performImageSearch('pixabay_images', url, query);
   }
 
   const searchFunctions: any = {
@@ -246,17 +394,28 @@ const various_search = (function () {
     search_baidu,
     search_sogou,
     search_quark,
+    search_bing_images,
+    search_wikimedia_images,
+    search_duckduckgo_images,
+    search_ecosia_images,
+    search_pexels_images,
+    search_pixabay_images,
     combined_search,
     wrap,
     main
   };
 })();
 
-
 exports.search_bing = various_search.wrap(various_search.search_bing);
 exports.search_baidu = various_search.wrap(various_search.search_baidu);
 exports.search_sogou = various_search.wrap(various_search.search_sogou);
 exports.search_quark = various_search.wrap(various_search.search_quark);
+exports.search_bing_images = various_search.wrap(various_search.search_bing_images);
+exports.search_wikimedia_images = various_search.wrap(various_search.search_wikimedia_images);
+exports.search_duckduckgo_images = various_search.wrap(various_search.search_duckduckgo_images);
+exports.search_ecosia_images = various_search.wrap(various_search.search_ecosia_images);
+exports.search_pexels_images = various_search.wrap(various_search.search_pexels_images);
+exports.search_pixabay_images = various_search.wrap(various_search.search_pixabay_images);
 exports.combined_search = various_search.wrap(various_search.combined_search);
 
 exports.main = various_search.main;

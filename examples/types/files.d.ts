@@ -15,6 +15,8 @@ import { FFmpegVideoCodec, FFmpegAudioCodec, FFmpegResolution, FFmpegBitrate } f
  */
 export type FileEnvironment = "android" | "linux";
 
+export type ApplyFileType = "replace" | "delete" | "create";
+
 /**
  * File operations namespace
  */
@@ -172,10 +174,12 @@ export namespace Files {
     /**
      * Apply AI-generated content to a file with intelligent merging
      * @param path - Path to file
-     * @param content - Content to apply
+     * @param type - Operation type: replace | delete | create
+     * @param old - Exact content to match (required for replace/delete)
+     * @param newContent - New content to insert (required for replace/create)
      * @param environment - Execution environment ("android" or "linux"), default "android"
      */
-    function apply(path: string, content: string, environment?: FileEnvironment): Promise<FileApplyResultData>;
+    function apply(path: string, type: ApplyFileType, old?: string, newContent?: string, environment?: FileEnvironment): Promise<FileApplyResultData>;
 
     /**
      * Zip files/directories
@@ -213,7 +217,18 @@ export namespace Files {
      * @param url - Source URL
      * @param destination - Destination path
      * @param environment - Execution environment ("android" or "linux"), default "android"
+     * @param headers - Optional headers for the request
      */
-    function download(url: string, destination: string, environment?: FileEnvironment): Promise<FileOperationData>;
+    function download(url: string, destination: string, environment?: FileEnvironment, headers?: Record<string, string>): Promise<FileOperationData>;
+
+    function download(options: {
+        url?: string;
+        visit_key?: string;
+        link_number?: number;
+        image_number?: number;
+        destination: string;
+        environment?: FileEnvironment;
+        headers?: Record<string, string>;
+    }): Promise<FileOperationData>;
 
 } 

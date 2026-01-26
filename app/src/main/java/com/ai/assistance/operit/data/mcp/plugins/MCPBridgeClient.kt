@@ -13,6 +13,208 @@ import org.json.JSONObject
 class MCPBridgeClient(context: Context, private val serviceName: String) {
     companion object {
         private const val TAG = "MCPBridgeClient"
+        private const val DEFAULT_SPAWN_TIMEOUT_MS = 180000L
+
+        fun buildRegisterLocalCommand(
+            name: String,
+            command: String,
+            args: List<String> = emptyList(),
+            description: String? = null,
+            env: Map<String, String> = emptyMap(),
+            cwd: String? = null
+        ): JSONObject {
+            val params = JSONObject().apply {
+                put("type", "local")
+                put("name", name)
+                put("command", command)
+                if (args.isNotEmpty()) {
+                    put("args", JSONArray().apply { args.forEach { put(it) } })
+                }
+                if (description != null) {
+                    put("description", description)
+                }
+                if (env.isNotEmpty()) {
+                    val envObj = JSONObject()
+                    env.forEach { (key, value) -> envObj.put(key, value) }
+                    put("env", envObj)
+                }
+                if (cwd != null) {
+                    put("cwd", cwd)
+                }
+            }
+
+            return JSONObject().apply {
+                put("command", "register")
+                put("id", UUID.randomUUID().toString())
+                put("params", params)
+            }
+        }
+
+        fun buildRegisterRemoteCommand(
+            name: String,
+            type: String,
+            endpoint: String,
+            connectionType: String? = null,
+            description: String? = null,
+            bearerToken: String? = null,
+            headers: Map<String, String>? = null
+        ): JSONObject {
+            val params = JSONObject().apply {
+                put("type", type)
+                put("name", name)
+                put("endpoint", endpoint)
+                if (connectionType != null) {
+                    put("connectionType", connectionType)
+                }
+                if (description != null) {
+                    put("description", description)
+                }
+                if (bearerToken != null) {
+                    put("bearerToken", bearerToken)
+                }
+                if (headers != null && headers.isNotEmpty()) {
+                    val headersObj = JSONObject()
+                    headers.forEach { (key, value) -> headersObj.put(key, value) }
+                    put("headers", headersObj)
+                }
+            }
+
+            return JSONObject().apply {
+                put("command", "register")
+                put("id", UUID.randomUUID().toString())
+                put("params", params)
+            }
+        }
+
+        fun buildUnregisterCommand(name: String): JSONObject {
+            return JSONObject().apply {
+                put("command", "unregister")
+                put("id", UUID.randomUUID().toString())
+                put("params", JSONObject().apply { put("name", name) })
+            }
+        }
+
+        fun buildListServicesCommand(serviceName: String? = null): JSONObject {
+            return JSONObject().apply {
+                put("command", "list")
+                put("id", UUID.randomUUID().toString())
+                if (serviceName != null) {
+                    put("params", JSONObject().apply { put("name", serviceName) })
+                }
+            }
+        }
+
+        fun buildSpawnCommand(
+            name: String? = null,
+            command: String? = null,
+            args: List<String>? = null,
+            env: Map<String, String>? = null,
+            cwd: String? = null,
+            timeoutMs: Long? = null
+        ): JSONObject {
+            val params = JSONObject()
+            if (name != null) {
+                params.put("name", name)
+            }
+            if (command != null) {
+                params.put("command", command)
+            }
+            if (args != null && args.isNotEmpty()) {
+                params.put("args", JSONArray().apply { args.forEach { put(it) } })
+            }
+            if (env != null && env.isNotEmpty()) {
+                val envObj = JSONObject()
+                env.forEach { (key, value) -> envObj.put(key, value) }
+                params.put("env", envObj)
+            }
+            if (cwd != null) {
+                params.put("cwd", cwd)
+            }
+            if (timeoutMs != null) {
+                params.put("timeoutMs", timeoutMs)
+            }
+
+            return JSONObject().apply {
+                put("command", "spawn")
+                put("id", UUID.randomUUID().toString())
+                put("params", params)
+            }
+        }
+
+        fun buildUnspawnCommand(name: String): JSONObject {
+            return JSONObject().apply {
+                put("command", "unspawn")
+                put("id", UUID.randomUUID().toString())
+                put("params", JSONObject().apply { put("name", name) })
+            }
+        }
+
+        fun buildListToolsCommand(serviceName: String? = null): JSONObject {
+            val params = JSONObject()
+            if (serviceName != null) {
+                params.put("name", serviceName)
+            }
+
+            return JSONObject().apply {
+                put("command", "listtools")
+                put("id", UUID.randomUUID().toString())
+                if (params.length() > 0) {
+                    put("params", params)
+                }
+            }
+        }
+
+        fun buildCacheToolsCommand(serviceName: String, tools: List<JSONObject>): JSONObject {
+            val toolsArray = JSONArray()
+            tools.forEach { tool -> toolsArray.put(tool) }
+
+            val params = JSONObject().apply {
+                put("name", serviceName)
+                put("tools", toolsArray)
+            }
+
+            return JSONObject().apply {
+                put("command", "cachetools")
+                put("id", UUID.randomUUID().toString())
+                put("params", params)
+            }
+        }
+
+        fun buildToolCallCommand(
+            name: String? = null,
+            method: String,
+            params: JSONObject
+        ): JSONObject {
+            val callParams = JSONObject().apply {
+                put("method", method)
+                put("params", params)
+                if (name != null) {
+                    put("name", name)
+                }
+                put("id", UUID.randomUUID().toString())
+            }
+
+            return JSONObject().apply {
+                put("command", "toolcall")
+                put("id", UUID.randomUUID().toString())
+                put("params", callParams)
+            }
+        }
+
+        fun buildLogsCommand(name: String): JSONObject {
+            return JSONObject().apply {
+                put("command", "logs")
+                put("id", UUID.randomUUID().toString())
+                put("params", JSONObject().apply { put("name", name) })
+            }
+        }
+
+        fun buildResetCommand(): JSONObject {
+            return JSONObject().apply {
+                put("command", "reset")
+                put("id", UUID.randomUUID().toString())
+            }
+        }
     }
 
     private val bridge = MCPBridge.getInstance(context)
@@ -53,7 +255,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                     }
 
                     AppLogger.i(TAG, "Service $serviceName is not ready. Attempting blocking spawn...")
-                    val spawnResp = spawnBlocking(timeoutMs = 12000)
+                    val spawnResp = spawnBlocking()
                     if (spawnResp?.optBoolean("success", false) == true) {
                         val result = spawnResp.optJSONObject("result")
                         val ready = result?.optBoolean("ready", false) ?: false
@@ -114,51 +316,37 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
     /** Synchronous ping method */
     fun pingSync(): Boolean = kotlinx.coroutines.runBlocking { ping() }
 
-    /** Get last ping time */
-    fun getLastPingTime(): Long = lastPingTime
-
     /** Spawn the MCP service if it's not already active */
-    suspend fun spawnBlocking(timeoutMs: Long = 12000): JSONObject? =
+    suspend fun spawnBlocking(timeoutMs: Long = DEFAULT_SPAWN_TIMEOUT_MS): JSONObject? =
             withContext(Dispatchers.IO) {
                 try {
-                    return@withContext bridge.spawnMcpService(name = serviceName, timeoutMs = timeoutMs)
+                    val response =
+                        MCPBridge.sendCommand(
+                            buildSpawnCommand(name = serviceName, timeoutMs = timeoutMs)
+                        )
+                    if (response != null && !response.optBoolean("success", false)) {
+                        val errorObj = response.optJSONObject("error")
+                        val errorMessage = errorObj?.optString("message").orEmpty()
+
+                        if (errorObj != null && errorMessage.isNotBlank()) {
+                            val dataObj = errorObj.optJSONObject("data") ?: JSONObject().also {
+                                errorObj.put("data", it)
+                            }
+                            val lastError = dataObj.optString("lastError").orEmpty()
+                            val logs = dataObj.optString("logs").orEmpty()
+
+                            if (lastError.isBlank()) {
+                                dataObj.put("lastError", errorMessage)
+                            }
+                            if (logs.isBlank()) {
+                                dataObj.put("logs", errorMessage)
+                            }
+                        }
+                    }
+                    return@withContext response
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "Exception during spawn for service $serviceName: ${e.message}", e)
                     return@withContext null
-                }
-            }
-
-    suspend fun spawn(): Boolean =
-            withContext(Dispatchers.IO) {
-                try {
-                    AppLogger.d(TAG, "Attempting to spawn service: $serviceName")
-                    val serviceInfo = getServiceInfo()
-
-                    if (serviceInfo?.active == true) {
-                        AppLogger.d(TAG, "Service $serviceName is already active.")
-                        return@withContext true
-                    }
-
-                    val spawnResult = spawnBlocking(timeoutMs = 12000)
-                    if (spawnResult?.optBoolean("success", false) == true) {
-                        val ready = spawnResult.optJSONObject("result")?.optBoolean("ready", false) ?: false
-                        if (ready) {
-                            AppLogger.i(TAG, "Service $serviceName spawned successfully.")
-                            isConnected.set(true)
-                            return@withContext true
-                        }
-                    }
-
-                    val error =
-                            spawnResult?.optJSONObject("error")?.optString("message")
-                                    ?: "Unknown error"
-                    AppLogger.e(TAG, "Failed to spawn service $serviceName: $error")
-                    isConnected.set(false)
-                    return@withContext false
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Exception during spawn for service $serviceName: ${e.message}", e)
-                    isConnected.set(false)
-                    return@withContext false
                 }
             }
 
@@ -167,7 +355,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
             withContext(Dispatchers.IO) {
                 try {
                     AppLogger.d(TAG, "Attempting to unspawn service: $serviceName")
-                    val unspawnResult = bridge.unspawnMcpService(name = serviceName)
+                    val unspawnResult = MCPBridge.sendCommand(buildUnspawnCommand(serviceName))
                     if (unspawnResult?.optBoolean("success", false) == true) {
                         AppLogger.i(TAG, "Service $serviceName unspawned successfully.")
                         disconnect() // Set local state to disconnected
@@ -221,12 +409,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                             }
 
                     // Build command
-                    val command =
-                            JSONObject().apply {
-                                put("command", "toolcall")
-                                put("id", UUID.randomUUID().toString())
-                                put("params", callParams)
-                            }
+                    val command = buildToolCallCommand(name = serviceName, method = method, params = params)
 
                     // Send command
                     val response = MCPBridge.sendCommand(command)
@@ -350,8 +533,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                         }
                     }
 
-                    // Get tools - pass the service name to be more specific
-                    val response = bridge.listTools(serviceName)
+                    val response = MCPBridge.sendCommand(buildListToolsCommand(serviceName))
 
                     if (response?.optBoolean("success", false) == true) {
                         val toolsArray =
@@ -399,23 +581,11 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                 }
             }
 
-    /** Get tool names provided by the service as a simple list of strings */
-    suspend fun getToolNames(): List<String> = 
-            withContext(Dispatchers.IO) {
-                try {
-                    val tools = getTools()
-                    return@withContext tools.mapNotNull { it.optString("name", null) }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error getting tool names: ${e.message}")
-                    return@withContext emptyList()
-                }
-            }
-
     /** Get service info including tools count and running status */
     suspend fun getServiceInfo(): ServiceInfo? =
             withContext(Dispatchers.IO) {
                 try {
-                    val listResponse = bridge.listMcpServices() ?: return@withContext null
+                    val listResponse = MCPBridge.sendCommand(buildListServicesCommand()) ?: return@withContext null
                     
                     if (listResponse.optBoolean("success", false)) {
                         val services = listResponse.optJSONObject("result")?.optJSONArray("services")

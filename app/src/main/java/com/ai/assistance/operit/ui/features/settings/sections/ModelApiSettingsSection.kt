@@ -33,7 +33,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.TextStyle
@@ -43,11 +42,13 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.llmprovider.EndpointCompleter
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.api.chat.llmprovider.LlamaProvider
 import com.ai.assistance.operit.api.chat.llmprovider.ModelListFetcher
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelConfigData
@@ -113,6 +114,7 @@ fun ModelApiSettingsSection(
             ApiProviderType.DOUBAO -> "Doubao-pro-4k"
             ApiProviderType.LMSTUDIO -> "meta-llama-3.1-8b-instruct"
             ApiProviderType.MNN -> ""
+            ApiProviderType.LLAMA_CPP -> ""
             ApiProviderType.PPINFRA -> "gpt-4o-mini"
             ApiProviderType.OTHER -> ""
         }
@@ -132,6 +134,10 @@ fun ModelApiSettingsSection(
     // MNN特定配置状态
     var mnnForwardTypeInput by remember(config.id) { mutableStateOf(config.mnnForwardType) }
     var mnnThreadCountInput by remember(config.id) { mutableStateOf(config.mnnThreadCount.toString()) }
+
+    // llama.cpp 特定配置状态
+    var llamaThreadCountInput by remember(config.id) { mutableStateOf(config.llamaThreadCount.toString()) }
+    var llamaContextSizeInput by remember(config.id) { mutableStateOf(config.llamaContextSize.toString()) }
     
     // 图片处理配置状态
     var enableDirectImageProcessingInput by remember(config.id) { mutableStateOf(config.enableDirectImageProcessing) }
@@ -149,6 +155,12 @@ fun ModelApiSettingsSection(
     // DeepSeek推理模式配置状态 (仅DeepSeek)
     var enableDeepseekReasoningInput by remember(config.id) { mutableStateOf(config.enableDeepseekReasoning) }
 
+    LaunchedEffect(config.id, selectedApiProvider) {
+        if (selectedApiProvider == ApiProviderType.MNN || selectedApiProvider == ApiProviderType.LLAMA_CPP) {
+            enableToolCallInput = false
+        }
+    }
+
     data class ApiAutoSaveState(
         val apiEndpoint: String,
         val apiKey: String,
@@ -156,6 +168,8 @@ fun ModelApiSettingsSection(
         val provider: ApiProviderType,
         val mnnForwardType: Int,
         val mnnThreadCount: Int,
+        val llamaThreadCount: Int,
+        val llamaContextSize: Int,
         val enableDirectImageProcessing: Boolean,
         val enableDirectAudioProcessing: Boolean,
         val enableDirectVideoProcessing: Boolean,
@@ -176,6 +190,8 @@ fun ModelApiSettingsSection(
                     apiProviderType = state.provider,
                     mnnForwardType = state.mnnForwardType,
                     mnnThreadCount = state.mnnThreadCount,
+                    llamaThreadCount = state.llamaThreadCount,
+                    llamaContextSize = state.llamaContextSize,
                     enableDirectImageProcessing = state.enableDirectImageProcessing,
                     enableDirectAudioProcessing = state.enableDirectAudioProcessing,
                     enableDirectVideoProcessing = state.enableDirectVideoProcessing,
@@ -199,6 +215,8 @@ fun ModelApiSettingsSection(
             provider = selectedApiProvider,
             mnnForwardType = mnnForwardTypeInput,
             mnnThreadCount = mnnThreadCountInput.toIntOrNull() ?: 4,
+            llamaThreadCount = llamaThreadCountInput.toIntOrNull() ?: 4,
+            llamaContextSize = llamaContextSizeInput.toIntOrNull() ?: 4096,
             enableDirectImageProcessing = enableDirectImageProcessingInput,
             enableDirectAudioProcessing = enableDirectAudioProcessingInput,
             enableDirectVideoProcessing = enableDirectVideoProcessingInput,
@@ -250,6 +268,8 @@ fun ModelApiSettingsSection(
                 provider = selectedApiProvider,
                 mnnForwardType = mnnForwardTypeInput,
                 mnnThreadCount = mnnThreadCountInput.toIntOrNull() ?: 4,
+                llamaThreadCount = llamaThreadCountInput.toIntOrNull() ?: 4,
+                llamaContextSize = llamaContextSizeInput.toIntOrNull() ?: 4096,
                 enableDirectImageProcessing = enableDirectImageProcessingInput,
                 enableDirectAudioProcessing = enableDirectAudioProcessingInput,
                 enableDirectVideoProcessing = enableDirectVideoProcessingInput,
@@ -313,6 +333,7 @@ fun ModelApiSettingsSection(
             ApiProviderType.DOUBAO -> "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
             ApiProviderType.LMSTUDIO -> "http://localhost:1234/v1/chat/completions"
             ApiProviderType.MNN -> "" // MNN本地推理不需要endpoint
+            ApiProviderType.LLAMA_CPP -> "" // llama.cpp本地推理不需要endpoint
             ApiProviderType.PPINFRA -> "https://api.ppinfra.com/openai/v1/chat/completions"
             ApiProviderType.OPENAI_GENERIC -> ""
             ApiProviderType.OTHER -> ""
@@ -428,7 +449,9 @@ fun ModelApiSettingsSection(
                 selectedApiProvider == ApiProviderType.GEMINI_GENERIC ||
                 selectedApiProvider == ApiProviderType.ANTHROPIC_GENERIC
 
-            if (selectedApiProvider == ApiProviderType.MNN) {
+            val isMnnProvider = selectedApiProvider == ApiProviderType.MNN
+            val isLlamaProvider = selectedApiProvider == ApiProviderType.LLAMA_CPP
+            if (isMnnProvider) {
                 MnnSettingsBlock(
                         mnnForwardTypeInput = mnnForwardTypeInput,
                         onForwardTypeSelected = { mnnForwardTypeInput = it },
@@ -439,6 +462,21 @@ fun ModelApiSettingsSection(
                             }
                         },
                         navigateToMnnModelDownload = navigateToMnnModelDownload
+                )
+            } else if (isLlamaProvider) {
+                LlamaSettingsBlock(
+                    llamaThreadCountInput = llamaThreadCountInput,
+                    onThreadCountChange = { input ->
+                        if (input.isEmpty() || input.toIntOrNull() != null) {
+                            llamaThreadCountInput = input
+                        }
+                    },
+                    llamaContextSizeInput = llamaContextSizeInput,
+                    onContextSizeChange = { input ->
+                        if (input.isEmpty() || input.toIntOrNull() != null) {
+                            llamaContextSizeInput = input
+                        }
+                    }
                 )
             } else {
                 SettingsTextField(
@@ -492,24 +530,25 @@ fun ModelApiSettingsSection(
                         interactionSource = apiKeyInteractionSource
                 )
             }
-
-            val isMnnProvider = selectedApiProvider == ApiProviderType.MNN
             SettingsTextField(
                     title = stringResource(R.string.model_name),
-                    subtitle = if (isMnnProvider) stringResource(R.string.mnn_select_downloaded_model) else stringResource(
-                            R.string.model_name_placeholder) + " (可用逗号分隔多个模型)",
+                    subtitle = when {
+                        isMnnProvider -> stringResource(R.string.mnn_select_downloaded_model)
+                        isLlamaProvider -> stringResource(R.string.llama_select_downloaded_model)
+                        else -> stringResource(R.string.model_name_placeholder) + " (可用逗号分隔多个模型)"
+                    },
                         value = modelNameInput,
                         onValueChange = {
-                        if (!isMnnProvider && !isUsingDefaultApiKey) {
+                        if (!isMnnProvider && !isLlamaProvider && !isUsingDefaultApiKey) {
                                 modelNameInput = it.replace("\n", "").replace("\r", "")
                             }
                         },
-                    enabled = if (isMnnProvider) false else !isUsingDefaultApiKey,
+                    enabled = if (isMnnProvider || isLlamaProvider) false else !isUsingDefaultApiKey,
                     trailingContent = {
                 IconButton(
                         onClick = {
-                                    if (isMnnProvider) {
-                                        AppLogger.d(TAG, "获取MNN本地模型列表")
+                                    if (isMnnProvider || isLlamaProvider) {
+                                        AppLogger.d(TAG, "获取本地模型列表")
                                         val gettingModelsText =
                                                 context.getString(R.string.getting_models_list)
                                         val modelsListSuccessText =
@@ -521,10 +560,14 @@ fun ModelApiSettingsSection(
                                             modelLoadError = null
 
                                             try {
-                                                val result = ModelListFetcher.getMnnLocalModels(context)
+                                                val result = if (isMnnProvider) {
+                                                    ModelListFetcher.getMnnLocalModels(context)
+                                                } else {
+                                                    ModelListFetcher.getLlamaLocalModels(context)
+                                                }
                                                 if (result.isSuccess) {
                                                     val models = result.getOrThrow()
-                                                    AppLogger.d(TAG, "MNN模型列表获取成功，共 ${models.size} 个模型")
+                                                    AppLogger.d(TAG, "本地模型列表获取成功，共 ${models.size} 个模型")
                                                     modelsList = models
                                                     showModelsDialog = true
                                                     showNotification(modelsListSuccessText.format(models.size))
@@ -532,7 +575,7 @@ fun ModelApiSettingsSection(
                                                     val errorMsg =
                                                             result.exceptionOrNull()?.message
                                                                     ?: context.getString(R.string.unknown_error)
-                                                    AppLogger.e(TAG, "MNN模型列表获取失败: $errorMsg")
+                                                    AppLogger.e(TAG, "本地模型列表获取失败: $errorMsg")
                                                     modelLoadError =
                                                             context.getString(
                                                                     R.string.get_models_list_failed,
@@ -541,7 +584,7 @@ fun ModelApiSettingsSection(
                                                     showNotification(modelLoadError!!)
                                                 }
                                             } catch (e: Exception) {
-                                                AppLogger.e(TAG, "获取MNN模型列表发生异常", e)
+                                                AppLogger.e(TAG, "获取本地模型列表发生异常", e)
                                                 modelLoadError =
                                                         context.getString(
                                                                 R.string.get_models_list_failed,
@@ -622,7 +665,7 @@ fun ModelApiSettingsSection(
                                 IconButtonDefaults.iconButtonColors(
                                         contentColor = MaterialTheme.colorScheme.primary
                                 ),
-                                enabled = if (isMnnProvider) true else !isUsingDefaultApiKey
+                                enabled = if (isMnnProvider || isLlamaProvider) true else !isUsingDefaultApiKey
                 ) {
                     if (isLoadingModels) {
                         CircularProgressIndicator(
@@ -634,7 +677,7 @@ fun ModelApiSettingsSection(
                                 imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
                                 contentDescription = stringResource(R.string.get_models_list),
                                 tint =
-                                                if (!isMnnProvider && isUsingDefaultApiKey)
+                                                if (!isMnnProvider && !isLlamaProvider && isUsingDefaultApiKey)
                                                         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                                                 else MaterialTheme.colorScheme.primary
                                 )
@@ -644,29 +687,25 @@ fun ModelApiSettingsSection(
             )
 
 
-            if (selectedApiProvider != ApiProviderType.MNN) {
-                SettingsSwitchRow(
-                        title = stringResource(R.string.enable_direct_image_processing),
-                        subtitle = stringResource(R.string.enable_direct_image_processing_desc),
-                            checked = enableDirectImageProcessingInput,
-                            onCheckedChange = { enableDirectImageProcessingInput = it }
-                    )
-            }
+            SettingsSwitchRow(
+                title = stringResource(R.string.enable_direct_image_processing),
+                subtitle = stringResource(R.string.enable_direct_image_processing_desc),
+                checked = enableDirectImageProcessingInput,
+                onCheckedChange = { enableDirectImageProcessingInput = it }
+            )
 
-            if (selectedApiProvider != ApiProviderType.MNN) {
-                SettingsSwitchRow(
-                    title = stringResource(R.string.enable_direct_audio_processing),
-                    subtitle = stringResource(R.string.enable_direct_audio_processing_desc),
-                    checked = enableDirectAudioProcessingInput,
-                    onCheckedChange = { enableDirectAudioProcessingInput = it }
-                )
-                SettingsSwitchRow(
-                    title = stringResource(R.string.enable_direct_video_processing),
-                    subtitle = stringResource(R.string.enable_direct_video_processing_desc),
-                    checked = enableDirectVideoProcessingInput,
-                    onCheckedChange = { enableDirectVideoProcessingInput = it }
-                )
-            }
+            SettingsSwitchRow(
+                title = stringResource(R.string.enable_direct_audio_processing),
+                subtitle = stringResource(R.string.enable_direct_audio_processing_desc),
+                checked = enableDirectAudioProcessingInput,
+                onCheckedChange = { enableDirectAudioProcessingInput = it }
+            )
+            SettingsSwitchRow(
+                title = stringResource(R.string.enable_direct_video_processing),
+                subtitle = stringResource(R.string.enable_direct_video_processing_desc),
+                checked = enableDirectVideoProcessingInput,
+                onCheckedChange = { enableDirectVideoProcessingInput = it }
+            )
             
             // Google Search Grounding 开关 (仅Gemini支持)
             if (selectedApiProvider == ApiProviderType.GOOGLE ||
@@ -679,15 +718,14 @@ fun ModelApiSettingsSection(
                     )
             }
             
-            // Tool Call 开关 (非MNN模型)
-            if (selectedApiProvider != ApiProviderType.MNN) {
-                SettingsSwitchRow(
-                        title = stringResource(R.string.enable_tool_call),
-                        subtitle = stringResource(R.string.enable_tool_call_desc),
-                            checked = enableToolCallInput,
-                            onCheckedChange = { enableToolCallInput = it }
-                    )
-            }
+            // Tool Call 开关
+            SettingsSwitchRow(
+                title = stringResource(R.string.enable_tool_call),
+                subtitle = stringResource(R.string.enable_tool_call_desc),
+                checked = enableToolCallInput,
+                onCheckedChange = { enableToolCallInput = it },
+                enabled = selectedApiProvider != ApiProviderType.MNN && selectedApiProvider != ApiProviderType.LLAMA_CPP
+            )
             
             // DeepSeek推理模式开关 (仅DeepSeek)
             if (selectedApiProvider == ApiProviderType.DEEPSEEK) {
@@ -1009,6 +1047,7 @@ private fun getProviderDisplayName(provider: ApiProviderType, context: android.c
         ApiProviderType.DOUBAO -> context.getString(R.string.provider_doubao)
         ApiProviderType.LMSTUDIO -> context.getString(R.string.provider_lmstudio)
         ApiProviderType.MNN -> context.getString(R.string.provider_mnn)
+        ApiProviderType.LLAMA_CPP -> context.getString(R.string.provider_llama_cpp)
         ApiProviderType.PPINFRA -> context.getString(R.string.provider_ppinfra)
         ApiProviderType.OTHER -> context.getString(R.string.provider_other)
     }
@@ -1078,20 +1117,20 @@ internal fun SettingsInfoBanner(text: String) {
 
 @Composable
 internal fun SettingsTextField(
-        title: String,
-        subtitle: String? = null,
-        value: String,
-        onValueChange: (String) -> Unit,
-        placeholder: String = "",
-        enabled: Boolean = true,
-        singleLine: Boolean = true,
-        keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-        keyboardActions: KeyboardActions = KeyboardActions.Default,
-        visualTransformation: VisualTransformation = VisualTransformation.None,
-        interactionSource: MutableInteractionSource? = null,
-        valueFilter: ((String) -> String)? = null,
-        trailingContent: @Composable (() -> Unit)? = null,
-        unitText: String? = null
+    title: String,
+    subtitle: String? = null,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String = "",
+    enabled: Boolean = true,
+    singleLine: Boolean = true,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    interactionSource: MutableInteractionSource? = null,
+    valueFilter: ((String) -> String)? = null,
+    trailingContent: @Composable (() -> Unit)? = null,
+    unitText: String? = null
 ) {
     val focusManager = LocalFocusManager.current
     val backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
@@ -1375,6 +1414,52 @@ private fun MnnSettingsBlock(
     }
 }
 
+@Composable
+private fun LlamaSettingsBlock(
+        llamaThreadCountInput: String,
+        onThreadCountChange: (String) -> Unit,
+        llamaContextSizeInput: String,
+        onContextSizeChange: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SettingsInfoBanner(text = stringResource(R.string.llama_local_model_tip))
+
+        SettingsInfoBanner(
+            text =
+                stringResource(R.string.llama_local_model_download_tip) +
+                    "\n" +
+                    stringResource(
+                        R.string.llama_local_model_dir,
+                        LlamaProvider.getModelsDir().absolutePath
+                    )
+        )
+
+        SettingsTextField(
+                title = stringResource(R.string.llama_thread_count),
+                value = llamaThreadCountInput,
+                onValueChange = onThreadCountChange,
+                placeholder = "4",
+                keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next
+                ),
+                valueFilter = { input -> input.filter { it.isDigit() } }
+        )
+
+        SettingsTextField(
+                title = stringResource(R.string.llama_context_size),
+                value = llamaContextSizeInput,
+                onValueChange = onContextSizeChange,
+                placeholder = "4096",
+                keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Next
+                ),
+                valueFilter = { input -> input.filter { it.isDigit() } }
+        )
+    }
+}
+
 private fun forwardTypeName(type: Int): String {
     return when (type) {
         0 -> "CPU"
@@ -1537,9 +1622,10 @@ private fun getProviderColor(provider: ApiProviderType): androidx.compose.ui.gra
         ApiProviderType.INFINIAI -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
         ApiProviderType.ALIPAY_BAILING -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.45f)
         ApiProviderType.DOUBAO -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
-        ApiProviderType.LMSTUDIO -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
-        ApiProviderType.MNN -> MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
-        ApiProviderType.PPINFRA -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f)
-        ApiProviderType.OTHER -> MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+        ApiProviderType.LMSTUDIO -> MaterialTheme.colorScheme.tertiary
+        ApiProviderType.MNN -> MaterialTheme.colorScheme.secondary
+        ApiProviderType.LLAMA_CPP -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f)
+        ApiProviderType.PPINFRA -> MaterialTheme.colorScheme.primaryContainer
+        ApiProviderType.OTHER -> MaterialTheme.colorScheme.surfaceVariant
     }
 }

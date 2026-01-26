@@ -137,14 +137,15 @@ class PromptTagManager private constructor(private val context: Context) {
         promptContent: String? = null,
         tagType: TagType? = null
     ) {
-        // 不允许修改系统标签的类型
-        if (isSystemTag(id)) return
+        val isSystem = isSystemTag(id)
         
         dataStore.edit { preferences ->
             name?.let { preferences[stringPreferencesKey("prompt_tag_${id}_name")] = it }
             description?.let { preferences[stringPreferencesKey("prompt_tag_${id}_description")] = it }
             promptContent?.let { preferences[stringPreferencesKey("prompt_tag_${id}_prompt_content")] = it }
-            tagType?.let { preferences[stringPreferencesKey("prompt_tag_${id}_tag_type")] = it.name }
+            if (!isSystem) {
+                tagType?.let { preferences[stringPreferencesKey("prompt_tag_${id}_tag_type")] = it.name }
+            }
             
             // 更新修改时间
             preferences[longPreferencesKey("prompt_tag_${id}_updated_at")] = System.currentTimeMillis()

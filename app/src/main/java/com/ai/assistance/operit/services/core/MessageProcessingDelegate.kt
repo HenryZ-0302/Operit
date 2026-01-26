@@ -312,6 +312,8 @@ class MessageProcessingDelegate(
 
             lateinit var aiMessage: ChatMessage
             val activeChatId = chatId
+            var serviceForTurnComplete: EnhancedAIService? = null
+            var shouldNotifyTurnComplete = false
             try {
                 // if (!NetworkUtils.isNetworkAvailable(context)) {
                 //     withContext(Dispatchers.Main) { showErrorMessage("网络连接不可用") }
@@ -330,6 +332,7 @@ class MessageProcessingDelegate(
                             setChatInputProcessingState(activeChatId, EnhancedInputProcessingState.Idle)
                             return@launch
                         }
+                serviceForTurnComplete = service
 
                 // 清除上一次可能残留的 Error 状态，避免 StateFlow 重放导致新一轮发送立即再次触发弹窗
                 service.setInputProcessingState(EnhancedInputProcessingState.Processing("正在处理消息..."))
@@ -496,6 +499,7 @@ class MessageProcessingDelegate(
                     _inputProcessingStateByChatId.value[chatKey(chatId)]
                 if (stateAfterStream !is EnhancedInputProcessingState.Error) {
                     setChatInputProcessingState(chatId, EnhancedInputProcessingState.Completed)
+                    shouldNotifyTurnComplete = true
                 }
 
                 if (pendingAsyncSummaryUiByChatId.containsKey(chatId)) {
@@ -506,15 +510,12 @@ class MessageProcessingDelegate(
                     )
                 }
 
-                if (stateAfterStream !is EnhancedInputProcessingState.Error) {
-                    onTurnComplete(activeChatId, service)
-                }
-
                 AppLogger.d(TAG, "AI响应处理完成，总耗时: ${System.currentTimeMillis() - startTime}ms")
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) {
                     AppLogger.d(TAG, "消息发送被取消")
                     setChatInputProcessingState(chatId, EnhancedInputProcessingState.Idle)
+                    shouldNotifyTurnComplete = false
                     throw e
                 }
                 AppLogger.e(TAG, "发送消息时出错", e)
@@ -524,134 +525,180 @@ class MessageProcessingDelegate(
                 )
                 withContext(Dispatchers.Main) { showErrorMessage("发送消息失败: ${e.message}") }
             } finally {
-                // 修改为使用 try-catch 来检查变量是否已初始化，而不是使用 ::var.isInitialized
-                try {
-                    // 尝试访问 aiMessage，如果未初始化会抛出 UninitializedPropertyAccessException
-                    val finalContent = aiMessage.content
-                    
-                    // 检查是否启用了waifu模式并且内容适合分句
-                    withContext(Dispatchers.IO) {
-                        val waifuPreferences = WaifuPreferences.getInstance(context)
-                        val isWaifuModeEnabled = waifuPreferences.enableWaifuModeFlow.first()
-                        
-                        if (isWaifuModeEnabled && WaifuMessageProcessor.shouldSplitMessage(finalContent)) {
-                            AppLogger.d(TAG, "Waifu模式已启用，开始创建独立消息，内容长度: ${finalContent.length}")
-                            
-                            // 获取配置的字符延迟时间和标点符号设置
-                            val charDelay = waifuPreferences.waifuCharDelayFlow.first().toLong()
-                            val removePunctuation = waifuPreferences.waifuRemovePunctuationFlow.first()
-                            
-                            // 获取当前角色名
-                            val currentRoleName = try {
-                                characterCardManager.activeCharacterCardFlow.first().name
-                            } catch (e: Exception) {
-                                "Operit" // 默认角色名
-                            }
-                            
-                            // 获取当前使用的provider和model信息（在finally块内重新获取）
-                            val (provider, modelName) = try {
-                                getEnhancedAiService()?.getProviderAndModelForFunction(com.ai.assistance.operit.data.model.FunctionType.CHAT) ?: Pair("", "")
-                            } catch (e: Exception) {
-                                AppLogger.e(TAG, "获取provider和model信息失败: ${e.message}", e)
-                                Pair("", "")
-                            }
-                            
-                            // 删除原始的空消息（因为在waifu模式下我们没有显示流式过程）
-                            // 不需要显示空的AI消息
-                            
-                            // 启动一个协程来创建独立的句子消息
-                            coroutineScope.launch(Dispatchers.IO) {
-                                AppLogger.d(TAG, "开始Waifu独立消息创建，字符延迟: ${charDelay}ms/字符，移除标点: $removePunctuation")
-                                
-                                // 分割句子
-                                val sentences = WaifuMessageProcessor.splitMessageBySentences(finalContent, removePunctuation)
-                                AppLogger.d(TAG, "分割出${sentences.size}个句子")
-                                
-                                // 为每个句子创建独立的消息
-                                for ((index, sentence) in sentences.withIndex()) {
-                                    // 根据当前句子字符数计算延迟（模拟说话时间）
-                                    val characterCount = sentence.length
-                                    val calculatedDelay = WaifuMessageProcessor.calculateSentenceDelay(characterCount, charDelay)
-                                    
-                                    if (index > 0) {
-                                        // 如果不是第一句，先延迟再发送
-                                        AppLogger.d(TAG, "当前句字符数: $characterCount, 计算延迟: ${calculatedDelay}ms")
-                                        delay(calculatedDelay)
-                                    }
-                                    
-                                    AppLogger.d(TAG, "创建第${index + 1}个独立消息: $sentence")
-                                    
-                                    // 创建独立的AI消息（使用外层已获取的provider和modelName）
-                                    val sentenceMessage = ChatMessage(
-                                        sender = "ai",
-                                        content = sentence,
-                                        contentStream = null,
-                                        timestamp = System.currentTimeMillis() + index * 10, // 确保时间戳不同
-                                        roleName = currentRoleName, // 使用已获取的角色名
-                                        provider = provider, // 使用外层获取的provider
-                                        modelName = modelName // 使用外层获取的modelName
-                                    )
-                                    
-                                    withContext(Dispatchers.Main) {
-                                        if (chatId != null) {
-                                            addMessageToChat(chatId, sentenceMessage)
-                                        }
-                                        // 如果启用了自动朗读，则朗读当前句子
-                                        if (getIsAutoReadEnabled()) {
-                                            speakMessage(sentence)
-                                        }
-                                        if (index == sentences.lastIndex) {
-                                            forceEmitScrollToBottom(chatId)
-                                        } else {
-                                            tryEmitScrollToBottomThrottled(chatId)
-                                        }
-                                    }
-                                }
-                                
-                                AppLogger.d(TAG, "Waifu独立消息创建完成")
-                            }
-                        } else {
-                            // 普通模式，直接清理流
-                            val finalMessage = aiMessage.copy(content = finalContent, contentStream = null)
-                            withContext(Dispatchers.Main) {
-                                if (chatId != null) {
-                                    addMessageToChat(chatId, finalMessage)
-                                }
-                                // 如果启用了自动朗读，则朗读完整消息
-                                if (getIsAutoReadEnabled()) {
-                                    speakMessage(finalContent)
-                                }
-                                forceEmitScrollToBottom(chatId)
-                            }
-                        }
-                    }
-                } catch (e: UninitializedPropertyAccessException) {
-                    // aiMessage 未初始化，忽略清理步骤
-                    AppLogger.d(TAG, "AI消息未初始化，跳过流清理步骤")
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "处理waifu模式时出错", e)
-                    // 如果waifu模式处理失败，回退到普通模式
-                    try {
-                        val finalContent = aiMessage.content
-                        val finalMessage = aiMessage.copy(content = finalContent)
-                        withContext(Dispatchers.Main) {
-                            if (chatId != null) {
-                                addMessageToChat(chatId, finalMessage)
-                            }
-                        }
-                    } catch (ex: Exception) {
-                        AppLogger.e(TAG, "回退到普通模式也失败", ex)
-                    }
-                }
-                // 清理job引用
-                chatRuntime.streamCollectionJob = null
-                chatRuntime.stateCollectionJob?.cancel()
-                chatRuntime.stateCollectionJob = null
-                chatRuntime.isLoading.value = false
-
-                updateGlobalLoadingState()
+                finalizeMessageAndNotify(
+                    chatId = chatId,
+                    activeChatId = activeChatId,
+                    aiMessageProvider = { aiMessage },
+                    shouldNotifyTurnComplete = shouldNotifyTurnComplete,
+                    serviceForTurnComplete = serviceForTurnComplete
+                )
+                cleanupRuntimeAfterSend(chatRuntime)
             }
         }
+    }
+
+    private suspend fun finalizeMessageAndNotify(
+        chatId: String?,
+        activeChatId: String?,
+        aiMessageProvider: () -> ChatMessage,
+        shouldNotifyTurnComplete: Boolean,
+        serviceForTurnComplete: EnhancedAIService?
+    ) {
+        // 修改为使用 try-catch 来检查变量是否已初始化，而不是使用 ::var.isInitialized
+        try {
+            val aiMessage = aiMessageProvider()
+            val finalContent = aiMessage.content
+
+            var deferTurnCompleteToAsyncJob = false
+            withContext(Dispatchers.IO) {
+                val waifuPreferences = WaifuPreferences.getInstance(context)
+                val isWaifuModeEnabled = waifuPreferences.enableWaifuModeFlow.first()
+
+                if (isWaifuModeEnabled && WaifuMessageProcessor.shouldSplitMessage(finalContent)) {
+                    deferTurnCompleteToAsyncJob = true
+                    AppLogger.d(TAG, "Waifu模式已启用，开始创建独立消息，内容长度: ${finalContent.length}")
+
+                    // 获取配置的字符延迟时间和标点符号设置
+                    val charDelay = waifuPreferences.waifuCharDelayFlow.first().toLong()
+                    val removePunctuation = waifuPreferences.waifuRemovePunctuationFlow.first()
+
+                    // 获取当前角色名
+                    val currentRoleName = try {
+                        characterCardManager.activeCharacterCardFlow.first().name
+                    } catch (e: Exception) {
+                        "Operit" // 默认角色名
+                    }
+
+                    // 获取当前使用的provider和model信息（在finally块内重新获取）
+                    val (provider, modelName) = try {
+                        getEnhancedAiService()?.getProviderAndModelForFunction(com.ai.assistance.operit.data.model.FunctionType.CHAT)
+                            ?: Pair("", "")
+                    } catch (e: Exception) {
+                        AppLogger.e(TAG, "获取provider和model信息失败: ${e.message}", e)
+                        Pair("", "")
+                    }
+
+                    // 删除原始的空消息（因为在waifu模式下我们没有显示流式过程）
+                    // 不需要显示空的AI消息
+                    
+                    // 启动一个协程来创建独立的句子消息
+                    coroutineScope.launch(Dispatchers.IO) {
+                        AppLogger.d(
+                            TAG,
+                            "开始Waifu独立消息创建，字符延迟: ${charDelay}ms/字符，移除标点: $removePunctuation"
+                        )
+
+                        // 分割句子
+                        val sentences =
+                            WaifuMessageProcessor.splitMessageBySentences(finalContent, removePunctuation)
+                        AppLogger.d(TAG, "分割出${sentences.size}个句子")
+
+                        // 为每个句子创建独立的消息
+                        for ((index, sentence) in sentences.withIndex()) {
+                            // 根据当前句子字符数计算延迟（模拟说话时间）
+                            val characterCount = sentence.length
+                            val calculatedDelay =
+                                WaifuMessageProcessor.calculateSentenceDelay(characterCount, charDelay)
+
+                            if (index > 0) {
+                                // 如果不是第一句，先延迟再发送
+                                AppLogger.d(TAG, "当前句字符数: $characterCount, 计算延迟: ${calculatedDelay}ms")
+                                delay(calculatedDelay)
+                            }
+
+                            AppLogger.d(TAG, "创建第${index + 1}个独立消息: $sentence")
+
+                            // 创建独立的AI消息（使用外层已获取的provider和modelName）
+                            val sentenceMessage = ChatMessage(
+                                sender = "ai",
+                                content = sentence,
+                                contentStream = null,
+                                timestamp = System.currentTimeMillis() + index * 10,
+                                roleName = currentRoleName,
+                                provider = provider,
+                                modelName = modelName
+                            )
+
+                            withContext(Dispatchers.Main) {
+                                if (chatId != null) {
+                                    addMessageToChat(chatId, sentenceMessage)
+                                }
+                                // 如果启用了自动朗读，则朗读当前句子
+                                if (getIsAutoReadEnabled()) {
+                                    speakMessage(sentence)
+                                }
+                                if (index == sentences.lastIndex) {
+                                    forceEmitScrollToBottom(chatId)
+                                } else {
+                                    tryEmitScrollToBottomThrottled(chatId)
+                                }
+                            }
+                        }
+
+                        AppLogger.d(TAG, "Waifu独立消息创建完成")
+
+                        if (shouldNotifyTurnComplete) {
+                            val service = serviceForTurnComplete
+                            if (service != null) {
+                                onTurnComplete(activeChatId, service)
+                            }
+                        }
+                    }
+                } else {
+                    // 普通模式，直接清理流
+                    val finalMessage = aiMessage.copy(content = finalContent, contentStream = null)
+                    withContext(Dispatchers.Main) {
+                        if (chatId != null) {
+                            addMessageToChat(chatId, finalMessage)
+                        }
+                        // 如果启用了自动朗读，则朗读完整消息
+                        if (getIsAutoReadEnabled()) {
+                            speakMessage(finalContent)
+                        }
+                        forceEmitScrollToBottom(chatId)
+                    }
+                }
+            }
+
+            if (shouldNotifyTurnComplete && !deferTurnCompleteToAsyncJob) {
+                val service = serviceForTurnComplete
+                if (service != null) {
+                    onTurnComplete(activeChatId, service)
+                }
+            }
+        } catch (e: UninitializedPropertyAccessException) {
+            AppLogger.d(TAG, "AI消息未初始化，跳过流清理步骤")
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "处理waifu模式时出错", e)
+            try {
+                val aiMessage = aiMessageProvider()
+                val finalContent = aiMessage.content
+                val finalMessage = aiMessage.copy(content = finalContent)
+                withContext(Dispatchers.Main) {
+                    if (chatId != null) {
+                        addMessageToChat(chatId, finalMessage)
+                    }
+                }
+
+                if (shouldNotifyTurnComplete) {
+                    val service = serviceForTurnComplete
+                    if (service != null) {
+                        onTurnComplete(activeChatId, service)
+                    }
+                }
+            } catch (ex: Exception) {
+                AppLogger.e(TAG, "回退到普通模式也失败", ex)
+            }
+        }
+    }
+
+    private fun cleanupRuntimeAfterSend(chatRuntime: ChatRuntime) {
+        chatRuntime.streamCollectionJob = null
+        chatRuntime.stateCollectionJob?.cancel()
+        chatRuntime.stateCollectionJob = null
+        chatRuntime.isLoading.value = false
+
+        updateGlobalLoadingState()
     }
 
     /**

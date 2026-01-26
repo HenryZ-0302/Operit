@@ -1,8 +1,10 @@
 package com.ai.assistance.operit.ui.features.chat.viewmodel
 
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.os.Build
 import android.os.IBinder
@@ -27,7 +29,8 @@ class FloatingWindowDelegate(
     private val coroutineScope: CoroutineScope,
     private val inputProcessingState: StateFlow<InputProcessingState>,
     private val chatHistoryFlow: StateFlow<List<ChatMessage>>? = null,
-    private val chatHistoryDelegate: ChatHistoryDelegate? = null
+    private val chatHistoryDelegate: ChatHistoryDelegate? = null,
+    private val onChatStatsUpdate: ((chatId: String?, inputTokens: Int, outputTokens: Int, windowSize: Int) -> Unit)? = null
 ) {
     companion object {
         private const val TAG = "FloatingWindowDelegate"
@@ -41,6 +44,22 @@ class FloatingWindowDelegate(
     private var floatingService: FloatingChatService? = null
 
     private var floatingBinder: FloatingChatService.LocalBinder? = null
+
+    private var isBoundToService: Boolean = false
+
+    private val serviceLifecycleReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    FloatingChatService.ACTION_FLOATING_CHAT_SERVICE_STARTED -> {
+                        tryBindToRunningService()
+                    }
+                    FloatingChatService.ACTION_FLOATING_CHAT_SERVICE_STOPPED -> {
+                        disconnectFromService(updateFloatingMode = false)
+                    }
+                }
+            }
+        }
 
     // 服务连接
     private val serviceConnection =
@@ -79,13 +98,17 @@ class FloatingWindowDelegate(
 
                             val currentId = chatHistoryDelegate?.currentChatId?.value
                             if (currentId == chatId) {
-                                AppLogger.d(TAG, "收到悬浮窗消息同步: chatId=$chatId, messages=${messages.size}")
-                                chatHistoryDelegate?.updateChatHistory(messages)
+                                AppLogger.d(TAG, "收到悬浮窗消息同步(改为DB重新加载): chatId=$chatId, messages=${messages.size}")
+                                chatHistoryDelegate?.reloadChatMessagesSmart(chatId)
                             }
                         } catch (e: Exception) {
                             AppLogger.e(TAG, "处理悬浮窗消息同步失败", e)
                         }
                     }
+                }
+
+                binder.setChatStatsCallback { chatId, inputTokens, outputTokens, windowSize ->
+                    onChatStatsUpdate?.invoke(chatId, inputTokens, outputTokens, windowSize)
                 }
                 // 订阅聊天历史更新
                 setupChatHistoryCollection()
@@ -98,12 +121,44 @@ class FloatingWindowDelegate(
                 }
                 floatingBinder = null
                 floatingService = null
+                isBoundToService = false
             }
         }
 
     init {
-        // 不再需要注册广播接收器
+        try {
+            val filter = IntentFilter().apply {
+                addAction(FloatingChatService.ACTION_FLOATING_CHAT_SERVICE_STARTED)
+                addAction(FloatingChatService.ACTION_FLOATING_CHAT_SERVICE_STOPPED)
+            }
+            if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(serviceLifecycleReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                context.registerReceiver(serviceLifecycleReceiver, filter)
+            }
+        } catch (_: Exception) {
+        }
+
+        // If the service is already running (started by wake/workflow/widget), bind to it.
+        tryBindToRunningService()
         setupInputStateCollection()
+    }
+
+    private fun tryBindToRunningService() {
+        if (isBoundToService) return
+        if (FloatingChatService.getInstance() == null) return
+        try {
+            val intent = Intent(context, FloatingChatService::class.java)
+            // Bind without auto-create: only succeed if service is already running.
+            val ok = context.bindService(intent, serviceConnection, 0)
+            if (ok) {
+                isBoundToService = true
+                AppLogger.d(TAG, "已绑定到已运行的悬浮窗服务")
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "绑定到已运行的悬浮窗服务失败", e)
+        }
     }
 
     /** 切换悬浮窗模式 */
@@ -173,21 +228,26 @@ class FloatingWindowDelegate(
      * 由服务回调或用户操作调用，用于关闭悬浮窗并更新状态
      */
     private fun closeFloatingWindow() {
-        if (_isFloatingMode.value) {
+        disconnectFromService(updateFloatingMode = true)
+    }
+
+    private fun disconnectFromService(updateFloatingMode: Boolean) {
+        if (updateFloatingMode && _isFloatingMode.value) {
             _isFloatingMode.value = false
-            // 停止并解绑服务
+        }
+        if (isBoundToService) {
             try {
                 context.unbindService(serviceConnection)
-            } catch (e: IllegalArgumentException) {
-                AppLogger.e(TAG, "服务可能已解绑: ${e.message}")
-            }
-            try {
-                floatingBinder?.clearCallbacks()
             } catch (_: Exception) {
             }
-            floatingBinder = null
-            floatingService = null
         }
+        try {
+            floatingBinder?.clearCallbacks()
+        } catch (_: Exception) {
+        }
+        floatingBinder = null
+        floatingService = null
+        isBoundToService = false
     }
 
     private fun setupInputStateCollection() {
@@ -238,20 +298,11 @@ class FloatingWindowDelegate(
 
     /** 清理资源 */
     fun cleanup() {
-        // 解绑服务
-        if (floatingService != null) {
-            try {
-                context.unbindService(serviceConnection)
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "在清理时解绑服务失败", e)
-            }
-        }
-
         try {
-            floatingBinder?.clearCallbacks()
+            context.unregisterReceiver(serviceLifecycleReceiver)
         } catch (_: Exception) {
         }
-        floatingBinder = null
-        floatingService = null
+        // 解绑服务
+        disconnectFromService(updateFloatingMode = false)
     }
 }

@@ -580,7 +580,7 @@ class MCPStarter(private val context: Context) {
             val client = MCPBridgeClient(context, serviceName)
 
             val startTime = System.currentTimeMillis()
-            val spawnResp = client.spawnBlocking(timeoutMs = 12000)
+            val spawnResp = client.spawnBlocking()
             val responseTime = System.currentTimeMillis() - startTime
 
             val success = spawnResp?.optBoolean("success", false) == true

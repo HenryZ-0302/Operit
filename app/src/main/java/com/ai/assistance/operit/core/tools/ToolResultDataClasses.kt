@@ -549,6 +549,7 @@ data class VisitWebResultData(
         val content: String,
         val metadata: Map<String, String> = emptyMap(),
         val links: List<LinkData> = emptyList(),
+        val imageLinks: List<String> = emptyList(),
         val visitKey: String? = null
 ) : ToolResultData() {
     @Serializable
@@ -562,6 +563,15 @@ data class VisitWebResultData(
             sb.appendLine("Results:")
             links.forEachIndexed { index, link ->
                 sb.appendLine("[${index + 1}] ${link.text}")
+            }
+            sb.appendLine()
+        }
+
+        if (imageLinks.isNotEmpty()) {
+            sb.appendLine("Images:")
+            imageLinks.forEachIndexed { index, link ->
+                val name = link.substringAfterLast('/').substringBefore('?').ifBlank { "image" }
+                sb.appendLine("[${index + 1}] $name")
             }
             sb.appendLine()
         }

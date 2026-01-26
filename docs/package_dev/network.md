@@ -28,6 +28,9 @@
     2.  **通过链接编号继续访问**:
         -   传入一个对象，包含上一次访问返回的 `visit_key` 和要点击的链接编号 `link_number`。
         -   `Tools.Net.visit({ visit_key: "some-key-from-previous-result", link_number: 3 })`
+        -   `link_number` **从 1 开始计数**：它对应返回内容中 `Results:` 列表的中括号编号（例如 `[3] ...`），以及 `VisitWebResultData.links` 数组的 `index + 1`。
+        -   `link_number` 有效范围为 `1..links.length`（不是 0-based）。
+    -   可选参数：`include_image_links: boolean`。当为 `true` 时，会在返回值中额外包含 `imageLinks`（提取到的图片链接列表）。
     -   函数返回一个 `VisitWebResultData` 对象，其中包含页面标题、内容、提取到的链接列表以及用于后续交互的 `visit_key`。
 
 ### 高级请求函数

@@ -108,7 +108,7 @@ const UIAutomationTools = (function () {
 
     async function get_page_screenshot_image(params: {}): Promise<ToolResponse> {
         try {
-            const screenshotDir = "/sdcard/Download/Operit/cleanOnExit";
+            const screenshotDir = OPERIT_CLEAN_ON_EXIT_DIR;
 
             // Ensure the directory exists
             await Tools.Files.mkdir(screenshotDir, true);

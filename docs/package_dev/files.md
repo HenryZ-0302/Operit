@@ -57,7 +57,26 @@ await Tools.Files.read("/home/user/config.txt", "linux");
 -   `zip(source: string, destination: string): Promise<FileOperationData>`: 将指定的文件或目录压缩成一个 zip 文件。
 -   `unzip(source: string, destination: string): Promise<FileOperationData>`: 将一个 zip 压缩包解压到指定目录。
 -   `download(url: string, destination: string): Promise<FileOperationData>`: 从给定的 URL 下载文件并保存到本地。
--   `apply(path: string, content: string): Promise<FileApplyResultData>`: **（AI特定功能）** 将 AI 生成的内容智能地应用（合并/修改）到现有文件中。
+    -   也支持对象参数形式：`Tools.Files.download({ ... })`。
+        -   可用 `url` 直接下载。
+        -   或者使用 `visit_key` + `link_number` / `image_number`，从上一次 `visit_web` 的 `Results:` / `Images:` 编号中按序号下载。
+-   `apply(path: string, type: "replace" | "delete" | "create", old?: string, newContent?: string, environment?: FileEnvironment): Promise<FileApplyResultData>`: **（AI特定功能）** 将 AI 生成的变更智能地应用（合并/修改）到文件中。
+
+    - **参数说明**：
+        - `type`:
+            - `replace`: 用 `newContent` 替换匹配到的 `old`
+            - `delete`: 删除匹配到的 `old`
+            - `create`: 当文件不存在时创建文件（用 `newContent` 作为完整文件内容，仅用于创建，不用于覆盖）
+        - `old`: `replace` / `delete` 必填
+        - `newContent`: `replace` / `create` 必填
+
+    - **create 行为说明**：
+        - `type=create` **仅在目标文件不存在时**生效。
+        - 如果文件已存在，不要用 `type=create` 试图覆盖；请改用 `deleteFile` + `write`（整文件重写），或用 `type=replace/delete`（局部修改）。
+
+    - **关键规则**：
+        1. 如果需要**重写整个已存在文件**：建议先 `deleteFile` 再 `write`，不要直接用 `apply` 覆盖。
+        2. 如果需要**修改已存在文件**：必须用 `type=replace`（或 `type=delete`）并提供 `old/newContent`（或 `old`）。不要整文件删除再重写。
 
 ### 文件交互
 

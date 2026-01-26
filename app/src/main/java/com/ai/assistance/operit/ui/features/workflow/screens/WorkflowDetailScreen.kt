@@ -55,6 +55,7 @@ import com.ai.assistance.operit.ui.features.workflow.components.ScheduleConfigDi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+@Composable
 private fun ConditionOperator.toDisplayText(): String {
     return when (this) {
         ConditionOperator.EQ -> "="
@@ -63,13 +64,14 @@ private fun ConditionOperator.toDisplayText(): String {
         ConditionOperator.GTE -> ">="
         ConditionOperator.LT -> "<"
         ConditionOperator.LTE -> "<="
-        ConditionOperator.CONTAINS -> "包含"
-        ConditionOperator.NOT_CONTAINS -> "不包含"
+        ConditionOperator.CONTAINS -> stringResource(R.string.workflow_condition_contains)
+        ConditionOperator.NOT_CONTAINS -> stringResource(R.string.workflow_condition_not_contains)
         ConditionOperator.IN -> "∈"
         ConditionOperator.NOT_IN -> "∉"
     }
 }
 
+@Composable
 private fun LogicOperator.toDisplayText(): String {
     return when (this) {
         LogicOperator.AND -> "&&"
@@ -77,14 +79,15 @@ private fun LogicOperator.toDisplayText(): String {
     }
 }
 
+@Composable
 private fun ExtractMode.toDisplayText(): String {
     return when (this) {
-        ExtractMode.REGEX -> "正则"
+        ExtractMode.REGEX -> stringResource(R.string.workflow_extract_mode_regex)
         ExtractMode.JSON -> "JSON"
-        ExtractMode.SUB -> "截取"
-        ExtractMode.CONCAT -> "拼接"
-        ExtractMode.RANDOM_INT -> "随机数"
-        ExtractMode.RANDOM_STRING -> "随机字符串"
+        ExtractMode.SUB -> stringResource(R.string.workflow_extract_mode_sub)
+        ExtractMode.CONCAT -> stringResource(R.string.workflow_extract_mode_concat)
+        ExtractMode.RANDOM_INT -> stringResource(R.string.workflow_extract_mode_random_int)
+        ExtractMode.RANDOM_STRING -> stringResource(R.string.workflow_extract_mode_random_string)
     }
 }
 
@@ -131,7 +134,7 @@ fun WorkflowDetailScreen(
                         ) {
                             if (workflow.enabled) {
                                 SpeedDialAction(
-                                    text = "触发工作流",
+                                    text = stringResource(R.string.workflow_action_trigger),
                                     icon = Icons.Default.PlayArrow,
                                     onClick = {
                                         viewModel.triggerWorkflow(workflowId) { result -> showTriggerResult = result }
@@ -140,7 +143,7 @@ fun WorkflowDetailScreen(
                                 )
                             }
                             SpeedDialAction(
-                                text = "添加节点",
+                                text = stringResource(R.string.workflow_action_add_node),
                                 icon = Icons.Default.Add,
                                 onClick = {
                                     showAddNodeDialog = true
@@ -148,7 +151,7 @@ fun WorkflowDetailScreen(
                                 }
                             )
                             SpeedDialAction(
-                                text = "编辑工作流",
+                                text = stringResource(R.string.workflow_action_edit_workflow),
                                 icon = Icons.Default.Edit,
                                 onClick = {
                                     showEditDialog = true
@@ -156,7 +159,7 @@ fun WorkflowDetailScreen(
                                 }
                             )
                             SpeedDialAction(
-                                text = "删除工作流",
+                                text = stringResource(R.string.workflow_delete),
                                 icon = Icons.Default.Delete,
                                 onClick = {
                                     showDeleteDialog = true
@@ -176,7 +179,7 @@ fun WorkflowDetailScreen(
                         val rotation by animateFloatAsState(targetValue = if (isFabMenuExpanded) 45f else 0f, label = "fab_icon_rotation")
                         Icon(
                             Icons.Default.Add,
-                            contentDescription = "打开操作菜单",
+                            contentDescription = stringResource(R.string.workflow_open_action_menu),
                             modifier = Modifier.rotate(rotation)
                         )
                     }
@@ -193,7 +196,7 @@ fun WorkflowDetailScreen(
                 }
                 workflow == null -> {
                     Text(
-                        text = "工作流不存在",
+                        text = stringResource(R.string.workflow_not_found),
                         modifier = Modifier.align(Alignment.Center),
                         style = MaterialTheme.typography.bodyLarge
                     )
@@ -233,7 +236,7 @@ fun WorkflowDetailScreen(
                                     )
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text(
-                                        text = "点击右上角 + 按钮添加节点",
+                                        text = stringResource(R.string.workflow_nodes_empty_hint_add),
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                     )
@@ -287,8 +290,15 @@ fun WorkflowDetailScreen(
             if (showDeleteDialog) {
                 AlertDialog(
                     onDismissRequest = { showDeleteDialog = false },
-                    title = { Text("确认删除") },
-                    text = { Text("确定要删除工作流 \"${workflow?.name}\" 吗？此操作不可恢复。") },
+                    title = { Text(stringResource(R.string.workflow_confirm_delete_title)) },
+                    text = {
+                        Text(
+                            stringResource(
+                                R.string.workflow_confirm_delete_workflow_message,
+                                workflow?.name.orEmpty()
+                            )
+                        )
+                    },
                     confirmButton = {
                         TextButton(
                             onClick = {
@@ -301,12 +311,12 @@ fun WorkflowDetailScreen(
                                 contentColor = MaterialTheme.colorScheme.error
                             )
                         ) {
-                            Text("删除")
+                            Text(stringResource(R.string.delete_action))
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { showDeleteDialog = false }) {
-                            Text("取消")
+                            Text(stringResource(R.string.cancel_action))
                         }
                     }
                 )
@@ -316,11 +326,11 @@ fun WorkflowDetailScreen(
             showTriggerResult?.let { result ->
                 AlertDialog(
                     onDismissRequest = { showTriggerResult = null },
-                    title = { Text("执行结果") },
+                    title = { Text(stringResource(R.string.workflow_execution_result_title)) },
                     text = { Text(result) },
                     confirmButton = {
                         TextButton(onClick = { showTriggerResult = null }) {
-                            Text("确定")
+                            Text(stringResource(R.string.confirm))
                         }
                     }
                 )
@@ -330,11 +340,11 @@ fun WorkflowDetailScreen(
             viewModel.error?.let { error ->
                 AlertDialog(
                     onDismissRequest = { viewModel.clearError() },
-                    title = { Text("错误") },
+                    title = { Text(stringResource(R.string.error_title)) },
                     text = { Text(error) },
                     confirmButton = {
                         TextButton(onClick = { viewModel.clearError() }) {
-                            Text("确定")
+                            Text(stringResource(R.string.confirm))
                         }
                     }
                 )
@@ -359,8 +369,15 @@ fun WorkflowDetailScreen(
                 val node = workflow?.nodes?.find { it.id == nodeId }
                 AlertDialog(
                     onDismissRequest = { showDeleteNodeDialog = null },
-                    title = { Text("确认删除") },
-                    text = { Text("确定要删除节点 \"${node?.name}\" 吗？") },
+                    title = { Text(stringResource(R.string.workflow_confirm_delete_title)) },
+                    text = {
+                        Text(
+                            stringResource(
+                                R.string.workflow_confirm_delete_node_message,
+                                node?.name.orEmpty()
+                            )
+                        )
+                    },
                     confirmButton = {
                         TextButton(
                             onClick = {
@@ -372,12 +389,12 @@ fun WorkflowDetailScreen(
                                 contentColor = MaterialTheme.colorScheme.error
                             )
                         ) {
-                            Text("删除")
+                            Text(stringResource(R.string.delete_action))
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { showDeleteNodeDialog = null }) {
-                            Text("取消")
+                            Text(stringResource(R.string.cancel_action))
                         }
                     }
                 )
@@ -759,24 +776,32 @@ fun NodeDialog(
     var showScheduleDialog by remember { mutableStateOf(false) }
 
     val nodeTypes = mapOf(
-        "trigger" to "触发节点",
-        "execute" to "执行节点",
-        "condition" to "条件节点",
-        "logic" to "逻辑节点",
-        "extract" to "运算节点"
+        "trigger" to stringResource(R.string.workflow_node_type_trigger),
+        "execute" to stringResource(R.string.workflow_node_type_execute),
+        "condition" to stringResource(R.string.workflow_node_type_condition),
+        "logic" to stringResource(R.string.workflow_node_type_logic),
+        "extract" to stringResource(R.string.workflow_node_type_extract)
     )
 
     val triggerTypes = mapOf(
-        "manual" to "手动触发",
-        "schedule" to "定时触发",
-        "tasker" to "Tasker 触发",
-        "intent" to "Intent 触发",
-        "speech" to "语音触发"
+        "manual" to stringResource(R.string.workflow_trigger_type_manual),
+        "schedule" to stringResource(R.string.workflow_trigger_type_schedule),
+        "tasker" to stringResource(R.string.workflow_trigger_type_tasker),
+        "intent" to stringResource(R.string.workflow_trigger_type_intent),
+        "speech" to stringResource(R.string.workflow_trigger_type_speech)
     )
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isEditMode) "编辑节点" else "添加节点") },
+        title = {
+            Text(
+                if (isEditMode) {
+                    stringResource(R.string.workflow_node_dialog_title_edit)
+                } else {
+                    stringResource(R.string.workflow_node_dialog_title_add)
+                }
+            )
+        },
         text = {
             Column(
                 modifier = Modifier
@@ -794,7 +819,7 @@ fun NodeDialog(
                             value = nodeTypes[nodeType] ?: "",
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("节点类型") },
+                            label = { Text(stringResource(R.string.workflow_node_type_label)) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                             modifier = Modifier.fillMaxWidth().menuAnchor()
                         )
@@ -818,25 +843,33 @@ fun NodeDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("节点名称（留空自动生成）") },
+                    label = { Text(stringResource(R.string.workflow_node_name_label)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     placeholder = { 
                         Text(
                             when (nodeType) {
-                                "trigger" -> when (triggerType) {
-                                    "manual" -> "如: 手动触发"
-                                    "schedule" -> "如: 定时触发"
-                                    "tasker" -> "如: Tasker 触发"
-                                    "intent" -> "如: Intent 触发"
-                                    "speech" -> "如: 语音触发"
-                                    else -> "如: 触发器"
-                                }
-                                "execute" -> "如: ${actionType.takeIf { it.isNotBlank() } ?: "执行动作"}"
-                                "condition" -> "如: 条件判断"
-                                "logic" -> "如: 逻辑判断"
-                                "extract" -> "如: 运算"
-                                else -> nodeTypes[nodeType] ?: ""
+                                "trigger" -> stringResource(
+                                    R.string.workflow_example_format,
+                                    triggerTypes[triggerType] ?: stringResource(R.string.workflow_trigger_type_manual)
+                                )
+                                "execute" -> stringResource(
+                                    R.string.workflow_example_format,
+                                    actionType.takeIf { it.isNotBlank() } ?: stringResource(R.string.workflow_default_execute_action)
+                                )
+                                "condition" -> stringResource(
+                                    R.string.workflow_example_format,
+                                    stringResource(R.string.workflow_node_default_name_condition)
+                                )
+                                "logic" -> stringResource(
+                                    R.string.workflow_example_format,
+                                    stringResource(R.string.workflow_node_default_name_logic)
+                                )
+                                "extract" -> stringResource(
+                                    R.string.workflow_example_format,
+                                    stringResource(R.string.workflow_node_default_name_extract)
+                                )
+                                else -> nodeTypes[nodeType].orEmpty()
                             }
                         )
                     }
@@ -845,7 +878,7 @@ fun NodeDialog(
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("描述（可选）") },
+                    label = { Text(stringResource(R.string.workflow_node_description_label)) },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2,
                     maxLines = 4
@@ -856,7 +889,7 @@ fun NodeDialog(
                     "execute" -> {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         Text(
-                            text = "执行配置",
+                            text = stringResource(R.string.workflow_execute_config_title),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -872,10 +905,10 @@ fun NodeDialog(
                                     actionType = it
                                     actionTypeExpanded = true
                                 },
-                                label = { Text("工具名称") },
+                                label = { Text(stringResource(R.string.workflow_tool_name_label)) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor(),
                                 singleLine = true,
-                                placeholder = { Text("例如: execute_shell") },
+                                placeholder = { Text(stringResource(R.string.workflow_tool_name_placeholder)) },
                                 trailingIcon = {
                                     ExposedDropdownMenuDefaults.TrailingIcon(
                                         expanded = actionTypeExpanded
@@ -910,7 +943,7 @@ fun NodeDialog(
                         // 动态参数配置
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "工具参数",
+                            text = stringResource(R.string.workflow_tool_params_title),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -933,7 +966,7 @@ fun NodeDialog(
                                             newList[index] = param.copy(key = newKey)
                                             actionConfigPairs = newList
                                         },
-                                        label = { Text("参数名") },
+                                        label = { Text(stringResource(R.string.workflow_param_name_label)) },
                                         modifier = Modifier.weight(1f)
                                     )
                                     
@@ -941,7 +974,8 @@ fun NodeDialog(
                                     OutlinedTextField(
                                         value = if (param.isReference) {
                                             // 显示引用节点的名称
-                                            workflow.nodes.find { it.id == param.value }?.name ?: "[未知节点]"
+                                            workflow.nodes.find { it.id == param.value }?.name
+                                                ?: stringResource(R.string.workflow_unknown_node)
                                         } else {
                                             param.value
                                         },
@@ -952,7 +986,7 @@ fun NodeDialog(
                                                 actionConfigPairs = newList
                                             }
                                         },
-                                        label = { Text("参数值") },
+                                        label = { Text(stringResource(R.string.workflow_param_value_label)) },
                                         modifier = Modifier.weight(1f),
                                         readOnly = param.isReference,
                                         colors = if (param.isReference) {
@@ -978,7 +1012,7 @@ fun NodeDialog(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Call,
-                                            contentDescription = "选择前置节点",
+                                            contentDescription = stringResource(R.string.workflow_select_predecessor_node),
                                             tint = if (param.isReference) MaterialTheme.colorScheme.primary else LocalContentColor.current
                                         )
                                     }
@@ -991,7 +1025,7 @@ fun NodeDialog(
                                         // 选项：切换回静态值
                                         if (param.isReference) {
                                             DropdownMenuItem(
-                                                text = { Text("使用静态值") },
+                                                text = { Text(stringResource(R.string.workflow_use_static_value)) },
                                                 onClick = {
                                                     val newList = actionConfigPairs.toMutableList()
                                                     newList[index] = param.copy(isReference = false, value = "")
@@ -1029,7 +1063,7 @@ fun NodeDialog(
                                         
                                         if (availableReferenceNodes.isEmpty()) {
                                             DropdownMenuItem(
-                                                text = { Text("无可用前置节点") },
+                                                text = { Text(stringResource(R.string.workflow_no_available_predecessor_nodes)) },
                                                 onClick = { showNodeSelector = false },
                                                 enabled = false
                                             )
@@ -1042,16 +1076,28 @@ fun NodeDialog(
                                         newList.removeAt(index)
                                         actionConfigPairs = newList
                                     }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "删除参数")
+                                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.workflow_delete_param))
                                     }
                                 }
 
                                 val schema = toolParameterSchemasByName[param.key.trim()]
                                 if (schema != null) {
-                                    val requiredText = if (schema.required) "必需" else "可选"
-                                    val defaultText = schema.default?.let { ", 默认: $it" } ?: ""
+                                    val requiredText = if (schema.required) {
+                                        stringResource(R.string.workflow_schema_required)
+                                    } else {
+                                        stringResource(R.string.workflow_schema_optional)
+                                    }
+                                    val defaultText = schema.default?.let {
+                                        stringResource(R.string.workflow_schema_default_format, it)
+                                    } ?: ""
                                     Text(
-                                        text = "${schema.type}（$requiredText）: ${schema.description}$defaultText",
+                                        text = stringResource(
+                                            R.string.workflow_schema_hint_format,
+                                            schema.type,
+                                            requiredText,
+                                            schema.description,
+                                            defaultText
+                                        ),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1065,15 +1111,15 @@ fun NodeDialog(
                             },
                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "添加参数")
+                            Icon(Icons.Default.Add, contentDescription = stringResource(R.string.workflow_add_param))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("添加参数")
+                            Text(stringResource(R.string.workflow_add_param))
                         }
                     }
                     "condition" -> {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         Text(
-                            text = "条件配置",
+                            text = stringResource(R.string.workflow_condition_config_title),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1086,7 +1132,7 @@ fun NodeDialog(
                                 value = conditionOperator.toDisplayText(),
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("运算符") },
+                                label = { Text(stringResource(R.string.workflow_operator_label)) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = conditionOperatorExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor()
                             )
@@ -1107,7 +1153,7 @@ fun NodeDialog(
                         }
 
                         Text(
-                            text = "左值",
+                            text = stringResource(R.string.workflow_left_value_label),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Row(
@@ -1117,14 +1163,15 @@ fun NodeDialog(
                         ) {
                             OutlinedTextField(
                                 value = if (conditionLeftIsReference) {
-                                    workflow.nodes.find { it.id == conditionLeftValue }?.name ?: "[未知节点]"
+                                    workflow.nodes.find { it.id == conditionLeftValue }?.name
+                                        ?: stringResource(R.string.workflow_unknown_node)
                                 } else {
                                     conditionLeftValue
                                 },
                                 onValueChange = { v ->
                                     if (!conditionLeftIsReference) conditionLeftValue = v
                                 },
-                                label = { Text("左值") },
+                                label = { Text(stringResource(R.string.workflow_left_value_label)) },
                                 modifier = Modifier.weight(1f),
                                 readOnly = conditionLeftIsReference,
                                 enabled = !conditionLeftIsReference
@@ -1137,7 +1184,7 @@ fun NodeDialog(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Call,
-                                    contentDescription = "选择前置节点"
+                                    contentDescription = stringResource(R.string.workflow_select_predecessor_node)
                                 )
                             }
                             DropdownMenu(
@@ -1146,7 +1193,7 @@ fun NodeDialog(
                             ) {
                                 if (conditionLeftIsReference) {
                                     DropdownMenuItem(
-                                        text = { Text("使用静态值") },
+                                        text = { Text(stringResource(R.string.workflow_use_static_value)) },
                                         onClick = {
                                             conditionLeftIsReference = false
                                             conditionLeftValue = ""
@@ -1167,7 +1214,7 @@ fun NodeDialog(
                                 }
                                 if (availableReferenceNodes.isEmpty()) {
                                     DropdownMenuItem(
-                                        text = { Text("无可用前置节点") },
+                                        text = { Text(stringResource(R.string.workflow_no_available_predecessor_nodes)) },
                                         onClick = { showLeftSelector = false },
                                         enabled = false
                                     )
@@ -1176,7 +1223,7 @@ fun NodeDialog(
                         }
 
                         Text(
-                            text = "右值",
+                            text = stringResource(R.string.workflow_right_value_label),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Row(
@@ -1186,14 +1233,15 @@ fun NodeDialog(
                         ) {
                             OutlinedTextField(
                                 value = if (conditionRightIsReference) {
-                                    workflow.nodes.find { it.id == conditionRightValue }?.name ?: "[未知节点]"
+                                    workflow.nodes.find { it.id == conditionRightValue }?.name
+                                        ?: stringResource(R.string.workflow_unknown_node)
                                 } else {
                                     conditionRightValue
                                 },
                                 onValueChange = { v ->
                                     if (!conditionRightIsReference) conditionRightValue = v
                                 },
-                                label = { Text("右值") },
+                                label = { Text(stringResource(R.string.workflow_right_value_label)) },
                                 modifier = Modifier.weight(1f),
                                 readOnly = conditionRightIsReference,
                                 enabled = !conditionRightIsReference
@@ -1206,7 +1254,7 @@ fun NodeDialog(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Call,
-                                    contentDescription = "选择前置节点"
+                                    contentDescription = stringResource(R.string.workflow_select_predecessor_node)
                                 )
                             }
                             DropdownMenu(
@@ -1215,7 +1263,7 @@ fun NodeDialog(
                             ) {
                                 if (conditionRightIsReference) {
                                     DropdownMenuItem(
-                                        text = { Text("使用静态值") },
+                                        text = { Text(stringResource(R.string.workflow_use_static_value)) },
                                         onClick = {
                                             conditionRightIsReference = false
                                             conditionRightValue = ""
@@ -1236,7 +1284,7 @@ fun NodeDialog(
                                 }
                                 if (availableReferenceNodes.isEmpty()) {
                                     DropdownMenuItem(
-                                        text = { Text("无可用前置节点") },
+                                        text = { Text(stringResource(R.string.workflow_no_available_predecessor_nodes)) },
                                         onClick = { showRightSelector = false },
                                         enabled = false
                                     )
@@ -1247,7 +1295,7 @@ fun NodeDialog(
                     "logic" -> {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         Text(
-                            text = "逻辑配置",
+                            text = stringResource(R.string.workflow_logic_config_title),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1260,7 +1308,7 @@ fun NodeDialog(
                                 value = logicOperator.toDisplayText(),
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("逻辑运算") },
+                                label = { Text(stringResource(R.string.workflow_logic_operator_label)) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = logicOperatorExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor()
                             )
@@ -1283,7 +1331,7 @@ fun NodeDialog(
                     "extract" -> {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         Text(
-                            text = "运算配置",
+                            text = stringResource(R.string.workflow_extract_config_title),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1296,7 +1344,7 @@ fun NodeDialog(
                                 value = extractMode.toDisplayText(),
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("模式") },
+                                label = { Text(stringResource(R.string.workflow_mode_label)) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = extractModeExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor()
                             )
@@ -1321,7 +1369,15 @@ fun NodeDialog(
                                 OutlinedTextField(
                                     value = extractExpression,
                                     onValueChange = { extractExpression = it },
-                                    label = { Text(if (extractMode == ExtractMode.REGEX) "正则表达式" else "JSON 路径") },
+                                    label = {
+                                        Text(
+                                            if (extractMode == ExtractMode.REGEX) {
+                                                stringResource(R.string.workflow_regex_expression_label)
+                                            } else {
+                                                stringResource(R.string.workflow_json_path_label)
+                                            }
+                                        )
+                                    },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -1330,7 +1386,7 @@ fun NodeDialog(
                                     OutlinedTextField(
                                         value = extractGroupText,
                                         onValueChange = { extractGroupText = it },
-                                        label = { Text("分组编号") },
+                                        label = { Text(stringResource(R.string.workflow_group_index_label)) },
                                         modifier = Modifier.fillMaxWidth(),
                                         singleLine = true
                                     )
@@ -1339,7 +1395,7 @@ fun NodeDialog(
                                 OutlinedTextField(
                                     value = extractDefaultValue,
                                     onValueChange = { extractDefaultValue = it },
-                                    label = { Text("默认值") },
+                                    label = { Text(stringResource(R.string.workflow_default_value_label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -1349,7 +1405,7 @@ fun NodeDialog(
                                 OutlinedTextField(
                                     value = extractStartIndexText,
                                     onValueChange = { extractStartIndexText = it },
-                                    label = { Text("起始下标") },
+                                    label = { Text(stringResource(R.string.workflow_start_index_label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -1357,7 +1413,7 @@ fun NodeDialog(
                                 OutlinedTextField(
                                     value = extractLengthText,
                                     onValueChange = { extractLengthText = it },
-                                    label = { Text("长度（-1 到结尾）") },
+                                    label = { Text(stringResource(R.string.workflow_length_label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -1365,7 +1421,7 @@ fun NodeDialog(
                                 OutlinedTextField(
                                     value = extractDefaultValue,
                                     onValueChange = { extractDefaultValue = it },
-                                    label = { Text("默认值") },
+                                    label = { Text(stringResource(R.string.workflow_default_value_label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -1396,7 +1452,7 @@ fun NodeDialog(
                                                             extractOthers = newList
                                                         }
                                                     },
-                                                    label = { Text("拼接项") },
+                                                    label = { Text(stringResource(R.string.workflow_concat_item_label)) },
                                                     modifier = Modifier.weight(1f),
                                                     readOnly = other.isReference,
                                                     enabled = !other.isReference
@@ -1409,7 +1465,7 @@ fun NodeDialog(
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.Call,
-                                                        contentDescription = "选择前置节点"
+                                                        contentDescription = stringResource(R.string.workflow_select_predecessor_node)
                                                     )
                                                 }
                                                 DropdownMenu(
@@ -1418,7 +1474,7 @@ fun NodeDialog(
                                                 ) {
                                                     if (other.isReference) {
                                                         DropdownMenuItem(
-                                                            text = { Text("使用静态值") },
+                                                            text = { Text(stringResource(R.string.workflow_use_static_value)) },
                                                             onClick = {
                                                                 val newList = extractOthers.toMutableList()
                                                                 newList[index] = other.copy(isReference = false, value = "")
@@ -1441,7 +1497,7 @@ fun NodeDialog(
                                                     }
                                                     if (availableReferenceNodes.isEmpty()) {
                                                         DropdownMenuItem(
-                                                            text = { Text("无可用前置节点") },
+                                                            text = { Text(stringResource(R.string.workflow_no_available_predecessor_nodes)) },
                                                             onClick = { showOtherSelector = false },
                                                             enabled = false
                                                         )
@@ -1457,7 +1513,7 @@ fun NodeDialog(
                                                         }
                                                     }
                                                 ) {
-                                                    Icon(Icons.Default.Delete, contentDescription = "删除拼接项")
+                                                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.workflow_delete_concat_item))
                                                 }
                                             }
                                         }
@@ -1469,7 +1525,7 @@ fun NodeDialog(
                                         },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text("添加拼接项")
+                                        Text(stringResource(R.string.workflow_add_concat_item))
                                     }
                                 }
                             }
@@ -1484,14 +1540,20 @@ fun NodeDialog(
                                         checked = extractUseFixed,
                                         onCheckedChange = { extractUseFixed = it }
                                     )
-                                    Text(if (extractUseFixed) "使用固定值" else "使用随机值")
+                                    Text(
+                                        if (extractUseFixed) {
+                                            stringResource(R.string.workflow_use_fixed_value)
+                                        } else {
+                                            stringResource(R.string.workflow_use_random_value)
+                                        }
+                                    )
                                 }
 
                                 if (extractUseFixed) {
                                     OutlinedTextField(
                                         value = extractFixedValue,
                                         onValueChange = { extractFixedValue = it },
-                                        label = { Text("固定整数") },
+                                        label = { Text(stringResource(R.string.workflow_fixed_integer_label)) },
                                         modifier = Modifier.fillMaxWidth(),
                                         singleLine = true
                                     )
@@ -1500,7 +1562,7 @@ fun NodeDialog(
                                 OutlinedTextField(
                                     value = extractRandomMinText,
                                     onValueChange = { extractRandomMinText = it },
-                                    label = { Text("最小值") },
+                                    label = { Text(stringResource(R.string.workflow_min_value_label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -1508,7 +1570,7 @@ fun NodeDialog(
                                 OutlinedTextField(
                                     value = extractRandomMaxText,
                                     onValueChange = { extractRandomMaxText = it },
-                                    label = { Text("最大值") },
+                                    label = { Text(stringResource(R.string.workflow_max_value_label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -1524,14 +1586,20 @@ fun NodeDialog(
                                         checked = extractUseFixed,
                                         onCheckedChange = { extractUseFixed = it }
                                     )
-                                    Text(if (extractUseFixed) "使用固定值" else "使用随机值")
+                                    Text(
+                                        if (extractUseFixed) {
+                                            stringResource(R.string.workflow_use_fixed_value)
+                                        } else {
+                                            stringResource(R.string.workflow_use_random_value)
+                                        }
+                                    )
                                 }
 
                                 if (extractUseFixed) {
                                     OutlinedTextField(
                                         value = extractFixedValue,
                                         onValueChange = { extractFixedValue = it },
-                                        label = { Text("固定字符串") },
+                                        label = { Text(stringResource(R.string.workflow_fixed_string_label)) },
                                         modifier = Modifier.fillMaxWidth(),
                                         singleLine = true
                                     )
@@ -1540,7 +1608,7 @@ fun NodeDialog(
                                 OutlinedTextField(
                                     value = extractRandomStringLengthText,
                                     onValueChange = { extractRandomStringLengthText = it },
-                                    label = { Text("长度") },
+                                    label = { Text(stringResource(R.string.workflow_string_length_label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -1548,7 +1616,7 @@ fun NodeDialog(
                                 OutlinedTextField(
                                     value = extractRandomStringCharset,
                                     onValueChange = { extractRandomStringCharset = it },
-                                    label = { Text("字符集") },
+                                    label = { Text(stringResource(R.string.workflow_charset_label)) },
                                     modifier = Modifier.fillMaxWidth(),
                                     minLines = 2,
                                     maxLines = 4
@@ -1564,14 +1632,15 @@ fun NodeDialog(
                             ) {
                                 OutlinedTextField(
                                     value = if (extractSourceIsReference) {
-                                        workflow.nodes.find { it.id == extractSourceValue }?.name ?: "[未知节点]"
+                                        workflow.nodes.find { it.id == extractSourceValue }?.name
+                                            ?: stringResource(R.string.workflow_unknown_node)
                                     } else {
                                         extractSourceValue
                                     },
                                     onValueChange = { v ->
                                         if (!extractSourceIsReference) extractSourceValue = v
                                     },
-                                    label = { Text("来源") },
+                                    label = { Text(stringResource(R.string.workflow_source_label)) },
                                     modifier = Modifier.weight(1f),
                                     readOnly = extractSourceIsReference,
                                     enabled = !extractSourceIsReference
@@ -1584,7 +1653,7 @@ fun NodeDialog(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Call,
-                                        contentDescription = "选择前置节点"
+                                        contentDescription = stringResource(R.string.workflow_select_predecessor_node)
                                     )
                                 }
                                 DropdownMenu(
@@ -1593,7 +1662,7 @@ fun NodeDialog(
                                 ) {
                                     if (extractSourceIsReference) {
                                         DropdownMenuItem(
-                                            text = { Text("使用静态值") },
+                                            text = { Text(stringResource(R.string.workflow_use_static_value)) },
                                             onClick = {
                                                 extractSourceIsReference = false
                                                 extractSourceValue = ""
@@ -1614,7 +1683,7 @@ fun NodeDialog(
                                     }
                                     if (availableReferenceNodes.isEmpty()) {
                                         DropdownMenuItem(
-                                            text = { Text("无可用前置节点") },
+                                            text = { Text(stringResource(R.string.workflow_no_available_predecessor_nodes)) },
                                             onClick = { showSourceSelector = false },
                                             enabled = false
                                         )
@@ -1626,7 +1695,7 @@ fun NodeDialog(
                     "trigger" -> {
                         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
                         Text(
-                            text = "触发配置",
+                            text = stringResource(R.string.workflow_trigger_config_title),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1640,7 +1709,7 @@ fun NodeDialog(
                                 value = triggerTypes[triggerType] ?: "",
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("触发类型") },
+                                label = { Text(stringResource(R.string.workflow_trigger_type_label)) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = triggerTypeExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor()
                             )
@@ -1673,12 +1742,12 @@ fun NodeDialog(
                                 onClick = { showScheduleDialog = true },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("配置定时触发")
+                                Text(stringResource(R.string.workflow_configure_schedule_trigger))
                             }
                             
                             if (triggerConfig.isNotBlank()) {
                                 Text(
-                                    text = "已配置定时",
+                                    text = stringResource(R.string.workflow_schedule_configured),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.padding(top = 4.dp)
@@ -1688,12 +1757,21 @@ fun NodeDialog(
                             OutlinedTextField(
                                 value = triggerConfig,
                                 onValueChange = { triggerConfig = it },
-                                label = { Text("触发配置 (JSON)") },
+                                label = { Text(stringResource(R.string.workflow_trigger_config_json_label)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 minLines = 2,
                                 maxLines = 4,
-                                placeholder = { Text("""{"key": "value"}""") }
+                                placeholder = { Text(stringResource(R.string.workflow_trigger_config_json_placeholder)) }
                             )
+
+                            if (triggerType == "speech") {
+                                Text(
+                                    text = stringResource(R.string.workflow_speech_trigger_help),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1708,22 +1786,22 @@ fun NodeDialog(
                             "trigger" -> {
                                 // 根据触发类型生成名称
                                 when (triggerType) {
-                                    "manual" -> "手动触发"
-                                    "schedule" -> "定时触发"
-                                    "tasker" -> "Tasker 触发"
-                                    "intent" -> "Intent 触发"
-                                    "speech" -> "语音触发"
-                                    else -> "触发器"
+                                    "manual" -> triggerTypes["manual"].orEmpty()
+                                    "schedule" -> triggerTypes["schedule"].orEmpty()
+                                    "tasker" -> triggerTypes["tasker"].orEmpty()
+                                    "intent" -> triggerTypes["intent"].orEmpty()
+                                    "speech" -> triggerTypes["speech"].orEmpty()
+                                    else -> context.getString(R.string.workflow_trigger_fallback)
                                 }
                             }
                             "execute" -> {
                                 // 根据动作类型生成名称
-                                actionType.takeIf { it.isNotBlank() } ?: "执行动作"
+                                actionType.takeIf { it.isNotBlank() } ?: context.getString(R.string.workflow_default_execute_action)
                             }
-                            "condition" -> "条件判断"
-                            "logic" -> "逻辑判断"
-                            "extract" -> "运算"
-                            else -> nodeTypes[nodeType] ?: "节点"
+                            "condition" -> context.getString(R.string.workflow_node_default_name_condition)
+                            "logic" -> context.getString(R.string.workflow_node_default_name_logic)
+                            "extract" -> context.getString(R.string.workflow_node_default_name_extract)
+                            else -> nodeTypes[nodeType] ?: context.getString(R.string.workflow_node_fallback)
                         }
                     } else {
                         name
@@ -1899,12 +1977,12 @@ fun NodeDialog(
                     onConfirm(resultNode)
                 }
             ) {
-                Text(if (isEditMode) "保存" else "添加")
+                Text(if (isEditMode) stringResource(R.string.settings_save) else stringResource(R.string.add_action))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel_action))
             }
         }
     )
@@ -1958,7 +2036,7 @@ fun EditWorkflowDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑工作流") },
+        title = { Text(stringResource(R.string.workflow_edit_dialog_title)) },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -1986,7 +2064,7 @@ fun EditWorkflowDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("启用工作流")
+                    Text(stringResource(R.string.workflow_enabled_label))
                     Switch(
                         checked = enabled,
                         onCheckedChange = { enabled = it }
@@ -1999,12 +2077,12 @@ fun EditWorkflowDialog(
                 onClick = { onSave(name, description, enabled) },
                 enabled = name.isNotBlank()
             ) {
-                Text("保存")
+                Text(stringResource(R.string.settings_save))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel_action))
             }
         }
     )

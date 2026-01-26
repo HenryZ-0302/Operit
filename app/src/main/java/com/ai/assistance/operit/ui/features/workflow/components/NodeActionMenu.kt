@@ -8,8 +8,10 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.ai.assistance.operit.R
 
 /**
  * 节点操作菜单对话框
@@ -53,7 +55,7 @@ fun NodeActionMenuDialog(
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("编辑节点")
+                    Text(stringResource(R.string.workflow_action_edit_node))
                 }
                 
                 // 连接按钮
@@ -70,7 +72,7 @@ fun NodeActionMenuDialog(
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("创建连接")
+                    Text(stringResource(R.string.workflow_create_connection))
                 }
 
                 TextButton(
@@ -89,7 +91,7 @@ fun NodeActionMenuDialog(
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("删除节点")
+                    Text(stringResource(R.string.workflow_action_delete_node))
                 }
                 
                 // 取消按钮
@@ -97,7 +99,7 @@ fun NodeActionMenuDialog(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("取消")
+                    Text(stringResource(R.string.cancel_action))
                 }
             }
         }

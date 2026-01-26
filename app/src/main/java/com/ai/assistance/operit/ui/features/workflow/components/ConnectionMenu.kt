@@ -53,7 +53,7 @@ fun ConnectionMenuDialog(
                 Text(stringResource(R.string.workflow_manage_connections))
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "源节点: ${sourceNode.name}",
+                    text = stringResource(R.string.workflow_source_node_format, sourceNode.name),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -116,7 +116,7 @@ fun ConnectionMenuDialog(
                     if (connectionsFromSource.isEmpty()) {
                         item {
                             Text(
-                                text = "没有可连接的节点",
+                                text = stringResource(R.string.workflow_no_connectable_nodes),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -191,7 +191,10 @@ private fun ExistingConnectionItem(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = "→ ${conditionToDisplayText(sourceNode, connection.condition)}",
+                        text = stringResource(
+                            R.string.workflow_connection_condition_arrow_format,
+                            conditionToDisplayText(sourceNode, connection.condition)
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -206,7 +209,7 @@ private fun ExistingConnectionItem(
                 ) {
                     Icon(
                         Icons.Default.Edit,
-                        contentDescription = "编辑"
+                        contentDescription = stringResource(R.string.workflow_edit_connection_condition)
                     )
                 }
 
@@ -232,22 +235,23 @@ private enum class ConnectionConditionMode {
     CUSTOM
 }
 
+@Composable
 private fun conditionToDisplayText(sourceNode: WorkflowNode, condition: String?): String {
     val c = condition?.trim().orEmpty()
     val isConditionLike = sourceNode is ConditionNode || sourceNode is LogicNode
 
     if (c.isBlank()) {
         return if (isConditionLike) {
-            "true(默认)"
+            stringResource(R.string.workflow_connection_condition_default_true)
         } else {
-            "无条件"
+            stringResource(R.string.workflow_connection_condition_default_none)
         }
     }
 
     return when (c.lowercase()) {
         "true" -> "true"
         "false" -> "false"
-        else -> "正则: $c"
+        else -> stringResource(R.string.workflow_connection_condition_regex_format, c)
     }
 }
 
@@ -273,7 +277,7 @@ private fun ConnectionConditionDialog(
         onDismissRequest = onDismiss,
         title = {
             Column {
-                Text(text = "编辑连线条件")
+                Text(text = stringResource(R.string.workflow_edit_connection_condition_title))
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "${sourceNode.name} → ${targetNode.name}",
@@ -287,11 +291,12 @@ private fun ConnectionConditionDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val defaultLabel = if (sourceNode is ConditionNode || sourceNode is LogicNode) {
-                    "默认(true 分支)"
-                } else {
-                    "默认(无条件)"
-                }
+                val defaultLabel =
+                    if (sourceNode is ConditionNode || sourceNode is LogicNode) {
+                        stringResource(R.string.workflow_connection_condition_default_true_branch)
+                    } else {
+                        stringResource(R.string.workflow_connection_condition_default_no_condition)
+                    }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
@@ -308,7 +313,7 @@ private fun ConnectionConditionDialog(
                         onClick = { mode = ConnectionConditionMode.FALSE }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("false 分支")
+                    Text(stringResource(R.string.workflow_connection_condition_false_branch))
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -317,7 +322,7 @@ private fun ConnectionConditionDialog(
                         onClick = { mode = ConnectionConditionMode.CUSTOM }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("自定义(正则/文本)")
+                    Text(stringResource(R.string.workflow_connection_condition_custom))
                 }
 
                 OutlinedTextField(
@@ -345,7 +350,7 @@ private fun ConnectionConditionDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+                Text(stringResource(R.string.cancel_action))
             }
         }
     )

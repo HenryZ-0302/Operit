@@ -25,7 +25,15 @@ export namespace Net {
      * Visit a webpage and extract its content
      * @param urlOrParams - URL to visit, or an object with visit parameters.
      */
-    function visit(urlOrParams: string | { url?: string; visit_key?: string; link_number?: number }): Promise<VisitWebResultData>;
+    function visit(urlOrParams: string | {
+        url?: string;
+        visit_key?: string;
+        link_number?: number;
+        include_image_links?: boolean;
+        headers?: Record<string, string>;
+        user_agent_preset?: string;
+        user_agent?: string;
+    }): Promise<VisitWebResultData>;
 
     /**
      * Enhanced HTTP request with flexible options

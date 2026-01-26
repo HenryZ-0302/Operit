@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.OperitPaths
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.AttachmentInfo
@@ -19,6 +20,9 @@ import kotlinx.coroutines.withContext
 import android.provider.DocumentsContract
 import android.webkit.MimeTypeMap
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Manages attachment operations for the chat feature Handles adding, removing, and referencing
@@ -282,7 +286,7 @@ class AttachmentDelegate(private val context: Context, private val toolHandler: 
                     val fileExtension = fileName.substringAfterLast('.', "jpg")
 
                     // 使用外部存储Download/Operit/cleanOnExit目录，而不是缓存目录
-                    val externalDir = java.io.File("/sdcard/Download/Operit/cleanOnExit")
+                    val externalDir = OperitPaths.cleanOnExitDir()
 
                     // 确保目录存在
                     if (!externalDir.exists()) {
@@ -500,6 +504,34 @@ class AttachmentDelegate(private val context: Context, private val toolHandler: 
                 } catch (e: Exception) {
                     _toastEvent.emit("获取位置失败: ${e.message}")
                     AppLogger.e(TAG, "Error capturing location", e)
+                }
+            }
+
+    /** 获取当前时间并作为附件添加到消息 */
+    suspend fun captureCurrentTime() =
+            withContext(Dispatchers.IO) {
+                try {
+                    val captureId = "time_${System.currentTimeMillis()}"
+                    val timeText =
+                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+                    val content = "【当前时间】\n$timeText"
+                    val attachmentInfo =
+                        AttachmentInfo(
+                            filePath = captureId,
+                            fileName = "time.txt",
+                            mimeType = "text/plain",
+                            fileSize = content.length.toLong(),
+                            content = content
+                        )
+
+                    val currentList = _attachments.value
+                    _attachments.value = currentList + attachmentInfo
+
+                    _toastEvent.emit("已添加当前时间")
+                } catch (e: Exception) {
+                    _toastEvent.emit("获取时间失败: ${e.message}")
+                    AppLogger.e(TAG, "Error capturing current time", e)
                 }
             }
 

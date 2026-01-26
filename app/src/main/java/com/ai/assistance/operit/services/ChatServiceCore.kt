@@ -17,7 +17,8 @@ import com.ai.assistance.operit.services.core.TokenStatisticsDelegate
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.ui.features.chat.viewmodel.UiStateDelegate
 import com.ai.assistance.operit.util.stream.SharedStream
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -59,7 +60,7 @@ class ChatServiceCore(
     private var onEnhancedAiServiceReady: ((EnhancedAIService) -> Unit)? = null
     
     // 额外的 onTurnComplete 回调（用于悬浮窗通知应用等场景）
-    private var additionalOnTurnComplete: (() -> Unit)? = null
+    private var additionalOnTurnComplete: ((String?, Int, Int, Int) -> Unit)? = null
     
     private fun initializeDelegates() {
         // 初始化 UI 状态委托
@@ -116,6 +117,18 @@ class ChatServiceCore(
             }
         )
 
+        coroutineScope.launch {
+            chatHistoryDelegate.currentChatId.collect { chatId ->
+                tokenStatisticsDelegate.setActiveChatId(chatId)
+                if (chatId != null) {
+                    tokenStatisticsDelegate.bindChatService(
+                        chatId,
+                        EnhancedAIService.getChatInstance(context, chatId)
+                    )
+                }
+            }
+        }
+
         // 初始化消息处理委托
         messageProcessingDelegate = MessageProcessingDelegate(
             context = context,
@@ -142,7 +155,7 @@ class ChatServiceCore(
                 val (inputTokens, outputTokens) = tokenStatisticsDelegate.getCumulativeTokenCounts(chatId)
                 val windowSize = tokenStatisticsDelegate.getLastCurrentWindowSize(chatId)
                 chatHistoryDelegate.saveCurrentChat(inputTokens, outputTokens, windowSize, chatIdOverride = chatId)
-                additionalOnTurnComplete?.invoke()
+                additionalOnTurnComplete?.invoke(chatId, inputTokens, outputTokens, windowSize)
             },
             getIsAutoReadEnabled = {
                 apiConfigDelegate.enableAutoRead.value
@@ -381,7 +394,7 @@ class ChatServiceCore(
     }
     
     /** 设置额外的 onTurnComplete 回调（用于悬浮窗通知应用等场景） */
-    fun setAdditionalOnTurnComplete(callback: (() -> Unit)?) {
+    fun setAdditionalOnTurnComplete(callback: ((chatId: String?, inputTokens: Int, outputTokens: Int, windowSize: Int) -> Unit)?) {
         additionalOnTurnComplete = callback
     }
     

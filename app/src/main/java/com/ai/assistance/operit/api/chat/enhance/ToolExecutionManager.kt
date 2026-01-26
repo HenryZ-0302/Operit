@@ -259,30 +259,21 @@ object ToolExecutionManager {
         packageManager: PackageManager,
         collector: StreamCollector<String>
     ): ToolResult {
-        var executor = toolHandler.getToolExecutor(invocation.tool.name)
+        val toolName = invocation.tool.name
+        val executor = toolHandler.getToolExecutorOrActivate(toolName)
         if (executor == null) {
-            val toolName = invocation.tool.name
-            // 尝试自动激活包
-            val activated = tryActivatePackage(toolName, packageManager, toolHandler)
-            if (activated) {
-                // 激活后再次获取执行器
-                executor = toolHandler.getToolExecutor(invocation.tool.name)
-            }
-
-            if (executor == null) {
-                // 如果仍然为 null，则构建错误消息
-                val errorMessage =
-                    buildToolNotAvailableErrorMessage(toolName, packageManager, toolHandler)
-                val notAvailableContent =
-                    ConversationMarkupManager.createToolNotAvailableError(toolName, errorMessage)
-                collector.emit(notAvailableContent)
-                return ToolResult(
-                    toolName = toolName,
-                    success = false,
-                    result = StringResultData(""),
-                    error = errorMessage
-                )
-            }
+            // 如果仍然为 null，则构建错误消息
+            val errorMessage =
+                buildToolNotAvailableErrorMessage(toolName, packageManager, toolHandler)
+            val notAvailableContent =
+                ConversationMarkupManager.createToolNotAvailableError(toolName, errorMessage)
+            collector.emit(notAvailableContent)
+            return ToolResult(
+                toolName = toolName,
+                success = false,
+                result = StringResultData(""),
+                error = errorMessage
+            )
         }
 
         val collectedResults = mutableListOf<ToolResult>()
@@ -339,10 +330,12 @@ object ToolExecutionManager {
                 val parts = toolName.split(':', limit = 2)
                 val packName = parts[0]
                 val toolNamePart = parts.getOrNull(1) ?: ""
-                val isAvailable = packageManager.getAvailablePackages().containsKey(packName)
+                val isJsPackageAvailable = packageManager.getAvailablePackages().containsKey(packName)
+                val isMcpServerAvailable = packageManager.getAvailableServerPackages().containsKey(packName)
+                val isAvailable = isJsPackageAvailable || isMcpServerAvailable
 
                 if (!isAvailable) {
-                    "工具包 '$packName' 不存在。"
+                    "工具包或MCP服务器 '$packName' 不存在。"
                 } else {
                     // 包存在，检查是否已激活（通过检查该包的任何工具是否已注册）
                     val packageTools =
@@ -373,40 +366,4 @@ object ToolExecutionManager {
         }
     }
 
-    /**
-     * 尝试自动激活一个工具包，并验证激活结果
-     */
-    private fun tryActivatePackage(
-        toolName: String,
-        packageManager: PackageManager,
-        toolHandler: AIToolHandler
-    ): Boolean {
-        if (!toolName.contains(':')) {
-            return false
-        }
-
-        val parts = toolName.split(':', limit = 2)
-        val packName = parts[0]
-
-        // 已经有执行器就不需要再激活
-        val isToolAlreadyRegistered = toolHandler.getToolExecutor(toolName) != null
-        if (isToolAlreadyRegistered) {
-            return true
-        }
-
-        // JS 工具包是否可用
-        val isJsPackageAvailable = packageManager.getAvailablePackages().containsKey(packName)
-        // MCP 服务器是否已注册
-        val isMcpServerAvailable = packageManager.getAvailableServerPackages().containsKey(packName)
-
-        if (isJsPackageAvailable || isMcpServerAvailable) {
-            AppLogger.d(TAG, "尝试自动激活工具包或MCP服务器: $packName for tool $toolName")
-            // 调用 usePackage 来加载和注册工具（对于 MCP 会转到 useMCPServer）
-            packageManager.usePackage(packName)
-            // 激活后，再次检查工具是否已注册
-            return toolHandler.getToolExecutor(toolName) != null
-        }
-
-        return false
-    }
 }

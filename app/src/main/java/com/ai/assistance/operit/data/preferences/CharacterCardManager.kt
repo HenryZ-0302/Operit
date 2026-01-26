@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
+import com.ai.assistance.operit.data.backup.OperitBackupDirs
 import com.ai.assistance.operit.data.model.CharacterCard
 import com.ai.assistance.operit.data.model.PromptTag
 import com.ai.assistance.operit.data.model.TagType
@@ -13,6 +14,9 @@ import com.ai.assistance.operit.data.model.TavernExtensions
 import com.ai.assistance.operit.data.model.OperitTavernExtension
 import com.ai.assistance.operit.data.model.OperitCharacterCardPayload
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonElement
+import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -22,6 +26,10 @@ import java.util.UUID
 import com.ai.assistance.operit.util.AppLogger
 import android.util.Base64
 import java.io.InputStream
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val Context.characterCardDataStore by preferencesDataStore(
     name = "character_cards"
@@ -384,6 +392,132 @@ class CharacterCardManager private constructor(private val context: Context) {
                 getCharacterCardFlow(id).first()
             } catch (e: Exception) {
                 null
+            }
+        }
+    }
+
+    data class CharacterCardsBackupFile(
+        val schema: String = "operit_character_cards_backup_v1",
+        val version: Int = 1,
+        val exportedAt: Long = System.currentTimeMillis(),
+        val characterCards: List<CharacterCard> = emptyList()
+    )
+
+    data class CharacterCardImportResult(
+        val new: Int,
+        val updated: Int,
+        val skipped: Int
+    ) {
+        val total: Int
+            get() = new + updated
+    }
+
+    suspend fun exportAllCharacterCardsToBackupFile(): String? {
+        return try {
+            val cards = getAllCharacterCards()
+            val exportDir = OperitBackupDirs.characterCardsDir()
+            val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault())
+            val timestamp = dateFormat.format(Date())
+            val exportFile = File(exportDir, "character_cards_backup_$timestamp.json")
+
+            val gson = GsonBuilder().setPrettyPrinting().create()
+            val wrapper = CharacterCardsBackupFile(characterCards = cards)
+            exportFile.writeText(gson.toJson(wrapper))
+            exportFile.absolutePath
+        } catch (e: Exception) {
+            AppLogger.e("CharacterCardManager", "导出角色卡备份失败", e)
+            null
+        }
+    }
+
+    suspend fun importAllCharacterCardsFromBackupContent(jsonContent: String): CharacterCardImportResult {
+        if (jsonContent.isBlank()) {
+            throw Exception("导入的文件为空")
+        }
+
+        val gson = Gson()
+        val root: JsonElement = try {
+            JsonParser.parseString(jsonContent)
+        } catch (e: Exception) {
+            throw Exception("JSON格式错误: ${e.message}")
+        }
+
+        val cards: List<CharacterCard> = try {
+            if (root.isJsonObject && root.asJsonObject.has("characterCards")) {
+                val arr = root.asJsonObject.get("characterCards")
+                gson.fromJson(arr, Array<CharacterCard>::class.java)?.toList() ?: emptyList()
+            } else if (root.isJsonArray) {
+                gson.fromJson(root, Array<CharacterCard>::class.java)?.toList() ?: emptyList()
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            throw Exception("解析失败: ${e.message}")
+        }
+
+        if (cards.isEmpty()) {
+            return CharacterCardImportResult(0, 0, 0)
+        }
+
+        var newCount = 0
+        var updatedCount = 0
+        var skippedCount = 0
+
+        val existingIds = characterCardListFlow.first().toSet()
+
+        for (card in cards) {
+            if (card.id.isBlank() || card.name.isBlank()) {
+                skippedCount++
+                continue
+            }
+
+            val finalCard = if (card.id == DEFAULT_CHARACTER_CARD_ID) {
+                card.copy(isDefault = true)
+            } else {
+                card.copy(isDefault = false)
+            }
+
+            if (existingIds.contains(finalCard.id)) {
+                updatedCount++
+            } else {
+                newCount++
+            }
+
+            upsertCharacterCardWithId(finalCard)
+        }
+
+        return CharacterCardImportResult(newCount, updatedCount, skippedCount)
+    }
+
+    private suspend fun upsertCharacterCardWithId(card: CharacterCard) {
+        dataStore.edit { preferences ->
+            val id = card.id
+            val currentList = preferences[CHARACTER_CARD_LIST]?.toMutableSet() ?: mutableSetOf(DEFAULT_CHARACTER_CARD_ID)
+            if (!currentList.contains(id)) {
+                currentList.add(id)
+                preferences[CHARACTER_CARD_LIST] = currentList
+            }
+
+            preferences[stringPreferencesKey("character_card_${id}_name")] = card.name
+            preferences[stringPreferencesKey("character_card_${id}_description")] = card.description
+            preferences[stringPreferencesKey("character_card_${id}_character_setting")] = card.characterSetting
+            preferences[stringPreferencesKey("character_card_${id}_opening_statement")] = card.openingStatement
+            preferences[stringPreferencesKey("character_card_${id}_other_content")] = card.otherContent
+            preferences[stringSetPreferencesKey("character_card_${id}_attached_tag_ids")] = card.attachedTagIds.toSet()
+            preferences[stringPreferencesKey("character_card_${id}_advanced_custom_prompt")] = card.advancedCustomPrompt
+            preferences[stringPreferencesKey("character_card_${id}_marks")] = card.marks
+            preferences[booleanPreferencesKey("character_card_${id}_is_default")] = card.isDefault
+            preferences[longPreferencesKey("character_card_${id}_created_at")] = card.createdAt
+            preferences[longPreferencesKey("character_card_${id}_updated_at")] = card.updatedAt
+
+            if (preferences[ACTIVE_CHARACTER_CARD_ID] == null) {
+                preferences[ACTIVE_CHARACTER_CARD_ID] = DEFAULT_CHARACTER_CARD_ID
+            }
+        }
+
+        if (card.id != DEFAULT_CHARACTER_CARD_ID) {
+            if (!userPreferencesManager.hasCharacterCardTheme(card.id)) {
+                createDefaultThemeForCharacterCard(card.id)
             }
         }
     }

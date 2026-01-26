@@ -338,6 +338,8 @@ class ModelConfigManager(private val context: Context) {
             apiProviderType: ApiProviderType,
             mnnForwardType: Int,
             mnnThreadCount: Int,
+            llamaThreadCount: Int,
+            llamaContextSize: Int,
             enableDirectImageProcessing: Boolean,
             enableDirectAudioProcessing: Boolean,
             enableDirectVideoProcessing: Boolean,
@@ -346,6 +348,12 @@ class ModelConfigManager(private val context: Context) {
             enableDeepseekReasoning: Boolean
     ): ModelConfigData {
         return updateConfigInternal(configId) {
+            val resolvedEnableToolCall =
+                if (apiProviderType == ApiProviderType.MNN || apiProviderType == ApiProviderType.LLAMA_CPP) {
+                    false
+                } else {
+                    enableToolCall
+                }
             it.copy(
                     apiKey = apiKey,
                     apiEndpoint = apiEndpoint,
@@ -353,11 +361,13 @@ class ModelConfigManager(private val context: Context) {
                     apiProviderType = apiProviderType,
                     mnnForwardType = mnnForwardType,
                     mnnThreadCount = mnnThreadCount,
+                    llamaThreadCount = llamaThreadCount,
+                    llamaContextSize = llamaContextSize,
                     enableDirectImageProcessing = enableDirectImageProcessing,
                     enableDirectAudioProcessing = enableDirectAudioProcessing,
                     enableDirectVideoProcessing = enableDirectVideoProcessing,
                     enableGoogleSearch = enableGoogleSearch,
-                    enableToolCall = enableToolCall,
+                    enableToolCall = resolvedEnableToolCall,
                     enableDeepseekReasoning = enableDeepseekReasoning
             )
         }
@@ -473,7 +483,15 @@ class ModelConfigManager(private val context: Context) {
 
     // 更新 Tool Call 配置
     suspend fun updateToolCall(configId: String, enableToolCall: Boolean): ModelConfigData {
-        return updateConfigInternal(configId) { it.copy(enableToolCall = enableToolCall) }
+        return updateConfigInternal(configId) {
+            val resolvedEnableToolCall =
+                if (it.apiProviderType == ApiProviderType.MNN || it.apiProviderType == ApiProviderType.LLAMA_CPP) {
+                    false
+                } else {
+                    enableToolCall
+                }
+            it.copy(enableToolCall = resolvedEnableToolCall)
+        }
     }
 
     // 更新 DeepSeek推理模式 配置

@@ -123,15 +123,24 @@ fun SpeechToTextScreen(navController: NavController) {
     // recognitionMode 是驱动服务实例创建的唯一状态源
     var recognitionMode by remember { mutableStateOf(SpeechServiceFactory.SpeechServiceType.SHERPA_NCNN) }
 
-    // speechService 实例仅在 recognitionMode 改变时重新创建
-    val speechService = remember(recognitionMode) {
-        SpeechServiceFactory.createSpeechService(context, recognitionMode)
+    var speechService by remember {
+        mutableStateOf(SpeechServiceFactory.createSpeechService(context, recognitionMode))
     }
 
-    // 保证在服务实例被替换或屏幕离开时，旧的服务实例被正确关闭
-    DisposableEffect(speechService) {
-        onDispose {
+    LaunchedEffect(recognitionMode) {
+        try {
             speechService.shutdown()
+        } catch (_: Exception) {
+        }
+        speechService = SpeechServiceFactory.createSpeechService(context, recognitionMode)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                speechService.shutdown()
+            } catch (_: Exception) {
+            }
         }
     }
 

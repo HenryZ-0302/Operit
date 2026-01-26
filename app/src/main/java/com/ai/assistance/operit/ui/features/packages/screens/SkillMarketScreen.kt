@@ -31,19 +31,19 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -316,7 +316,7 @@ private fun SkillBrowseTab(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
-            placeholder = { Text("搜索Skill名称、描述、作者...") },
+            placeholder = { Text(stringResource(R.string.skill_market_search_placeholder)) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
@@ -374,7 +374,11 @@ private fun SkillBrowseTab(
                             isInstalled = isInstalled,
                             onInstall = {
                                 if (repoUrl.isBlank()) {
-                                    Toast.makeText(context, "未找到仓库地址，无法安装", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.skill_repo_url_not_found_cannot_install),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 } else {
                                     onInstall(repoUrl)
                                 }
@@ -557,185 +561,168 @@ private fun SkillIssueCard(
     isInstalled: Boolean
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onViewDetails() },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = issue.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        if (skillInfo.repositoryOwner.isNotBlank()) {
-                            LaunchedEffect(skillInfo.repositoryOwner) {
-                                viewModel.fetchUserAvatar(skillInfo.repositoryOwner)
-                            }
-
-                            val avatarUrl by viewModel.userAvatarCache.collectAsState()
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val userAvatarUrl = avatarUrl[skillInfo.repositoryOwner]
-                                if (userAvatarUrl != null) {
-                                    Image(
-                                        painter = rememberAsyncImagePainter(userAvatarUrl),
-                                        contentDescription = stringResource(R.string.author_avatar),
-                                        modifier = Modifier
-                                            .size(12.dp)
-                                            .clip(CircleShape),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Icon(
-                                        Icons.Default.Person,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(12.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = stringResource(R.string.author_colon) + " ${skillInfo.repositoryOwner}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Image(
-                                painter = rememberAsyncImagePainter(issue.user.avatarUrl),
-                                contentDescription = stringResource(R.string.sharer_avatar),
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = stringResource(R.string.share_colon) + " ${issue.user.login}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = when (issue.state) {
-                        "open" -> Color(0xFF22C55E).copy(alpha = 0.1f)
-                        else -> Color(0xFF64748B).copy(alpha = 0.1f)
-                    }
-                ) {
-                    Text(
-                        text = when (issue.state) {
-                            "open" -> stringResource(R.string.available)
-                            else -> stringResource(R.string.closed)
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = when (issue.state) {
-                            "open" -> Color(0xFF22C55E)
-                            else -> Color(0xFF64748B)
-                        },
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        fontSize = 10.sp
-                    )
-                }
-            }
-
-            if (skillInfo.description.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = skillInfo.description.take(80) + if (skillInfo.description.length > 80) "..." else "",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    text = issue.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onViewDetails,
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text(stringResource(R.string.details), fontSize = 11.sp)
+                if (skillInfo.description.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = skillInfo.description.take(100) + if (skillInfo.description.length > 100) "..." else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
 
-                if (issue.state == "open") {
-                    if (isInstalled) {
-                        Button(
-                            onClick = { /* No-op */ },
-                            modifier = Modifier.weight(1f),
-                            enabled = false,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                disabledContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                disabledContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                val avatarUrl by viewModel.userAvatarCache.collectAsState()
+                LaunchedEffect(skillInfo.repositoryOwner) {
+                    if (skillInfo.repositoryOwner.isNotBlank()) {
+                        viewModel.fetchUserAvatar(skillInfo.repositoryOwner)
+                    }
+                }
+
+                val thumbsUpCount = issue.reactions?.thumbs_up ?: 0
+                val heartCount = issue.reactions?.heart ?: 0
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (skillInfo.repositoryOwner.isNotBlank()) {
+                        val userAvatarUrl = avatarUrl[skillInfo.repositoryOwner]
+                        if (userAvatarUrl != null) {
+                            Image(
+                                painter = rememberAsyncImagePainter(userAvatarUrl),
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp).clip(CircleShape),
+                                contentScale = ContentScale.Crop
                             )
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(stringResource(R.string.installed), fontSize = 11.sp)
+                        } else {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
-                    } else if (isInstalling) {
-                        Button(
-                            onClick = { /* Installing */ },
-                            modifier = Modifier.weight(1f),
-                            enabled = false,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                disabledContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                                disabledContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        ) {
+                    }
+                    Image(
+                        painter = rememberAsyncImagePainter(issue.user.avatarUrl),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp).clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+
+                    if (thumbsUpCount > 0) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.ThumbUp,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = thumbsUpCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    if (heartCount > 0) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.Favorite,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = Color(0xFFE91E63)
+                        )
+                        Text(
+                            text = heartCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFFE91E63)
+                        )
+                    }
+                }
+            }
+
+            val circleSize = 34.dp
+            val containerColor = when {
+                isInstalled -> MaterialTheme.colorScheme.secondaryContainer
+                isInstalling -> MaterialTheme.colorScheme.primaryContainer
+                issue.state == "open" -> MaterialTheme.colorScheme.primary
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }
+            val contentColor = when {
+                isInstalled -> MaterialTheme.colorScheme.onSecondaryContainer
+                isInstalling -> MaterialTheme.colorScheme.onPrimaryContainer
+                issue.state == "open" -> MaterialTheme.colorScheme.onPrimary
+                else -> MaterialTheme.colorScheme.onSurfaceVariant
+            }
+
+            Surface(
+                shape = CircleShape,
+                color = containerColor
+            ) {
+                IconButton(
+                    onClick = {
+                        if (issue.state == "open" && !isInstalled && !isInstalling) {
+                            onInstall()
+                        }
+                    },
+                    modifier = Modifier.size(circleSize)
+                ) {
+                    when {
+                        isInstalling -> {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
+                                modifier = Modifier.size(18.dp),
                                 strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                color = contentColor
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(stringResource(R.string.installing_progress), fontSize = 11.sp)
                         }
-                    } else {
-                        Button(
-                            onClick = onInstall,
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(stringResource(R.string.install), fontSize = 11.sp)
+                        isInstalled -> {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = null,
+                                tint = contentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        issue.state == "open" -> {
+                            Icon(
+                                Icons.Default.Download,
+                                contentDescription = null,
+                                tint = contentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        else -> {
+                            Icon(
+                                Icons.Default.Info,
+                                contentDescription = null,
+                                tint = contentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }

@@ -38,12 +38,170 @@
     <string name="workflow_delete">删除工作流</string>
     <string name="workflow_empty_state">暂无工作流，点击右上角创建</string>
     <string name="workflow_nodes_empty">暂无节点</string>
+    <string name="workflow_nodes_empty_hint_add">点击右上角 + 按钮添加节点</string>
     <string name="workflow_create_connection">创建连接</string>
     <string name="workflow_delete_connection">删除连接</string>
     <string name="workflow_select_target_node">选择目标节点</string>
     <string name="workflow_manage_connections">管理连接</string>
     <string name="workflow_existing_connections">已有连接</string>
     <string name="workflow_close">关闭</string>
+    <string name="workflow_action_trigger">触发工作流</string>
+    <string name="workflow_action_add_node">添加节点</string>
+    <string name="workflow_action_edit_workflow">编辑工作流</string>
+    <string name="workflow_open_action_menu">打开操作菜单</string>
+    <string name="workflow_action_edit_node">编辑节点</string>
+    <string name="workflow_action_delete_node">删除节点</string>
+    <string name="workflow_source_node_format">源节点: %1$s</string>
+    <string name="workflow_no_connectable_nodes">没有可连接的节点</string>
+    <string name="workflow_connection_condition_arrow_format">→ %1$s</string>
+    <string name="workflow_edit_connection_condition">编辑</string>
+    <string name="workflow_edit_connection_condition_title">编辑连线条件</string>
+    <string name="workflow_connection_condition_default_true">true(默认)</string>
+    <string name="workflow_connection_condition_default_none">无条件</string>
+    <string name="workflow_connection_condition_regex_format">正则: %1$s</string>
+    <string name="workflow_connection_condition_default_true_branch">默认(true 分支)</string>
+    <string name="workflow_connection_condition_default_no_condition">默认(无条件)</string>
+    <string name="workflow_connection_condition_false_branch">false 分支</string>
+    <string name="workflow_connection_condition_custom">自定义(正则/文本)</string>
+    <string name="workflow_schedule_dialog_title">定时配置</string>
+    <string name="workflow_schedule_type_label">定时类型</string>
+    <string name="workflow_schedule_type_interval">固定间隔</string>
+    <string name="workflow_schedule_type_specific_time">特定时间</string>
+    <string name="workflow_schedule_type_cron">Cron表达式</string>
+    <string name="workflow_interval_unit_minutes">分钟</string>
+    <string name="workflow_interval_unit_hours">小时</string>
+    <string name="workflow_interval_unit_days">天</string>
+    <string name="workflow_interval_config_title">固定间隔配置</string>
+    <string name="workflow_interval_value_label">间隔</string>
+    <string name="workflow_interval_unit_label">单位</string>
+    <string name="workflow_schedule_min_interval_hint">注意：WorkManager 最小间隔为 15 分钟</string>
+    <string name="workflow_specific_time_config_title">特定时间配置</string>
+    <string name="workflow_date_label">日期</string>
+    <string name="workflow_time_label">时间</string>
+    <string name="workflow_select_date">选择日期</string>
+    <string name="workflow_select_time">选择时间</string>
+    <string name="workflow_schedule_execute_time_format">执行时间：%1$s</string>
+    <string name="workflow_cron_config_title">Cron 表达式配置</string>
+    <string name="workflow_select_preset_template">选择预设模板</string>
+    <string name="workflow_preset_template_label">预设模板</string>
+    <string name="workflow_cron_expression_label">Cron 表达式</string>
+    <string name="workflow_cron_expression_placeholder">0 0 * * *</string>
+    <string name="workflow_cron_format_help">格式：分 时 日 月 周\n支持：固定值、*、*/N</string>
+    <string name="workflow_common_settings_title">通用设置</string>
+    <string name="workflow_repeat_label">重复执行</string>
+    <string name="workflow_schedule_enabled_label">启用定时</string>
+    <string name="workflow_cron_preset_daily_midnight">每天午夜</string>
+    <string name="workflow_cron_preset_daily_9am">每天上午9点</string>
+    <string name="workflow_cron_preset_daily_noon">每天中午12点</string>
+    <string name="workflow_cron_preset_daily_6pm">每天下午6点</string>
+    <string name="workflow_cron_preset_every_2_hours">每2小时</string>
+    <string name="workflow_cron_preset_every_6_hours">每6小时</string>
+    <string name="workflow_cron_preset_every_15_minutes">每15分钟</string>
+    <string name="workflow_cron_preset_every_30_minutes">每30分钟</string>
+    <string name="workflow_cron_preset_every_monday_midnight">每周一午夜</string>
+    <string name="workflow_cron_preset_workday_9am">工作日上午9点</string>
+    <string name="workflow_node_label_trigger">触发</string>
+    <string name="workflow_node_label_execute">执行</string>
+    <string name="workflow_node_label_condition">条件</string>
+    <string name="workflow_node_label_logic">逻辑</string>
+    <string name="workflow_node_label_extract">运算</string>
+    <string name="workflow_node_label_unknown">未知</string>
+    <string name="workflow_node_skipped">跳过</string>
+    <string name="workflow_not_found">工作流不存在</string>
+    <string name="workflow_confirm_delete_title">确认删除</string>
+    <string name="workflow_confirm_delete_workflow_message">确定要删除工作流 "%1$s" 吗？此操作不可恢复。</string>
+    <string name="workflow_confirm_delete_node_message">确定要删除节点 "%1$s" 吗？</string>
+    <string name="workflow_execution_result_title">执行结果</string>
+    <string name="workflow_edit_dialog_title">编辑工作流</string>
+    <string name="workflow_enabled_label">启用工作流</string>
+    <string name="workflow_node_dialog_title_add">添加节点</string>
+    <string name="workflow_node_dialog_title_edit">编辑节点</string>
+    <string name="workflow_node_type_label">节点类型</string>
+    <string name="workflow_node_name_label">节点名称（留空自动生成）</string>
+    <string name="workflow_node_description_label">描述（可选）</string>
+    <string name="workflow_node_type_trigger">触发节点</string>
+    <string name="workflow_node_type_execute">执行节点</string>
+    <string name="workflow_node_type_condition">条件节点</string>
+    <string name="workflow_node_type_logic">逻辑节点</string>
+    <string name="workflow_node_type_extract">运算节点</string>
+    <string name="workflow_trigger_type_label">触发类型</string>
+    <string name="workflow_trigger_type_manual">手动触发</string>
+    <string name="workflow_trigger_type_schedule">定时触发</string>
+    <string name="workflow_trigger_type_tasker">Tasker 触发</string>
+    <string name="workflow_trigger_type_intent">Intent 触发</string>
+    <string name="workflow_trigger_type_speech">语音触发</string>
+    <string name="workflow_trigger_fallback">触发器</string>
+
+    <string name="workflow_execute_config_title">执行配置</string>
+    <string name="workflow_tool_name_label">工具名称</string>
+    <string name="workflow_tool_name_placeholder">例如: execute_shell</string>
+    <string name="workflow_tool_params_title">工具参数</string>
+    <string name="workflow_param_name_label">参数名</string>
+    <string name="workflow_param_value_label">参数值</string>
+    <string name="workflow_add_param">添加参数</string>
+    <string name="workflow_delete_param">删除参数</string>
+
+    <string name="workflow_condition_config_title">条件配置</string>
+    <string name="workflow_operator_label">运算符</string>
+    <string name="workflow_left_value_label">左值</string>
+    <string name="workflow_right_value_label">右值</string>
+    <string name="workflow_condition_contains">包含</string>
+    <string name="workflow_condition_not_contains">不包含</string>
+
+    <string name="workflow_logic_config_title">逻辑配置</string>
+    <string name="workflow_logic_operator_label">逻辑运算</string>
+
+    <string name="workflow_extract_config_title">运算配置</string>
+    <string name="workflow_mode_label">模式</string>
+    <string name="workflow_extract_mode_regex">正则</string>
+    <string name="workflow_extract_mode_sub">截取</string>
+    <string name="workflow_extract_mode_concat">拼接</string>
+    <string name="workflow_extract_mode_random_int">随机数</string>
+    <string name="workflow_extract_mode_random_string">随机字符串</string>
+    <string name="workflow_regex_expression_label">正则表达式</string>
+    <string name="workflow_json_path_label">JSON 路径</string>
+    <string name="workflow_group_index_label">分组编号</string>
+    <string name="workflow_default_value_label">默认值</string>
+    <string name="workflow_start_index_label">起始下标</string>
+    <string name="workflow_length_label">长度（-1 到结尾）</string>
+    <string name="workflow_source_label">来源</string>
+    <string name="workflow_concat_item_label">拼接项</string>
+    <string name="workflow_add_concat_item">添加拼接项</string>
+    <string name="workflow_delete_concat_item">删除拼接项</string>
+    <string name="workflow_use_fixed_value">使用固定值</string>
+    <string name="workflow_use_random_value">使用随机值</string>
+    <string name="workflow_fixed_integer_label">固定整数</string>
+    <string name="workflow_min_value_label">最小值</string>
+    <string name="workflow_max_value_label">最大值</string>
+    <string name="workflow_fixed_string_label">固定字符串</string>
+    <string name="workflow_string_length_label">长度</string>
+    <string name="workflow_charset_label">字符集</string>
+
+    <string name="workflow_configure_schedule_trigger">配置定时触发</string>
+    <string name="workflow_schedule_configured">已配置定时</string>
+    <string name="workflow_trigger_config_title">触发配置</string>
+    <string name="workflow_trigger_config_json_label">触发配置 (JSON)</string>
+    <string name="workflow_trigger_config_json_placeholder">{"key": "value"}</string>
+    <string name="workflow_speech_trigger_help">说明：语音触发基于后台语音识别（STT）输出的文本事件（partial/final）来匹配 pattern。需要开启“始终监听”且唤醒识别模式为“STT”。如果当前使用“个人化模板唤醒”，由于不产生 STT 文本事件，该触发器不会生效。</string>
+
+    <string name="workflow_select_predecessor_node">选择前置节点</string>
+    <string name="workflow_no_available_predecessor_nodes">无可用前置节点</string>
+    <string name="workflow_use_static_value">使用静态值</string>
+    <string name="workflow_unknown_node">[未知节点]</string>
+
+    <string name="workflow_schema_required">必需</string>
+    <string name="workflow_schema_optional">可选</string>
+    <string name="workflow_schema_default_format">, 默认: %1$s</string>
+    <string name="workflow_schema_hint_format">%1$s（%2$s）: %3$s%4$s</string>
+
+    <string name="workflow_example_format">如: %1$s</string>
+    <string name="workflow_default_execute_action">执行动作</string>
+    <string name="workflow_node_default_name_condition">条件判断</string>
+    <string name="workflow_node_default_name_logic">逻辑判断</string>
+    <string name="workflow_node_default_name_extract">运算</string>
+    <string name="workflow_node_fallback">节点</string>
+
+    <string name="error_title">错误</string>
 
     <!-- 附件面板 -->
     <string name="screen_content">屏幕内容</string>
@@ -115,6 +273,20 @@
     <string name="voice_wakeup_phrase_supporting">例如：小欧</string>
     <string name="voice_wakeup_regex_title">正则表达式</string>
     <string name="voice_wakeup_regex_desc">将唤醒词按正则匹配识别结果</string>
+    <string name="voice_wakeup_mode_label">唤醒识别模式</string>
+    <string name="voice_wakeup_mode_stt">STT（识别文本）</string>
+    <string name="voice_wakeup_mode_personal">个人化模板（录三遍）</string>
+    <string name="voice_wakeup_personal_no_templates">尚未录入模板，无法使用个人化唤醒。</string>
+    <string name="voice_wakeup_personal_configure">录入个人化唤醒模板</string>
+    <string name="voice_wakeup_personal_clear">清除个人化模板</string>
+    <string name="voice_wakeup_personal_config_dialog_title">个人化唤醒配置</string>
+    <string name="voice_wakeup_personal_config_dialog_desc">请对唤醒词说三遍，系统会记录你的发音特征用于唤醒识别。</string>
+    <string name="voice_wakeup_personal_config_step">第%1$d遍</string>
+    <string name="voice_wakeup_personal_config_record">开始录音</string>
+    <string name="voice_wakeup_personal_config_recording">录音中…</string>
+    <string name="voice_wakeup_personal_config_record_done">已录入</string>
+    <string name="voice_wakeup_personal_config_save">保存</string>
+    <string name="voice_wakeup_personal_config_cancel">取消</string>
     <string name="voice_wakeup_inactivity_timeout_label">语音无响应超时（秒）</string>
     <string name="voice_wakeup_inactivity_timeout_supporting">范围：1-600</string>
     <string name="voice_wakeup_greeting_title">唤醒后说一句</string>
@@ -137,6 +309,18 @@
     <string name="voice_keyword_attachments_notifications_title">通知</string>
     <string name="voice_keyword_attachments_notifications_desc">附加当前通知</string>
     <string name="voice_keyword_attachments_notifications_keyword_label">通知关键词</string>
+
+    <string name="voice_keyword_attachments_location_title">位置</string>
+    <string name="voice_keyword_attachments_location_desc">附加当前定位</string>
+    <string name="voice_keyword_attachments_location_keyword_label">位置关键词</string>
+
+    <string name="voice_keyword_attachments_time_title">时间</string>
+    <string name="voice_keyword_attachments_time_desc">附加当前时间</string>
+    <string name="voice_keyword_attachments_time_keyword_label">时间关键词</string>
+
+    <string name="voice_keyword_attachments_add_title">添加</string>
+    <string name="voice_keyword_attachments_add_item_title">添加附件项</string>
+    <string name="voice_keyword_attachments_type_label">类型</string>
 
     <!-- 用于NavItem类的标识符 -->
     <string name="shizuku_commands">权限授予</string>
@@ -281,25 +465,25 @@
     <string name="plugin_configuring_server">配置MCP服务器...</string>
     <string name="plugin_server_failed">MCP服务器启动失败，您可以点击右上角的\"跳过\"继续</string>
     <string name="plugin_server_success">MCP服务器启动成功</string>
-    <string name="plugin_server_initializing">MCP服务器初始化中...</string>
-    <string name="plugin_loading_list">正在加载插件列表...</string>
-    <string name="plugin_no_plugins">没有检测到已安装的插件</string>
-    <string name="plugin_preparing">正在准备 %1$d 个插件...</string>
-    <string name="plugin_checking_env">正在检查环境...</string>
-    <string name="plugin_starting_plugins">正在准备启动插件...</string>
-    <string name="plugin_starting_number">正在启动插件 (%1$d/%2$d)%3$s...</string>
-    <string name="plugin_disabled_suffix"> (插件已禁用)</string>
-    <string name="plugin_termux_not_running">Termux未运行，无法启动插件</string>
-    <string name="plugin_termux_not_authorized">Termux未授权，请先授权Termux再使用插件</string>
-    <string name="plugin_nodejs_missing">Termux中未安装Node.js，请先安装Node.js再使用插件</string>
-    <string name="plugin_bridge_failed">桥接器初始化失败，无法启动插件</string>
-    <string name="plugin_other_error">启动插件时发生错误，您可以点击右上角的\"跳过\"继续</string>
-    <string name="plugin_complete_with_failures">已完成启动，成功率: %1$d%%。部分插件加载失败</string>
-    <string name="plugin_complete_success">已完成启动，成功率: %1$d%%</string>
-    <string name="plugin_no_plugins_to_start">没有需要启动的插件</string>
-    <string name="plugin_copyright">© 2023 AI Assistance</string>
-    <string name="plugin_registered">已注册</string>
-    <string name="plugin_registration_failed">注册失败</string>
+<string name="plugin_server_initializing">MCP服务器初始化中...</string>
+<string name="plugin_loading_list">正在加载插件列表...</string>
+<string name="plugin_no_plugins">没有检测到已安装的插件</string>
+<string name="plugin_preparing">正在准备 %1$d 个插件...</string>
+<string name="plugin_checking_env">正在检查环境...</string>
+<string name="plugin_starting_plugins">正在准备启动插件...</string>
+<string name="plugin_starting_number">正在启动插件 (%1$d/%2$d)%3$s...</string>
+<string name="plugin_disabled_suffix"> (插件已禁用)</string>
+<string name="plugin_termux_not_running">内置终端服务未运行，无法启动插件</string>
+<string name="plugin_termux_not_authorized">内置终端服务未就绪，请先启动终端再使用插件</string>
+<string name="plugin_nodejs_missing">内置终端环境未安装 pnpm（需要 Node.js），请先安装后再使用插件</string>
+<string name="plugin_bridge_failed">桥接器初始化失败，无法启动插件</string>
+<string name="plugin_other_error">启动插件时发生错误，您可以点击右上角的\"跳过\"继续</string>
+<string name="plugin_complete_with_failures">已完成启动，成功率: %1$d%%。部分插件加载失败</string>
+<string name="plugin_complete_success">已完成启动，成功率: %1$d%%</string>
+<string name="plugin_no_plugins_to_start">没有需要启动的插件</string>
+<string name="plugin_copyright"> 2023 AI Assistance</string>
+<string name="plugin_registered">已注册</string>
+<string name="plugin_registration_failed">注册失败</string>
     <string name="plugin_verification_failed">验证失败</string>
     
     <!-- Theme Settings Screen -->
@@ -556,6 +740,7 @@
     <!-- Package Manager Screen -->
     <string name="packages">包管理</string>
     <string name="skills">技能</string>
+    <string name="show_to_ai_short">AI</string>
     <string name="package_manager">包管理器</string>
     <string name="available_packages">可用包</string>
     <string name="imported_packages">已导入包</string>
@@ -1026,6 +1211,7 @@
     <string name="check_complete">检查完成</string>
     <string name="check_failed">检查失败</string>
     <string name="update_check">更新检查</string>
+    <string name="unknown_value">未知</string>
     <string name="current_version">当前版本: %1$s</string>
     <string name="new_version">当前版本: %1$s\\n新版本: %2$s</string>
     <string name="update_content">更新内容:</string>
@@ -1042,6 +1228,11 @@
     <string name="no_mirrors_found">未找到可用的镜像源</string>
     <string name="beta_plan">Beta 计划</string>
     <string name="beta_plan_desc">加入后将会在有更新的测试版本的时候，wifi下自动下载30MB左右的补丁更新。</string>
+    <string name="main_github_login_success">登录成功，欢迎 %1$s！</string>
+    <string name="main_github_get_user_failed">获取用户信息失败: %1$s</string>
+    <string name="main_github_login_failed">登录失败: %1$s</string>
+    <string name="main_github_login_error">登录过程中发生错误: %1$s</string>
+    <string name="main_update_available_toast">发现新版本 %1$s，请前往「关于」页面查看详情</string>
     <string name="beta_plan_enabled">已加入 Beta 计划</string>
     <string name="beta_plan_disabled">未加入 Beta 计划</string>
     <string name="beta_plan_join">加入</string>
@@ -1050,7 +1241,9 @@
     <string name="patch_update_desc">下载补丁并在本机合成 APK 后安装</string>
     <string name="prepare_patch_update">准备补丁更新...</string>
     <string name="patch_update_failed">补丁更新失败: %1$s</string>
-    <string name="patch_update_success">补丁更新已准备完成，正在打开安装界面</string>
+    <string name="patch_update_success">补丁更新已准备完成</string>
+    <string name="patch_install_confirm_title">安装补丁更新</string>
+    <string name="patch_install_confirm_message">检测到新补丁版本：%1$s\n\n是否现在安装？</string>
     <string name="developer">开发者</string>
     <string name="contact">联系方式</string>
     <string name="project_url">项目地址</string>
@@ -1173,6 +1366,15 @@
     <string name="command_execution_failed">命令执行失败</string>
     <string name="please_start_termux_first">请先启动Termux</string>
     <string name="all_tools_reregistered">已重新注册所有工具</string>
+    <string name="webview_ssl_cert_error">SSL安全证书错误</string>
+    <string name="webview_ssl_error_untrusted">证书颁发机构不受信任</string>
+    <string name="webview_ssl_error_expired">证书已过期</string>
+    <string name="webview_ssl_error_idmismatch">证书主机名不匹配</string>
+    <string name="webview_ssl_error_notyetvalid">证书尚未生效</string>
+    <string name="webview_ssl_error_date_invalid">证书日期无效</string>
+    <string name="webview_ssl_error_unknown">未知SSL错误</string>
+    <string name="webview_security_warning_title">安全警告</string>
+    <string name="webview_choose_file">选择文件</string>
     <string name="downloaded_file">已下载: %1$s</string>
     <string name="download_failed">下载失败: %1$s</string>
     <string name="download_started">开始下载: %1$s</string>
@@ -2329,6 +2531,81 @@
     <string name="memory_desc">记忆选择包括了用户偏好和该偏好下的记忆库。如果想要新的记忆库，可以去设置新建一个用户偏好并在这里选择</string>
     <string name="memory_attachment">记忆附着</string>
     <string name="memory_attachment_desc">开启后，发送消息时会自动从记忆库中检索并附加相关内容，但这可能会影响AI回答的焦点。</string>
+    <string name="chat_summarizing_memory">正在总结记忆...</string>
+    <string name="chat_input_processing_collect_failed">输入处理状态收集失败: %1$s</string>
+    <string name="chat_use_default_config_continue">使用默认配置继续</string>
+    <string name="chat_default_config_incomplete">默认配置不完整，请填写必要信息</string>
+    <string name="chat_locked_cannot_delete">该聊天已锁定，无法删除</string>
+    <string name="chat_cleared">聊天记录已清空</string>
+    <string name="chat_branch_created">已创建对话分支</string>
+    <string name="chat_no_active_conversation">当前没有活跃的对话</string>
+    <string name="chat_summarizing_generating">正在生成总结...</string>
+    <string name="chat_no_messages_to_summarize">没有可总结的消息</string>
+    <string name="chat_ai_service_not_initialized">AI服务未初始化</string>
+    <string name="chat_summary_inserted">总结已插入</string>
+    <string name="chat_summary_generation_failed">生成总结失败</string>
+    <string name="chat_insert_summary_failed">插入总结失败: %1$s</string>
+    <string name="chat_invalid_message_index">无效的消息索引</string>
+    <string name="chat_message_updated">消息已更新</string>
+    <string name="chat_update_message_failed">更新消息失败: %1$s</string>
+    <string name="chat_only_user_message_allowed">只能对用户消息执行此操作</string>
+    <string name="chat_rewind_failed">回档失败: %1$s</string>
+    <string name="chat_preparing_resend">正在准备重新发送消息</string>
+    <string name="chat_rolled_back_message_in_input">已回滚，消息内容已放入输入框</string>
+    <string name="chat_rollback_failed">回滚失败: %1$s</string>
+    <string name="chat_cancelled_current_conversation">已取消当前对话</string>
+    <string name="chat_inserted_attachment_ref">已插入附件引用: %1$s</string>
+    <string name="chat_fetching_screen_content">正在获取屏幕内容...</string>
+    <string name="chat_capture_screen_failed">截取屏幕内容失败: %1$s</string>
+    <string name="chat_fetching_notifications">正在获取当前通知...</string>
+    <string name="chat_fetch_notifications_failed">获取通知数据失败: %1$s</string>
+    <string name="chat_fetching_location">正在获取位置信息...</string>
+    <string name="chat_fetch_location_failed">获取位置失败: %1$s</string>
+    <string name="chat_attaching_memory_folders">正在附着记忆文件夹...</string>
+    <string name="chat_attach_memory_folders_failed">附着记忆文件夹失败: %1$s</string>
+    <string name="chat_prefill_check_file">帮我看看这个文件</string>
+    <string name="chat_added_files_count">已添加 %1$d 个文件</string>
+    <string name="chat_process_shared_files_failed">处理分享文件失败: %1$s</string>
+    <string name="chat_ai_service_init_network_hint">无法初始化AI服务，请检查网络和API设置</string>
+    <string name="chat_ai_service_init_failed">初始化AI服务失败: %1$s</string>
+    <string name="chat_need_overlay_permission_start_voice_assistant">需要悬浮窗权限才能启动语音助手</string>
+    <string name="chat_clipboard_label_message">聊天消息</string>
+    <string name="export_in_progress_title">导出中</string>
+    <string name="export_prepare_base_apk">准备基础APK文件...</string>
+    <string name="export_extract_apk">解压APK...</string>
+    <string name="export_modify_app_info">修改应用信息...</string>
+    <string name="export_change_app_icon">更换应用图标...</string>
+    <string name="export_pack_web_content">打包网页内容...</string>
+    <string name="export_prepare_signing">准备签名...</string>
+    <string name="export_signing_apk">签名APK...</string>
+    <string name="export_finish_packaging">完成打包...</string>
+    <string name="export_completed">导出完成!</string>
+    <string name="export_sign_apk_failed">签名APK失败: %1$s</string>
+    <string name="export_failed_with_reason">导出失败: %1$s</string>
+    <string name="export_prepare_windows_template">准备Windows应用模板...</string>
+    <string name="export_copy_template">复制应用模板...</string>
+    <string name="export_extract_template">解压应用模板...</string>
+    <string name="export_copy_web_content">复制网页内容...</string>
+    <string name="export_pack_app">打包应用...</string>
+    <string name="export_cleanup_temp_files">清理临时文件...</string>
+    <string name="export_process_failed">导出过程失败: %1$s</string>
+    <string name="export_invalid_package_name_format">格式不正确，应为 com.example.app</string>
+    <string name="export_invalid_version_format">格式不正确，应为 1.0.0</string>
+    <string name="export_apk_extract_dir_missing">APK解压目录不存在</string>
+    <string name="chat_generate_share_image_failed">生成图片失败: %1$s</string>
+    <string name="chat_processing_attachment">正在处理附件...</string>
+    <string name="chat_attachment_processing_failed">处理附件失败: %1$s</string>
+    <string name="chat_create_failed">创建新对话失败</string>
+    <string name="chat_processing_shared_files">正在处理分享文件...</string>
+    <string name="chat_start_workspace_server_failed">启动工作区服务失败</string>
+    <string name="chat_update_workspace_server_failed">更新Web工作空间失败: %1$s</string>
+    <string name="chat_stop_workspace_server_failed">停止Web工作空间失败: %1$s</string>
+    <string name="chat_terminal_requires_android_8">终端功能需要 Android 8.0 或更高版本</string>
+    <string name="chat_create_dedicated_terminal_session_failed">无法创建独立终端会话</string>
+    <string name="chat_create_workspace_terminal_session_failed">无法创建工作区终端会话</string>
+    <string name="chat_execute_command_failed">命令执行失败: %1$s</string>
+    <string name="chat_start_ai_computer_failed">启动AI电脑失败: %1$s</string>
+    <string name="chat_ai_computer_closed_due_to_workspace">AI电脑已关闭（由于打开工作区）</string>
     <string name="thinking_mode">思考模式</string>
     <string name="thinking_mode_desc">目前支持Gemini、Qwen3、Claude、豆包、硅基流动和MNN本地模型，能够启用内置的思考。</string>
     <string name="thinking_guidance">思考引导</string>
@@ -2403,8 +2680,6 @@
     <string name="settings_part_size_subtitle">分段读取文件时，每个部分的行数</string>
     <string name="settings_max_text_result">文本结果最大长度</string>
     <string name="settings_max_text_result_subtitle">通用文本结果的最大字符数限制</string>
-    <string name="settings_max_http_response">HTTP响应最大长度</string>
-    <string name="settings_max_http_response_subtitle">网络请求响应的最大字符数限制</string>
     <string name="settings_max_image_history_user_turns">历史图片保留回合数</string>
     <string name="settings_max_image_history_user_turns_subtitle">仅保留最近 N 次用户对话中的图片，避免历史图片重复发送</string>
     <string name="settings_max_media_history_user_turns">历史音视频保留回合数</string>
@@ -2751,6 +3026,8 @@
     <string name="provider_infiniai">无问芯穹</string>
     <string name="provider_alipay_bailing">支付宝百灵大模型</string>
     <string name="provider_lmstudio">LM Studio</string>
+    <string name="provider_mnn">MNN 本地推理</string>
+    <string name="provider_llama_cpp">llama.cpp 本地推理</string>
     <string name="provider_ppinfra">派欧云</string>
     <string name="provider_openai_generic">OpenAI通用</string>
     <string name="provider_other">其他供应商</string>
@@ -3061,6 +3338,9 @@
     <string name="available_skills_market">可用的 Skill</string>
     <string name="no_matching_plugins_found">未找到匹配的插件</string>
     <string name="no_matching_skills_found">未找到匹配的 Skill</string>
+    <string name="skill_market_search_placeholder">搜索 Skill 名称、描述、作者...</string>
+    <string name="skill_repo_url_not_found">未找到仓库地址</string>
+    <string name="skill_repo_url_not_found_cannot_install">未找到仓库地址，无法安装</string>
     <string name="no_available_mcp_plugins">暂无可用的 MCP 插件</string>
     <string name="refresh_or_try_later">刷新或稍后再试</string>
     <string name="recommended_feature">推荐功能</string>
@@ -3185,6 +3465,78 @@
     <string name="mcp_plugin_update_success_message">您的 MCP 插件信息已成功更新。</string>
     <string name="mcp_plugin_publish_success_message">您的 MCP 插件已成功发布到市场，等待审核通过后即可被其他用户发现和使用。</string>
 
+    <string name="mcp_market_api_rate_limited_login_required">API请求超限，请登录GitHub后重试</string>
+    <string name="mcp_market_load_failed_with_error">加载MCP市场数据失败: %1$s</string>
+    <string name="mcp_market_load_more_failed_with_error">加载更多失败: %1$s</string>
+    <string name="mcp_market_network_error_with_error">网络错误: %1$s</string>
+    <string name="mcp_market_github_login_required">请先登录GitHub</string>
+    <string name="mcp_market_publish_success_toast">MCP插件发布成功！</string>
+    <string name="mcp_market_github_login_start_failed">启动登录失败: %1$s</string>
+    <string name="mcp_market_config_import_failed_with_error">配置导入失败: %1$s</string>
+    <string name="mcp_market_config_import_success_with_count">成功导入 %1$s 配置，合并了 %2$d 个服务器</string>
+    <string name="mcp_market_install_success">成功安装 %1$s</string>
+    <string name="mcp_market_install_failed_with_error">安装失败: %1$s</string>
+    <string name="mcp_market_parse_install_info_failed">无法解析安装信息，请查看Issue详情手动安装</string>
+    <string name="mcp_market_github_logout_success">已退出登录</string>
+    <string name="mcp_market_github_logout_failed_with_error">退出登录失败: %1$s</string>
+    <string name="mcp_market_get_user_info_failed">无法获取用户信息</string>
+    <string name="mcp_market_load_published_failed_with_error">加载已发布插件失败: %1$s</string>
+    <string name="mcp_market_update_plugin_success_toast">插件信息更新成功！</string>
+    <string name="mcp_market_plugin_removed_from_market">插件 \"%1$s\" 已从市场移除</string>
+
+    <string name="mcp_market_plugin_republished_to_market">插件 \"%1$s\" 已重新发布到市场</string>
+    <string name="mcp_market_republish_failed_with_error">重新发布失败: %1$s</string>
+    <string name="mcp_market_parse_plugin_desc_failed_fallback">无法解析插件描述，请手动填写。</string>
+
+    <string name="mcp_market_comment_empty">评论内容不能为空</string>
+    <string name="mcp_market_comment_post_success">评论发布成功！</string>
+    <string name="mcp_market_comment_post_failed_with_error">发布评论失败: %1$s</string>
+    <string name="mcp_market_comment_post_error_with_error">发布评论时发生错误: %1$s</string>
+
+    <string name="mcp_market_load_comments_failed_with_error">加载评论失败: %1$s</string>
+    <string name="mcp_market_load_comments_error_with_error">加载评论时发生错误: %1$s</string>
+
+    <string name="mcp_market_reaction_success">点赞成功！</string>
+    <string name="mcp_market_reaction_failed_with_error">点赞失败: %1$s</string>
+    <string name="mcp_market_reaction_error_with_error">点赞时发生错误: %1$s</string>
+
+    <string name="mcp_issue_body_title_description">## MCP 插件描述</string>
+    <string name="mcp_issue_body_title_install_info">## 安装信息</string>
+    <string name="mcp_issue_body_repo_address">**仓库地址:** %1$s</string>
+    <string name="mcp_issue_body_title_install_method">### 安装方式</string>
+    <string name="mcp_issue_body_install_step1">1. 在 Operit MCP 配置页面点击「导入」</string>
+    <string name="mcp_issue_body_install_step2">2. 选择「从仓库导入」</string>
+    <string name="mcp_issue_body_install_step3">3. 输入仓库地址: `%1$s`</string>
+    <string name="mcp_issue_body_install_step4">4. 设置插件名称并点击导入</string>
+    <string name="mcp_issue_body_title_tech_info">## 技术信息</string>
+    <string name="mcp_issue_body_tech_platform">- **发布平台:** Operit MCP 市场</string>
+    <string name="mcp_issue_body_tech_publish_time">- **发布时间:** %1$s</string>
+    <string name="mcp_issue_body_footer_note">*此Issue由 Operit 自动生成*</string>
+
+    <string name="mcp_publish_body_section_plugin_info">## 📋 插件信息</string>
+    <string name="mcp_publish_body_label_description">**描述:** %1$s</string>
+    <string name="mcp_publish_body_section_repo_info">## 🔗 仓库信息</string>
+    <string name="mcp_publish_body_label_repo_url">**仓库地址:** %1$s</string>
+    <string name="mcp_publish_body_section_quick_install">## ⚡ 快速安装</string>
+    <string name="mcp_publish_body_section_install_method">## 📦 安装方式</string>
+    <string name="mcp_publish_body_method_repo_import_title">### 方式一：从仓库导入</string>
+    <string name="mcp_publish_body_method_repo_import_step1">1. 打开 Operit MCP 配置页面</string>
+    <string name="mcp_publish_body_method_repo_import_step2">2. 点击「导入」→「从仓库导入」</string>
+    <string name="mcp_publish_body_method_repo_import_step3">3. 输入仓库地址：`%1$s`</string>
+    <string name="mcp_publish_body_method_repo_import_step4">4. 配置插件名称并导入</string>
+    <string name="mcp_publish_body_method_config_import_title">### 方式二：配置导入</string>
+    <string name="mcp_publish_body_method_config_import_step1">1. 打开 Operit MCP 配置页面</string>
+    <string name="mcp_publish_body_method_config_import_step2">2. 点击「导入」→「配置导入」</string>
+    <string name="mcp_publish_body_method_config_import_step3">3. 粘贴以下配置：</string>
+    <string name="mcp_publish_body_section_tech_info">## 🛠️ 技术信息</string>
+    <string name="mcp_publish_body_table_header">| 项目 | 值 |</string>
+    <string name="mcp_publish_body_table_separator">|------|-----|</string>
+    <string name="mcp_publish_body_table_row_platform">| 发布平台 | Operit MCP 市场 |</string>
+    <string name="mcp_publish_body_table_row_parser_version">| 解析版本 | 1.0 |</string>
+    <string name="mcp_publish_body_table_row_publish_time">| 发布时间 | %1$s |</string>
+    <string name="mcp_publish_body_table_row_status_pending">| 状态 | ⏳ Pending Review |</string>
+    <string name="mcp_publish_body_footer_note">*🤖 此Issue由 Operit 自动生成，等待管理员审核通过*</string>
+
     <!-- MCP Plugin Detail Screen -->
     <string name="mcp_plugin_detail_title">插件详情</string>
     <string name="mcp_plugin_author">作者: %1$s</string>
@@ -3225,10 +3577,26 @@
     <string name="select_txt_file">选择文本文件</string>
     <string name="batch_import_success">批量导入成功</string>
     <string name="batch_import_failed">批量导入失败</string>
+    <string name="export_keys">导出密钥</string>
+    <string name="exported_keys_count">已导出 %1$d 个密钥</string>
+    <string name="export_keys_failed">导出密钥失败</string>
     <string name="import_format_desc">请选择包含API密钥的文本文件，每行一个密钥</string>
     <string name="imported_keys_count">成功导入 %1$d 个密钥</string>
     <string name="invalid_file_format">无效的文件格式，请选择文本文件</string>
     <string name="no_valid_keys_found">未找到有效的密钥</string>
+    <string name="api_key_pool_keys_count">当前共有 %1$d 个密钥</string>
+    <string name="api_key_pool_large_hint">密钥数量超过 %1$d 个时，不再显示逐条编辑列表</string>
+    <string name="clear_api_key_pool">清空密钥池</string>
+    <string name="clear_api_key_pool_confirm_message">确定要删除全部 %1$d 个密钥吗？此操作不可撤销。</string>
+    <string name="api_key_pool_cleared">密钥池已清空</string>
+
+    <string name="api_key_pool_test_progress">可用: %1$d，不可用: %2$d，未测试: %3$d</string>
+    <string name="api_key_pool_test_run_progress">测试进度: %1$d / %2$d</string>
+    <string name="api_key_pool_test_start">开始测试</string>
+    <string name="api_key_pool_test_continue">继续测试</string>
+    <string name="api_key_pool_test_pause">暂停</string>
+    <string name="api_key_pool_clear_marks">清除标记</string>
+    <string name="api_key_pool_test_failed">测试失败: %1$s</string>
 
     <!-- 手动更新记忆 -->
     <string name="manual_memory_update">手动更新记忆</string>
@@ -3324,12 +3692,19 @@
     <string name="go_clear">去清空</string>
     
     <!-- MNN 本地推理 -->
-    <string name="provider_mnn">MNN (本地推理)</string>
     <string name="mnn_local_model_tip">本地运行模型理解能力较差，建议关闭记忆链接、开启禁用工具进行对话</string>
     <string name="mnn_model_path">模型文件路径</string>
     <string name="mnn_model_path_placeholder">输入MNN模型文件的完整路径</string>
     <string name="mnn_forward_type">计算类型</string>
     <string name="mnn_thread_count">线程数</string>
+
+    <!-- llama.cpp 本地推理 -->
+    <string name="llama_local_model_tip">本地运行模型理解能力较差，建议关闭记忆链接、开启禁用工具进行对话</string>
+    <string name="llama_local_model_download_tip">llama.cpp 模型需要自行下载（.gguf）。请将模型文件放入以下文件夹，然后在“模型名称”中填写文件名：</string>
+    <string name="llama_local_model_dir">默认模型目录：%1$s</string>
+    <string name="llama_select_downloaded_model">选择已下载的模型</string>
+    <string name="llama_thread_count">线程数</string>
+    <string name="llama_context_size">上下文长度</string>
     
     <!-- 工作流执行状态 -->
     <string name="workflow_execution_running">执行中…</string>
@@ -3411,7 +3786,43 @@
     <string name="dialog_message_orientation_change">检测到屏幕方向发生变化，是否重新加载页面？</string>
     <string name="dialog_button_confirm">重新加载</string>
     <string name="dialog_button_dismiss">取消</string>
-    
+
+    <string name="migration_import_failed">导入失败</string>
+    <string name="migration_import_error">导入过程中出错: %1$s</string>
+    <string name="migration_open_file_failed">无法打开文件: %1$s</string>
+    <string name="migration_info_cd">迁移信息</string>
+    <string name="migration_found_old_chat_title">发现旧版聊天记录</string>
+    <string name="migration_found_old_chat_desc">检测到之前版本的聊天记录数据，您可以将这些聊天记录导入到新版本中。</string>
+    <string name="migration_error_during_migration">迁移过程中出现错误</string>
+    <string name="migration_start">开始迁移</string>
+    <string name="migration_skip">跳过</string>
+    <string name="migration_advanced_options">高级选项</string>
+    <string name="migration_manual_backup_desc">您也可以手动备份或导入聊天记录：</string>
+    <string name="migration_export_cd">导出</string>
+    <string name="migration_export_backup">导出备份</string>
+    <string name="migration_import_cd">导入</string>
+    <string name="migration_import_backup">导入备份</string>
+    <string name="migration_in_progress_title">正在迁移数据...</string>
+    <string name="migration_in_progress_desc">请耐心等待，迁移过程中请勿关闭应用</string>
+    <string name="migration_completed_cd">迁移完成</string>
+    <string name="migration_completed_title">迁移完成</string>
+    <string name="migration_completed_desc">成功迁移 %1$d 条聊天记录</string>
+    <string name="migration_continue">继续</string>
+    <string name="migration_failed_cd">迁移失败</string>
+    <string name="migration_failed_title">迁移失败</string>
+    <string name="migration_retry">重试</string>
+    <string name="migration_exporting_title">正在导出备份...</string>
+    <string name="migration_export_failed">导出失败</string>
+    <string name="migration_exported_cd">导出完成</string>
+    <string name="migration_exported_title">导出完成</string>
+    <string name="migration_exported_desc">备份文件已保存到:\n%1$s</string>
+    <string name="migration_back">返回</string>
+    <string name="migration_importing_title">正在导入备份...</string>
+    <string name="migration_imported_cd">导入完成</string>
+    <string name="migration_imported_title">导入完成</string>
+    <string name="migration_imported_desc">成功导入 %1$d 条聊天记录</string>
+    <string name="migration_back_to_screen">返回迁移界面</string>
+
     <!-- Chat binding announcement -->
     <string name="chat_binding_announcement_title">声明</string>
     <string name="chat_binding_announcement_body">本软件为免费软件，如果你是从哪里买来的，说明你被坑了。请警惕冒名/倒卖。</string>
@@ -3662,6 +4073,7 @@
     <string name="status_info_block">状态信息</string>
     <string name="html_content_block">HTML内容</string>
     <string name="mood_tag_block">情绪标签</string>
+    <string name="thinking_tools_group_title_with_count">思考与工具调用（%1$d）</string>
     
     <!-- 备份设置界面 -->
     <string name="backup_data_overview">数据概览</string>
@@ -3766,12 +4178,42 @@
     <string name="backup_import_result_skipped">\n- 跳过无效记录：%1$d条</string>
     <string name="backup_import_result_failed">导入失败：未找到有效的聊天记录</string>
     <string name="backup_export_result_success">成功导出到：%1$s</string>
-    
+
+    <string name="backup_character_cards_title">角色卡</string>
+    <string name="backup_character_cards_subtitle">备份与恢复角色卡配置</string>
+    <string name="backup_character_cards_current_count">当前共有 %1$d 个角色卡。导出的文件会保存在「下载/Operit」文件夹中。</string>
+    <string name="backup_character_card_count">角色卡</string>
+    <string name="backup_character_card_files">角色卡</string>
+
+    <string name="backup_character_cards_export_result_success">成功导出 %1$d 个角色卡到：\n%2$s</string>
+    <string name="backup_character_cards_import_result_success">成功导入角色卡：\n- 新增角色卡：%1$d个\n- 更新角色卡：%2$d个%3$s</string>
+    <string name="backup_character_cards_import_result_skipped">\n- 跳过无效角色卡：%1$d个</string>
+    <string name="backup_character_cards_import_result_failed">导入失败：未找到有效的角色卡</string>
+
+    <string name="backup_export_failed_create_file">导出失败：无法创建文件</string>
+    <string name="backup_export_failed_with_reason">导出失败：%1$s</string>
+    <string name="backup_import_failed_unreadable_file">导入失败：无法读取文件</string>
+    <string name="backup_import_failed_with_reason">导入失败：%1$s</string>
+    <string name="backup_clear_failed_with_reason">清除失败：%1$s</string>
+    <string name="backup_delete_skipped_locked">\n已跳过 %1$d 条锁定聊天</string>
+
+    <string name="backup_open_file_failed">无法打开文件</string>
+    <string name="backup_import_file_empty">导入的文件为空</string>
+
+    <string name="backup_memory_import_result_success">导入到配置「%1$s」成功：\n- 新增记忆：%2$d条\n- 更新记忆：%3$d条\n- 跳过记忆：%4$d条\n- 新增链接：%5$d个</string>
+    <string name="backup_memory_export_result_success">成功从配置「%1$s」导出 %2$d 条记忆和 %3$d 个链接到：\n%4$s</string>
+
+    <string name="backup_model_config_import_result_success">成功导入模型配置：\n- 新增配置：%1$d个\n- 更新配置：%2$d个%3$s</string>
+    <string name="backup_model_config_import_result_skipped">\n- 跳过无效配置：%1$d个</string>
+
+    <string name="backup_chat_export_result_success">成功导出 %1$d 条聊天记录为 %2$s 格式到：\n%3$s</string>
+    <string name="backup_format_unknown">未知格式</string>
+    <string name="backup_format_claude">Claude</string>
+
     <!-- 删除确认对话框 -->
     <string name="backup_delete_confirm_title">确认删除</string>
     <string name="backup_delete_confirm_message">删除所有聊天记录将无法恢复。建议在执行此操作前先导出备份。\n\n确定要删除吗？</string>
     <string name="backup_delete_result_success">成功清除 %1$d 条聊天记录</string>
-    
     <!-- 模型配置导出安全警告 -->
     <string name="backup_model_config_warning_title">安全提示</string>
     <string name="backup_model_config_warning_contains">该配置文件包含以下敏感信息：</string>
@@ -3787,6 +4229,13 @@
     <!-- 记忆库导入策略 -->
     <string name="backup_memory_import_strategy_title">选择导入策略</string>
     <string name="backup_memory_import_profile_title">选择配置</string>
+    <string name="backup_memory_import_strategy_question">遇到重复的记忆（UUID相同）时如何处理？</string>
+    <string name="backup_memory_import_strategy_skip_title">跳过（推荐）</string>
+    <string name="backup_memory_import_strategy_skip_desc">保留现有记忆，不导入重复数据</string>
+    <string name="backup_memory_import_strategy_update_title">更新</string>
+    <string name="backup_memory_import_strategy_update_desc">用导入的数据更新现有记忆</string>
+    <string name="backup_memory_import_strategy_create_new_title">创建新记录</string>
+    <string name="backup_memory_import_strategy_create_new_desc">即使UUID相同也创建新记忆（可能导致重复）</string>
     <string name="backup_confirm">确认</string>
     <string name="backup_cancel">取消</string>
     <string name="provider_doubao">豆包（火山模型）</string>

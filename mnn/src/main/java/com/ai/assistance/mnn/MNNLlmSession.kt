@@ -87,8 +87,28 @@ class MNNLlmSession private constructor(
     
     @Volatile
     private var released = false
-    
+
     private val lock = Any()
+
+    private var activeCalls = 0
+
+    private inline fun <T> withActiveCall(block: (Long) -> T): T {
+        val ptr: Long
+        synchronized(lock) {
+            checkValid()
+            activeCalls += 1
+            ptr = llmPtr
+        }
+
+        try {
+            return block(ptr)
+        } finally {
+            synchronized(lock) {
+                activeCalls -= 1
+                (lock as java.lang.Object).notifyAll()
+            }
+        }
+    }
     
     /**
      * 检查会话是否有效
@@ -103,9 +123,8 @@ class MNNLlmSession private constructor(
      * 将文本编码为 token IDs
      */
     fun tokenize(text: String): IntArray {
-        synchronized(lock) {
-            checkValid()
-            return MNNLlmNative.nativeTokenize(llmPtr, text)
+        return withActiveCall { ptr ->
+            MNNLlmNative.nativeTokenize(ptr, text)
                 ?: throw RuntimeException("Tokenization failed")
         }
     }
@@ -114,10 +133,21 @@ class MNNLlmSession private constructor(
      * 将 token ID 解码为文本
      */
     fun detokenize(token: Int): String {
-        synchronized(lock) {
-            checkValid()
-            return MNNLlmNative.nativeDetokenize(llmPtr, token)
+        return withActiveCall { ptr ->
+            MNNLlmNative.nativeDetokenize(ptr, token)
                 ?: throw RuntimeException("Detokenization failed")
+        }
+    }
+
+    fun countTokens(text: String): Int {
+        return withActiveCall { ptr ->
+            MNNLlmNative.nativeCountTokens(ptr, text)
+        }
+    }
+
+    fun countTokensWithHistory(history: List<Pair<String, String>>): Int {
+        return withActiveCall { ptr ->
+            MNNLlmNative.nativeCountTokensWithHistory(ptr, history)
         }
     }
     
@@ -125,10 +155,9 @@ class MNNLlmSession private constructor(
      * 应用聊天模板
      */
     fun applyChatTemplate(userContent: String): String {
-        synchronized(lock) {
-            checkValid()
-            return MNNLlmNative.nativeApplyChatTemplate(llmPtr, userContent)
-                ?: userContent // 如果失败，返回原始内容
+        return withActiveCall { ptr ->
+            MNNLlmNative.nativeApplyChatTemplate(ptr, userContent)
+                ?: userContent
         }
     }
     
@@ -139,9 +168,8 @@ class MNNLlmSession private constructor(
      * @return 生成的文本
      */
     fun generate(prompt: String, maxTokens: Int = -1): String {
-        synchronized(lock) {
-            checkValid()
-            return MNNLlmNative.nativeGenerate(llmPtr, prompt, maxTokens, null)
+        return withActiveCall { ptr ->
+            MNNLlmNative.nativeGenerate(ptr, prompt, maxTokens, null)
                 ?: throw RuntimeException("Generation failed")
         }
     }
@@ -158,21 +186,19 @@ class MNNLlmSession private constructor(
         maxTokens: Int = -1,
         onToken: (String) -> Boolean
     ): Boolean {
-        synchronized(lock) {
-            checkValid()
-            
-            val callback = object : MNNLlmNative.GenerationCallback {
-                override fun onToken(token: String): Boolean {
-                    return try {
-                        onToken(token)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error in token callback", e)
-                        false
-                    }
+        val callback = object : MNNLlmNative.GenerationCallback {
+            override fun onToken(token: String): Boolean {
+                return try {
+                    onToken(token)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in token callback", e)
+                    false
                 }
             }
-            
-            return MNNLlmNative.nativeGenerateStream(llmPtr, history, maxTokens, callback)
+        }
+
+        return withActiveCall { ptr ->
+            MNNLlmNative.nativeGenerateStream(ptr, history, maxTokens, callback)
         }
     }
     
@@ -197,9 +223,8 @@ class MNNLlmSession private constructor(
      * 重置会话（清除历史和 KV-Cache）
      */
     fun reset() {
-        synchronized(lock) {
-            checkValid()
-            MNNLlmNative.nativeReset(llmPtr)
+        withActiveCall { ptr ->
+            MNNLlmNative.nativeReset(ptr)
             Log.d(TAG, "Session reset")
         }
     }
@@ -209,11 +234,14 @@ class MNNLlmSession private constructor(
      * 这会立即中断正在进行的推理过程
      */
     fun cancel() {
-        synchronized(lock) {
-            checkValid()
-            MNNLlmNative.nativeCancel(llmPtr)
-            Log.d(TAG, "Session cancelled")
+        val ptr = synchronized(lock) {
+            if (released || llmPtr == 0L) {
+                return
+            }
+            llmPtr
         }
+        MNNLlmNative.nativeCancel(ptr)
+        Log.d(TAG, "Session cancelled")
     }
     
     /**
@@ -222,15 +250,14 @@ class MNNLlmSession private constructor(
      * @return 是否设置成功
      */
     fun setConfig(configJson: String): Boolean {
-        synchronized(lock) {
-            checkValid()
-            val success = MNNLlmNative.nativeSetConfig(llmPtr, configJson)
+        return withActiveCall { ptr ->
+            val success = MNNLlmNative.nativeSetConfig(ptr, configJson)
             if (success) {
                 Log.d(TAG, "Config set successfully: $configJson")
             } else {
                 Log.e(TAG, "Failed to set config: $configJson")
             }
-            return success
+            success
         }
     }
     
@@ -256,14 +283,31 @@ class MNNLlmSession private constructor(
      * 释放会话
      */
     fun release() {
+        val ptr = synchronized(lock) {
+            if (released || llmPtr == 0L) {
+                return
+            }
+            released = true
+            val old = llmPtr
+            llmPtr = 0L
+            old
+        }
+
+        MNNLlmNative.nativeCancel(ptr)
+
         synchronized(lock) {
-            if (!released && llmPtr != 0L) {
-                MNNLlmNative.nativeReleaseLlm(llmPtr)
-                llmPtr = 0L
-                released = true
-                Log.d(TAG, "Session released")
+            while (activeCalls > 0) {
+                try {
+                    (lock as java.lang.Object).wait()
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
             }
         }
+
+        MNNLlmNative.nativeReleaseLlm(ptr)
+        Log.d(TAG, "Session released")
     }
     
     /**

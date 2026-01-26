@@ -6,7 +6,6 @@ import com.ai.assistance.operit.core.tools.HttpResponseData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
-import com.ai.assistance.operit.data.preferences.ApiPreferences
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -35,11 +34,6 @@ class StandardHttpTools(private val context: Context) {
         private const val TAG = "HttpTools"
         private const val USER_AGENT =
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    }
-
-    // ApiPreferences 实例，用于动态获取配置
-    private val apiPreferences: ApiPreferences by lazy {
-        ApiPreferences.getInstance(context)
     }
 
     // 内存中的Cookie存储
@@ -98,6 +92,7 @@ class StandardHttpTools(private val context: Context) {
 
         return builder.build()
     }
+
     /** 读取响应体内容，处理编码问题 */
     private fun readResponseBody(responseBody: ResponseBody, contentType: String): String {
         return try {
@@ -302,22 +297,8 @@ class StandardHttpTools(private val context: Context) {
 
             val response = client.newCall(request).execute()
 
-            // 检查响应大小和类型，防止下载大文件
+            // 检查响应类型
             val contentType = response.header("Content-Type") ?: ""
-            val contentLength = response.header("Content-Length")?.toLongOrNull() ?: -1L
-            
-            // 从配置中获取最大响应大小
-            val maxResponseSizeBytes = apiPreferences.getMaxHttpResponseLength()
-
-            if (contentLength > maxResponseSizeBytes) {
-                response.body?.close()
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "The content appears to be a large binary file (${contentLength / 1024} KB, type: $contentType). It is recommended to use the 'download_file' tool instead of 'http_request' to save it to a file."
-                )
-            }
 
             // 处理响应
             val responseHeadersMap =
@@ -723,22 +704,9 @@ class StandardHttpTools(private val context: Context) {
             val request = requestBuilder.build()
             val response = client.newCall(request).execute()
 
-            // 检查响应大小和类型，防止下载大文件
+            // 检查响应类型
             val contentType = response.header("Content-Type") ?: ""
-            val contentLength = response.header("Content-Length")?.toLongOrNull() ?: -1L
-            
-            // 从配置中获取最大响应大小
-            val maxResponseSizeBytes = apiPreferences.getMaxHttpResponseLength()
 
-            if (contentLength > maxResponseSizeBytes) {
-                response.body?.close()
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = StringResultData(""),
-                    error = "The content appears to be a large binary file (${contentLength / 1024} KB, type: $contentType). It is recommended to use the 'download_file' tool instead of 'http_request' to save it to a file."
-                )
-            }
             // 处理响应
             val responseHeadersMap =
                     response.headers.names().associateWith { name ->

@@ -2,7 +2,11 @@ package com.ai.assistance.operit.api.chat.llmprovider
 
 import android.content.Context
 import android.os.Environment
+import android.util.Base64
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.FFmpegUtil
+import com.ai.assistance.operit.util.ImagePoolManager
+import com.ai.assistance.operit.util.MediaPoolManager
 import com.ai.assistance.mnn.MNNLlmSession
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
@@ -14,6 +18,7 @@ import com.ai.assistance.operit.util.stream.stream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -28,7 +33,10 @@ class MNNProvider(
     private val forwardType: Int,
     private val threadCount: Int,
     private val providerType: ApiProviderType = ApiProviderType.MNN,
-    private val enableToolCall: Boolean = false // 是否启用Tool Call接口（本地推理暂未实现）
+    private val enableToolCall: Boolean = false, // 是否启用Tool Call接口（本地推理暂未实现）
+    private val supportsVision: Boolean = false,
+    private val supportsAudio: Boolean = false,
+    private val supportsVideo: Boolean = false
 ) : AIService {
 
     companion object {
@@ -48,6 +56,10 @@ class MNNProvider(
 
     // MNN LLM Session 实例
     private var llmSession: MNNLlmSession? = null
+
+    private var cachedModelMaxAllTokens: Int? = null
+    private var cachedModelIsVisual: Boolean? = null
+    private var cachedModelIsAudio: Boolean? = null
 
     // Token计数
     private var _inputTokenCount = 0
@@ -177,11 +189,297 @@ class MNNProvider(
     private suspend fun countTokens(text: String): Int = withContext(Dispatchers.IO) {
         try {
             val session = llmSession ?: return@withContext estimateTokens(text)
-            session.tokenize(text).size
+            session.countTokens(text)
         } catch (e: Exception) {
             AppLogger.w(TAG, "Token计数失败，使用估算", e)
             estimateTokens(text)
         }
+    }
+
+    private fun readModelMaxAllTokens(modelDir: String): Int {
+        return try {
+            val configFile = File(modelDir, "llm_config.json")
+            if (!configFile.exists()) {
+                2048
+            } else {
+                val json = JSONObject(configFile.readText())
+                json.optInt("max_all_tokens", 2048)
+            }
+        } catch (_: Exception) {
+            2048
+        }
+    }
+
+    private data class ModelCapabilities(
+        val isVisual: Boolean,
+        val isAudio: Boolean
+    )
+
+    private fun readModelCapabilities(modelDir: String): ModelCapabilities {
+        val cachedVisual = cachedModelIsVisual
+        val cachedAudio = cachedModelIsAudio
+        if (cachedVisual != null && cachedAudio != null) {
+            return ModelCapabilities(isVisual = cachedVisual, isAudio = cachedAudio)
+        }
+
+        val caps = try {
+            val configFile = File(modelDir, "llm_config.json")
+            if (!configFile.exists()) {
+                ModelCapabilities(isVisual = false, isAudio = false)
+            } else {
+                val json = JSONObject(configFile.readText())
+                ModelCapabilities(
+                    isVisual = json.optBoolean("is_visual", false),
+                    isAudio = json.optBoolean("is_audio", false)
+                )
+            }
+        } catch (_: Exception) {
+            ModelCapabilities(isVisual = false, isAudio = false)
+        }
+
+        cachedModelIsVisual = caps.isVisual
+        cachedModelIsAudio = caps.isAudio
+        return caps
+    }
+
+    private data class MultimodalPreprocessResult(
+        val text: String,
+        val tempFiles: List<File>
+    )
+
+    private fun ensureMultimodalWorkDir(): File {
+        val dir = File(context.cacheDir, "mnn_multimodal")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+    private fun extForMimeType(mimeType: String): String {
+        val mt = mimeType.lowercase().substringBefore(';')
+        return when (mt) {
+            "image/png" -> "png"
+            "image/jpeg", "image/jpg" -> "jpg"
+            "image/webp" -> "webp"
+            "image/gif" -> "gif"
+            "audio/mpeg", "audio/mp3" -> "mp3"
+            "audio/wav", "audio/x-wav" -> "wav"
+            "audio/ogg", "audio/opus" -> "ogg"
+            "audio/webm" -> "webm"
+            "video/mp4" -> "mp4"
+            "video/webm" -> "webm"
+            "video/ogg" -> "ogv"
+            else -> mt.substringAfter('/', "bin").ifBlank { "bin" }
+        }
+    }
+
+    private fun writeBase64ToTempFile(base64: String, mimeType: String, prefix: String): File? {
+        if (base64.isBlank()) return null
+        val dir = ensureMultimodalWorkDir()
+        val ext = extForMimeType(mimeType)
+        val out = File(dir, "${prefix}_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(0, Int.MAX_VALUE)}.$ext")
+        return try {
+            val bytes = Base64.decode(base64, Base64.DEFAULT)
+            FileOutputStream(out).use { it.write(bytes) }
+            out
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "写入多模态临时文件失败: mimeType=$mimeType", e)
+            runCatching { out.delete() }
+            null
+        }
+    }
+
+    private fun transcodeToWav16kMono(input: File): File? {
+        val dir = ensureMultimodalWorkDir()
+        val out = File(dir, "audio_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(0, Int.MAX_VALUE)}.wav")
+        val inPath = "\"" + input.absolutePath.replace("\"", "\\\"") + "\""
+        val outPath = "\"" + out.absolutePath.replace("\"", "\\\"") + "\""
+        val ok = FFmpegUtil.executeCommand("-y -i $inPath -vn -ac 1 -ar 16000 -f wav $outPath")
+        if (!ok || !out.exists() || out.length() <= 0) {
+            runCatching { out.delete() }
+            return null
+        }
+        return out
+    }
+
+    private fun extractVideoFrame(input: File): File? {
+        val dir = ensureMultimodalWorkDir()
+        val out = File(dir, "frame_${System.currentTimeMillis()}_${kotlin.random.Random.nextInt(0, Int.MAX_VALUE)}.jpg")
+        val inPath = "\"" + input.absolutePath.replace("\"", "\\\"") + "\""
+        val outPath = "\"" + out.absolutePath.replace("\"", "\\\"") + "\""
+        val ok = FFmpegUtil.executeCommand("-y -i $inPath -frames:v 1 -vf scale='min(640,iw)':-2 $outPath")
+        if (!ok || !out.exists() || out.length() <= 0) {
+            runCatching { out.delete() }
+            return null
+        }
+        return out
+    }
+
+    private fun preprocessMultimodalText(
+        raw: String,
+        modelDir: String
+    ): MultimodalPreprocessResult {
+        if (raw.isBlank()) return MultimodalPreprocessResult(raw, emptyList())
+
+        val caps = readModelCapabilities(modelDir)
+        val allowVision = supportsVision && caps.isVisual
+        val allowAudio = supportsAudio && caps.isAudio
+        val allowVideo = supportsVideo && (caps.isAudio || caps.isVisual)
+
+        val tempFiles = mutableListOf<File>()
+        val imageCache = mutableMapOf<String, String>()
+        val mediaCache = mutableMapOf<String, String>()
+
+        fun imagePathFor(id: String): String? {
+            if (id == "error") return null
+            imageCache[id]?.let { return it }
+            val data = ImagePoolManager.getImage(id) ?: return null
+            val file = writeBase64ToTempFile(data.base64, data.mimeType, "img") ?: return null
+            tempFiles.add(file)
+            val path = file.absolutePath
+            imageCache[id] = path
+            return path
+        }
+
+        fun mediaPathFor(id: String): Pair<String, String>? {
+            if (id == "error") return null
+            mediaCache[id]?.let { return it to "" }
+            val data = MediaPoolManager.getMedia(id) ?: return null
+            val file = writeBase64ToTempFile(data.base64, data.mimeType, "media") ?: return null
+            tempFiles.add(file)
+            mediaCache[id] = file.absolutePath
+            return file.absolutePath to data.mimeType
+        }
+
+        var text = raw
+
+        val imageLinkPlain = Regex("""<link\s+type=\"image\"\s+id=\"([^\"]+)\"\s*>.*?</link>""", RegexOption.DOT_MATCHES_ALL)
+        val imageLinkEscaped = Regex("""<link\s+type=\\\"image\\\"\s+id=\\\"([^\"]+)\\\"\s*>.*?</link>""", RegexOption.DOT_MATCHES_ALL)
+        val mediaLinkPlain = Regex("""<link\s+type=\"(audio|video)\"\s+id=\"([^\"]+)\"\s*>.*?</link>""", RegexOption.DOT_MATCHES_ALL)
+        val mediaLinkEscaped = Regex("""<link\s+type=\\\"(audio|video)\\\"\s+id=\\\"([^\"]+)\\\"\s*>.*?</link>""", RegexOption.DOT_MATCHES_ALL)
+
+        fun replaceImageLinks(input: String, pattern: Regex): String {
+            return pattern.replace(input) { mr ->
+                val id = mr.groupValues.getOrNull(1) ?: return@replace ""
+                if (!allowVision) {
+                    ""
+                } else {
+                    val path = imagePathFor(id)
+                    if (path == null) "" else "<img>$path</img>"
+                }
+            }
+        }
+
+        fun replaceMediaLinks(input: String, pattern: Regex): String {
+            return pattern.replace(input) { mr ->
+                val type = mr.groupValues.getOrNull(1) ?: return@replace ""
+                val id = mr.groupValues.getOrNull(2) ?: return@replace ""
+                if (type == "audio") {
+                    if (!allowAudio) return@replace ""
+                    val (path, mime) = mediaPathFor(id) ?: return@replace ""
+                    val file = File(path)
+                    val wav = transcodeToWav16kMono(file)
+                    if (wav != null) {
+                        tempFiles.add(wav)
+                        "<audio>${wav.absolutePath}</audio>"
+                    } else {
+                        "<audio>$path</audio>"
+                    }
+                } else {
+                    if (!allowVideo) return@replace ""
+                    val (path, _) = mediaPathFor(id) ?: return@replace ""
+                    val file = File(path)
+                    val parts = mutableListOf<String>()
+                    if (caps.isVisual && allowVision) {
+                        val frame = extractVideoFrame(file)
+                        if (frame != null) {
+                            tempFiles.add(frame)
+                            parts.add("<img>${frame.absolutePath}</img>")
+                        }
+                    }
+                    if (caps.isAudio && allowAudio) {
+                        val wav = transcodeToWav16kMono(file)
+                        if (wav != null) {
+                            tempFiles.add(wav)
+                            parts.add("<audio>${wav.absolutePath}</audio>")
+                        }
+                    }
+                    parts.joinToString("")
+                }
+            }
+        }
+
+        text = replaceImageLinks(text, imageLinkPlain)
+        text = replaceImageLinks(text, imageLinkEscaped)
+        text = replaceMediaLinks(text, mediaLinkPlain)
+        text = replaceMediaLinks(text, mediaLinkEscaped)
+
+        return MultimodalPreprocessResult(text = text, tempFiles = tempFiles)
+    }
+
+    private fun trimHistoryToTokenBudget(
+        session: MNNLlmSession,
+        history: List<Pair<String, String>>,
+        maxPromptTokens: Int
+    ): List<Pair<String, String>> {
+        if (history.isEmpty()) return history
+
+        val systemPrefixCount = if (history.first().first == "system") 1 else 0
+
+        val fullTokens = kotlin.runCatching { session.countTokensWithHistory(history) }.getOrDefault(Int.MAX_VALUE)
+        if (fullTokens <= maxPromptTokens) return history
+
+        if (history.size <= systemPrefixCount + 1) {
+            if (systemPrefixCount == 1) {
+                val withoutSystem = history.drop(1)
+                val withoutSystemTokens = kotlin.runCatching { session.countTokensWithHistory(withoutSystem) }.getOrDefault(Int.MAX_VALUE)
+                if (withoutSystemTokens <= maxPromptTokens) {
+                    return withoutSystem
+                }
+            }
+            return history
+        }
+
+        var low = systemPrefixCount
+        var high = history.size - 1
+        while (low < high) {
+            val mid = (low + high) / 2
+            val candidate = ArrayList<Pair<String, String>>(history.size - (mid - systemPrefixCount))
+            if (systemPrefixCount == 1) {
+                candidate.add(history[0])
+            }
+            for (i in mid until history.size) {
+                candidate.add(history[i])
+            }
+
+            val tokens = kotlin.runCatching { session.countTokensWithHistory(candidate) }.getOrDefault(Int.MAX_VALUE)
+            if (tokens > maxPromptTokens) {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+
+        val trimmed = ArrayList<Pair<String, String>>(history.size - (low - systemPrefixCount))
+        if (systemPrefixCount == 1) {
+            trimmed.add(history[0])
+        }
+        for (i in low until history.size) {
+            trimmed.add(history[i])
+        }
+
+        if (systemPrefixCount == 1) {
+            val trimmedTokens = kotlin.runCatching { session.countTokensWithHistory(trimmed) }.getOrDefault(Int.MAX_VALUE)
+            if (trimmedTokens > maxPromptTokens) {
+                val withoutSystem = trimmed.drop(1)
+                val withoutSystemTokens = kotlin.runCatching { session.countTokensWithHistory(withoutSystem) }.getOrDefault(Int.MAX_VALUE)
+                if (withoutSystemTokens <= maxPromptTokens) {
+                    return withoutSystem
+                }
+            }
+        }
+
+        return trimmed
     }
 
     /**
@@ -230,6 +528,8 @@ class MNNProvider(
     ): Stream<String> = stream {
         isCancelled = false
 
+        val requestTempFiles = mutableListOf<File>()
+
         try {
             // 初始化模型
             val initResult = initModel()
@@ -261,26 +561,35 @@ class MNNProvider(
             }
 
             // 构建历史记录（添加当前消息）
-            val fullHistory = chatHistory.toMutableList().apply {
-                add("user" to message)
+            val fullHistory = chatHistory.toMutableList().apply { add("user" to message) }
+
+            val modelDir = getModelDir(context, modelName)
+            val maxAllTokens = cachedModelMaxAllTokens ?: readModelMaxAllTokens(modelDir).also { cachedModelMaxAllTokens = it }
+
+            val multimodalHistory = fullHistory.map { (role, content) ->
+                val processed = preprocessMultimodalText(content, modelDir)
+                requestTempFiles.addAll(processed.tempFiles)
+                role to processed.text
             }
-            
-            // 估算输入token计数（用于显示）
-            val estimatedPrompt = buildPrompt(message, chatHistory)
-            _inputTokenCount = countTokens(estimatedPrompt)
-            onTokensUpdated(_inputTokenCount, 0, 0)
 
-            AppLogger.d(TAG, "开始MNN LLM推理，历史消息数: ${fullHistory.size}, thinking模式: $enableThinking")
-
-            // 从模型参数中获取 max_tokens（如果有的话）
-            val maxTokens = modelParameters
+            val requestedMaxNewTokens = modelParameters
                 .find { it.name == "max_tokens" }
                 ?.let { (it.currentValue as? Number)?.toInt() }
-                ?: -1  // -1 表示使用默认值
+                ?: -1
+            val effectiveMaxNewTokens = (if (requestedMaxNewTokens > 0) requestedMaxNewTokens else 512).coerceAtMost(8192)
+            val maxPromptTokens = (maxAllTokens - effectiveMaxNewTokens).coerceAtLeast(128)
+
+            val safeHistory = trimHistoryToTokenBudget(session, multimodalHistory, maxPromptTokens)
+
+            _inputTokenCount = kotlin.runCatching { session.countTokensWithHistory(safeHistory) }
+                .getOrElse { countTokens(buildPrompt(message, chatHistory)) }
+            onTokensUpdated(_inputTokenCount, 0, 0)
+
+            AppLogger.d(TAG, "开始MNN LLM推理，历史消息数: ${multimodalHistory.size}, thinking模式: $enableThinking")
 
             // 使用流式生成（传递历史记录，让LLM内部应用chat template）
             var outputTokenCount = 0
-            val success = session.generateStream(fullHistory, maxTokens) { token ->
+            val success = session.generateStream(safeHistory, requestedMaxNewTokens) { token ->
                 if (isCancelled) {
                     false  // 停止生成
                 } else {
@@ -311,6 +620,10 @@ class MNNProvider(
         } catch (e: Exception) {
             AppLogger.e(TAG, "发送消息时出错", e)
             emit("错误: ${e.message}")
+        } finally {
+            requestTempFiles.forEach { file ->
+                runCatching { file.delete() }
+            }
         }
     }
 
@@ -544,9 +857,33 @@ class MNNProvider(
         chatHistory: List<Pair<String, String>>,
         availableTools: List<ToolPrompt>?
     ): Int {
-        // MNN本地模型暂不支持工具调用，忽略availableTools参数
-        val prompt = buildPrompt(message, chatHistory)
-        return countTokens(prompt)
+        val initResult = initModel()
+        if (initResult.isFailure) {
+            val prompt = buildPrompt(message, chatHistory)
+            return countTokens(prompt)
+        }
+
+        val session = llmSession ?: run {
+            val prompt = buildPrompt(message, chatHistory)
+            return countTokens(prompt)
+        }
+
+        val modelDir = getModelDir(context, modelName)
+        val maxAllTokens = cachedModelMaxAllTokens ?: readModelMaxAllTokens(modelDir).also { cachedModelMaxAllTokens = it }
+
+        val fullHistory = chatHistory.toMutableList().apply {
+            if (message.isNotBlank()) {
+                add("user" to message)
+            }
+        }
+
+        val maxPromptTokens = (maxAllTokens - 512).coerceAtLeast(128)
+        val safeHistory = trimHistoryToTokenBudget(session, fullHistory, maxPromptTokens)
+        return kotlin.runCatching { session.countTokensWithHistory(safeHistory) }
+            .getOrElse {
+                val prompt = buildPrompt(message, chatHistory)
+                countTokens(prompt)
+            }
     }
 
     override suspend fun getModelsList(): Result<List<ModelOption>> {

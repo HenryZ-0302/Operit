@@ -188,11 +188,10 @@ fun PersonaCardGenerationScreen(
 
     // 1. 一次性初始化：加载所有卡片和标签，并确定初始活跃卡片ID
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
+        val initResult = withContext(Dispatchers.IO) {
             characterCardManager.initializeIfNeeded()
             val cards = characterCardManager.getAllCharacterCards()
-            allCharacterCards = cards
-            allTags = tagManager.getAllTags()
+            val tags = tagManager.getAllTags()
 
             var currentId = characterCardManager.activeCharacterCardIdFlow.first()
 
@@ -203,10 +202,13 @@ fun PersonaCardGenerationScreen(
                 currentId = firstCardId
             }
 
-            // 在主线程更新 activeCardId 以触发后续的 Effect
-            withContext(Dispatchers.Main) {
-                activeCardId = currentId
-            }
+            Triple(cards, tags, currentId)
+        }
+
+        withContext(Dispatchers.Main) {
+            allCharacterCards = initResult.first
+            allTags = initResult.second
+            activeCardId = initResult.third
         }
     }
 
@@ -222,52 +224,63 @@ fun PersonaCardGenerationScreen(
             return@LaunchedEffect
         }
 
-        withContext(Dispatchers.IO) {
+        val loadResult = withContext(Dispatchers.IO) {
             val card = characterCardManager.getCharacterCard(activeCardId)
-            withContext(Dispatchers.Main) {
-                activeCard = card
+            val savedHistory = chatHistoryManager.loadChatHistory(activeCardId)
+            Pair(card, savedHistory)
+        }
+        val cardResult = loadResult.first
+        val savedHistory = loadResult.second
 
-                // 更新编辑器内容
-                card?.let {
-                    editName = it.name
-                    editDescription = it.description
-                    editCharacterSetting = it.characterSetting
-                    editOpeningStatement = it.openingStatement
-                    editOtherContent = it.otherContent
-                    editAdvancedCustomPrompt = it.advancedCustomPrompt
-                    editMarks = it.marks
-                } ?: run {
-                    // 如果卡片加载失败，则清空编辑器
-                    editName = ""; editDescription = ""; editCharacterSetting = ""; editOpeningStatement = ""
-                    editOtherContent = ""; editAdvancedCustomPrompt = ""; editMarks = ""
-                }
+        withContext(Dispatchers.Main) {
+            activeCard = cardResult
 
-                // 加载该角色卡的聊天历史
-                chatMessages.clear()
-                val savedHistory = chatHistoryManager.loadChatHistory(activeCardId)
-                if (savedHistory.isNotEmpty()) {
-                    // 转换为界面使用的消息格式
-                    savedHistory.forEach { msg ->
-                        chatMessages.add(CharacterChatMessage(msg.role, msg.content, msg.timestamp))
-                    }
-                } else {
-                    // 如果没有历史记录，添加欢迎消息
-                    chatMessages.add(CharacterChatMessage("assistant",
-                        context.getString(R.string.persona_generation_welcome, 
-                        card?.name ?: context.getString(R.string.new_character))
-                    ))
+            // 更新编辑器内容
+            cardResult?.let {
+                editName = it.name
+                editDescription = it.description
+                editCharacterSetting = it.characterSetting
+                editOpeningStatement = it.openingStatement
+                editOtherContent = it.otherContent
+                editAdvancedCustomPrompt = it.advancedCustomPrompt
+                editMarks = it.marks
+            } ?: run {
+                // 如果卡片加载失败，则清空编辑器
+                editName = ""; editDescription = ""; editCharacterSetting = ""; editOpeningStatement = ""
+                editOtherContent = ""; editAdvancedCustomPrompt = ""; editMarks = ""
+            }
+
+            // 加载该角色卡的聊天历史
+            chatMessages.clear()
+            if (savedHistory.isNotEmpty()) {
+                // 转换为界面使用的消息格式
+                savedHistory.forEach { msg ->
+                    chatMessages.add(CharacterChatMessage(msg.role, msg.content, msg.timestamp))
                 }
+            } else {
+                // 如果没有历史记录，添加欢迎消息
+                chatMessages.add(CharacterChatMessage("assistant",
+                    context.getString(R.string.persona_generation_welcome, 
+                    cardResult?.name ?: context.getString(R.string.new_character))
+                ))
             }
         }
     }
 
     fun refreshData() {
-        scope.launch(Dispatchers.IO) {
-            allCharacterCards = characterCardManager.getAllCharacterCards()
-            activeCardId = characterCardManager.activeCharacterCardIdFlow.first()
-            activeCard = characterCardManager.getCharacterCard(activeCardId)
-            
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val cards = characterCardManager.getAllCharacterCards()
+                val id = characterCardManager.activeCharacterCardIdFlow.first()
+                val card = characterCardManager.getCharacterCard(id)
+                Triple(cards, id, card)
+            }
+
             withContext(Dispatchers.Main) {
+                allCharacterCards = result.first
+                activeCardId = result.second
+                activeCard = result.third
+
                 activeCard?.let { card ->
                     editName = card.name
                     editDescription = card.description
@@ -399,11 +412,17 @@ fun PersonaCardGenerationScreen(
 
     // 保存聊天历史
     fun saveChatHistory() {
-        scope.launch(Dispatchers.IO) {
-            val messages = chatMessages.map { msg ->
+        scope.launch {
+            val cardId = activeCardId
+            val chatSnapshot = withContext(Dispatchers.Main.immediate) {
+                chatMessages.toList()
+            }
+            val messages = chatSnapshot.map { msg ->
                 PersonaCardChatHistoryManager.ChatMessage(msg.role, msg.content, msg.timestamp)
             }
-            chatHistoryManager.saveChatHistory(activeCardId, messages)
+            withContext(Dispatchers.IO) {
+                chatHistoryManager.saveChatHistory(cardId, messages)
+            }
         }
     }
 
@@ -437,8 +456,9 @@ fun PersonaCardGenerationScreen(
             val systemPrompt = buildSystemPrompt()
             // val characterStatus = buildCharacterStatus() // REMOVED: 不再每次都发送状态
             
+            val historySnapshot = chatMessages.toList()
             val historyPairs = withContext(Dispatchers.Default) {
-                chatMessages.map { it.role to it.content }
+                historySnapshot.map { it.role to it.content }
             }
 
             val (stream, aiService) = requestFromDefaultService(input, historyPairs, systemPrompt)

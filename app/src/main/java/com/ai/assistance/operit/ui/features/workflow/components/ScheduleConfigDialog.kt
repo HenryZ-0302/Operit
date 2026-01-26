@@ -14,7 +14,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -75,33 +77,33 @@ fun ScheduleConfigDialog(
     var enabled by remember { mutableStateOf(initialConfig["enabled"]?.toBoolean() ?: true) }
     
     val scheduleTypes = mapOf(
-        "interval" to "固定间隔",
-        "specific_time" to "特定时间",
-        "cron" to "Cron表达式"
+        "interval" to stringResource(R.string.workflow_schedule_type_interval),
+        "specific_time" to stringResource(R.string.workflow_schedule_type_specific_time),
+        "cron" to stringResource(R.string.workflow_schedule_type_cron)
     )
     
     val intervalUnits = mapOf(
-        "minutes" to "分钟",
-        "hours" to "小时",
-        "days" to "天"
+        "minutes" to stringResource(R.string.workflow_interval_unit_minutes),
+        "hours" to stringResource(R.string.workflow_interval_unit_hours),
+        "days" to stringResource(R.string.workflow_interval_unit_days)
     )
     
     val cronPresets = mapOf(
-        "0 0 * * *" to "每天午夜",
-        "0 9 * * *" to "每天上午9点",
-        "0 12 * * *" to "每天中午12点",
-        "0 18 * * *" to "每天下午6点",
-        "0 */2 * * *" to "每2小时",
-        "0 */6 * * *" to "每6小时",
-        "*/15 * * * *" to "每15分钟",
-        "*/30 * * * *" to "每30分钟",
-        "0 0 * * 1" to "每周一午夜",
-        "0 9 * * 1-5" to "工作日上午9点"
+        "0 0 * * *" to stringResource(R.string.workflow_cron_preset_daily_midnight),
+        "0 9 * * *" to stringResource(R.string.workflow_cron_preset_daily_9am),
+        "0 12 * * *" to stringResource(R.string.workflow_cron_preset_daily_noon),
+        "0 18 * * *" to stringResource(R.string.workflow_cron_preset_daily_6pm),
+        "0 */2 * * *" to stringResource(R.string.workflow_cron_preset_every_2_hours),
+        "0 */6 * * *" to stringResource(R.string.workflow_cron_preset_every_6_hours),
+        "*/15 * * * *" to stringResource(R.string.workflow_cron_preset_every_15_minutes),
+        "*/30 * * * *" to stringResource(R.string.workflow_cron_preset_every_30_minutes),
+        "0 0 * * 1" to stringResource(R.string.workflow_cron_preset_every_monday_midnight),
+        "0 9 * * 1-5" to stringResource(R.string.workflow_cron_preset_workday_9am)
     )
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("定时配置") },
+        title = { Text(stringResource(R.string.workflow_schedule_dialog_title)) },
         text = {
             Column(
                 modifier = Modifier
@@ -118,7 +120,7 @@ fun ScheduleConfigDialog(
                         value = scheduleTypes[scheduleType] ?: "",
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("定时类型") },
+                        label = { Text(stringResource(R.string.workflow_schedule_type_label)) },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = scheduleTypeExpanded) },
                         modifier = Modifier.fillMaxWidth().menuAnchor()
                     )
@@ -144,7 +146,7 @@ fun ScheduleConfigDialog(
                 when (scheduleType) {
                     "interval" -> {
                         Text(
-                            text = "固定间隔配置",
+                            text = stringResource(R.string.workflow_interval_config_title),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -156,7 +158,7 @@ fun ScheduleConfigDialog(
                             OutlinedTextField(
                                 value = intervalValue,
                                 onValueChange = { intervalValue = it },
-                                label = { Text("间隔") },
+                                label = { Text(stringResource(R.string.workflow_interval_value_label)) },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true
                             )
@@ -170,7 +172,7 @@ fun ScheduleConfigDialog(
                                     value = intervalUnits[intervalUnit] ?: "",
                                     onValueChange = {},
                                     readOnly = true,
-                                    label = { Text("单位") },
+                                    label = { Text(stringResource(R.string.workflow_interval_unit_label)) },
                                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = intervalUnitExpanded) },
                                     modifier = Modifier.fillMaxWidth().menuAnchor()
                                 )
@@ -192,7 +194,7 @@ fun ScheduleConfigDialog(
                         }
                         
                         Text(
-                            text = "注意：WorkManager 最小间隔为 15 分钟",
+                            text = stringResource(R.string.workflow_schedule_min_interval_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -200,7 +202,7 @@ fun ScheduleConfigDialog(
                     
                     "specific_time" -> {
                         Text(
-                            text = "特定时间配置",
+                            text = stringResource(R.string.workflow_specific_time_config_title),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -227,9 +229,12 @@ fun ScheduleConfigDialog(
                                 value = String.format("%04d-%02d-%02d", selectedYear, selectedMonth + 1, selectedDay),
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("日期") },
+                                label = { Text(stringResource(R.string.workflow_date_label)) },
                                 leadingIcon = {
-                                    Icon(Icons.Default.DateRange, contentDescription = "选择日期")
+                                    Icon(
+                                        Icons.Default.DateRange,
+                                        contentDescription = stringResource(R.string.workflow_select_date)
+                                    )
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
@@ -266,9 +271,12 @@ fun ScheduleConfigDialog(
                                 value = String.format("%02d:%02d", selectedHour, selectedMinute),
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("时间") },
+                                label = { Text(stringResource(R.string.workflow_time_label)) },
                                 leadingIcon = {
-                                    Icon(Icons.Default.Schedule, contentDescription = "选择时间")
+                                    Icon(
+                                        Icons.Default.Schedule,
+                                        contentDescription = stringResource(R.string.workflow_select_time)
+                                    )
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
@@ -285,9 +293,16 @@ fun ScheduleConfigDialog(
                         Spacer(modifier = Modifier.height(8.dp))
                         
                         // 显示完整的日期时间
+                        val fullDateTime = String.format(
+                            "%04d-%02d-%02d %02d:%02d:00",
+                            selectedYear,
+                            selectedMonth + 1,
+                            selectedDay,
+                            selectedHour,
+                            selectedMinute
+                        )
                         Text(
-                            text = "执行时间：${String.format("%04d-%02d-%02d %02d:%02d:00", 
-                                selectedYear, selectedMonth + 1, selectedDay, selectedHour, selectedMinute)}",
+                            text = stringResource(R.string.workflow_schedule_execute_time_format, fullDateTime),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -295,7 +310,7 @@ fun ScheduleConfigDialog(
                     
                     "cron" -> {
                         Text(
-                            text = "Cron 表达式配置",
+                            text = stringResource(R.string.workflow_cron_config_title),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -305,10 +320,10 @@ fun ScheduleConfigDialog(
                             onExpandedChange = { cronPresetExpanded = !cronPresetExpanded }
                         ) {
                             OutlinedTextField(
-                                value = "选择预设模板",
+                                value = stringResource(R.string.workflow_select_preset_template),
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("预设模板") },
+                                label = { Text(stringResource(R.string.workflow_preset_template_label)) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cronPresetExpanded) },
                                 modifier = Modifier.fillMaxWidth().menuAnchor()
                             )
@@ -342,14 +357,14 @@ fun ScheduleConfigDialog(
                         OutlinedTextField(
                             value = cronExpression,
                             onValueChange = { cronExpression = it },
-                            label = { Text("Cron 表达式") },
+                            label = { Text(stringResource(R.string.workflow_cron_expression_label)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
-                            placeholder = { Text("0 0 * * *") }
+                            placeholder = { Text(stringResource(R.string.workflow_cron_expression_placeholder)) }
                         )
                         
                         Text(
-                            text = "格式：分 时 日 月 周\n支持：固定值、*、*/N",
+                            text = stringResource(R.string.workflow_cron_format_help),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -360,7 +375,7 @@ fun ScheduleConfigDialog(
 
                 // Common settings
                 Text(
-                    text = "通用设置",
+                    text = stringResource(R.string.workflow_common_settings_title),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -369,7 +384,7 @@ fun ScheduleConfigDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("重复执行")
+                    Text(stringResource(R.string.workflow_repeat_label))
                     Switch(
                         checked = repeat,
                         onCheckedChange = { repeat = it }
@@ -380,7 +395,7 @@ fun ScheduleConfigDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("启用定时")
+                    Text(stringResource(R.string.workflow_schedule_enabled_label))
                     Switch(
                         checked = enabled,
                         onCheckedChange = { enabled = it }
@@ -428,12 +443,12 @@ fun ScheduleConfigDialog(
                     onConfirm(scheduleType, config)
                 }
             ) {
-                Text("确定")
+                Text(stringResource(R.string.confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.cancel_action))
             }
         }
     )

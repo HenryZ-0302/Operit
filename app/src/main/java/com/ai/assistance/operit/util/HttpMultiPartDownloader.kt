@@ -13,21 +13,22 @@ object HttpMultiPartDownloader {
     fun download(
         url: String,
         dest: File,
+        headers: Map<String, String> = emptyMap(),
         threadCount: Int = 4,
         onProgress: ((downloadedBytes: Long, totalBytes: Long) -> Unit)? = null
     ) {
         val safeThreads = threadCount.coerceIn(1, 8)
 
-        val meta = probe(url)
+        val meta = probe(url, headers)
         val total = meta.contentLength
         val supportsRanges = meta.acceptRanges
 
         if (total <= 0L || !supportsRanges || safeThreads == 1) {
-            downloadSingle(url, dest, total, onProgress)
+            downloadSingle(url, dest, headers, total, onProgress)
             return
         }
 
-        downloadMulti(url, dest, total, safeThreads, onProgress)
+        downloadMulti(url, dest, headers, total, safeThreads, onProgress)
     }
 
     private data class ProbeResult(
@@ -35,12 +36,13 @@ object HttpMultiPartDownloader {
         val acceptRanges: Boolean
     )
 
-    private fun probe(url: String): ProbeResult {
+    private fun probe(url: String, headers: Map<String, String>): ProbeResult {
         // Prefer HEAD, but some servers don't allow it.
         var conn: HttpURLConnection? = null
         try {
             conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "HEAD"
+                applyHeaders(this, headers)
                 setRequestProperty("Accept-Encoding", "identity")
                 instanceFollowRedirects = true
                 connectTimeout = 15000
@@ -63,6 +65,7 @@ object HttpMultiPartDownloader {
         try {
             conn2 = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
+                applyHeaders(this, headers)
                 setRequestProperty("Accept-Encoding", "identity")
                 setRequestProperty("Range", "bytes=0-0")
                 instanceFollowRedirects = true
@@ -99,6 +102,7 @@ object HttpMultiPartDownloader {
     private fun downloadSingle(
         url: String,
         dest: File,
+        headers: Map<String, String>,
         totalBytes: Long,
         onProgress: ((Long, Long) -> Unit)?
     ) {
@@ -106,6 +110,7 @@ object HttpMultiPartDownloader {
         try {
             conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
+                applyHeaders(this, headers)
                 setRequestProperty("Accept-Encoding", "identity")
                 instanceFollowRedirects = true
                 connectTimeout = 15000
@@ -142,6 +147,7 @@ object HttpMultiPartDownloader {
     private fun downloadMulti(
         url: String,
         dest: File,
+        headers: Map<String, String>,
         totalBytes: Long,
         threadCount: Int,
         onProgress: ((Long, Long) -> Unit)?
@@ -173,6 +179,7 @@ object HttpMultiPartDownloader {
                 try {
                     conn = (URL(url).openConnection() as HttpURLConnection).apply {
                         requestMethod = "GET"
+                        applyHeaders(this, headers)
                         setRequestProperty("Accept-Encoding", "identity")
                         instanceFollowRedirects = true
                         connectTimeout = 15000
@@ -232,5 +239,29 @@ object HttpMultiPartDownloader {
         }
 
         onProgress?.invoke(totalBytes, totalBytes)
+    }
+
+    private fun applyHeaders(conn: HttpURLConnection, headers: Map<String, String>) {
+        if (headers.isEmpty()) return
+        headers.forEach { (rawName, rawValue) ->
+            val name = sanitizeHeaderName(rawName) ?: return@forEach
+            val value = sanitizeHeaderValue(rawValue)
+            conn.setRequestProperty(name, value)
+        }
+    }
+
+    private fun sanitizeHeaderName(name: String?): String? {
+        val trimmed = name?.trim().orEmpty()
+        if (trimmed.isEmpty()) return null
+        if (trimmed.contains("\r") || trimmed.contains("\n")) return null
+        if (trimmed.contains(":")) return null
+        return trimmed
+    }
+
+    private fun sanitizeHeaderValue(value: String?): String {
+        return value
+            ?.replace("\r", "")
+            ?.replace("\n", "")
+            ?: ""
     }
 }

@@ -21,8 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.draw.scale
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Refresh
@@ -42,6 +42,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.skill.SkillRepository
 import com.ai.assistance.operit.core.tools.skill.SkillPackage
+import com.ai.assistance.operit.data.preferences.SkillVisibilityPreferences
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -76,6 +78,8 @@ fun SkillManagerScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+
+    val skillVisibilityPreferences = remember { SkillVisibilityPreferences.getInstance(context) }
 
     var skills by remember { mutableStateOf<Map<String, SkillPackage>>(emptyMap()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -201,6 +205,7 @@ fun SkillManagerScreen(
                     items(sortedSkills, key = { it.name }) { skill ->
                         SkillListItem(
                             skill = skill,
+                            skillVisibilityPreferences = skillVisibilityPreferences,
                             onClick = {
                                 val name = skill.name
                                 selectedSkillName = name
@@ -514,9 +519,13 @@ fun SkillManagerScreen(
 @Composable
 private fun SkillListItem(
     skill: SkillPackage,
+    skillVisibilityPreferences: SkillVisibilityPreferences,
     onClick: () -> Unit
 ) {
     val accentColor = MaterialTheme.colorScheme.primary
+    var visibleToAi by remember(skill.name) {
+        mutableStateOf(skillVisibilityPreferences.isSkillVisibleToAi(skill.name))
+    }
 
     Surface(
         onClick = onClick,
@@ -568,10 +577,13 @@ private fun SkillListItem(
                 }
             }
 
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            Switch(
+                modifier = Modifier.scale(0.8f),
+                checked = visibleToAi,
+                onCheckedChange = { checked ->
+                    visibleToAi = checked
+                    skillVisibilityPreferences.setSkillVisibleToAi(skill.name, checked)
+                }
             )
         }
     }

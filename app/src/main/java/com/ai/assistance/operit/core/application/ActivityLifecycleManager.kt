@@ -5,6 +5,7 @@ import android.app.Application
 import android.os.Bundle
 import com.ai.assistance.operit.util.AppLogger
 import android.view.WindowManager
+import com.ai.assistance.operit.api.chat.AIForegroundService
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay
 import com.ai.assistance.operit.core.tools.agent.ShowerController
@@ -28,6 +29,9 @@ object ActivityLifecycleManager : Application.ActivityLifecycleCallbacks {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var activityCount = 0
 
+    @Volatile
+    private var lastMicEnsureAtMs: Long = 0L
+
     /**
      * Initializes the manager and registers it with the application.
      * This should be called once from the Application's `onCreate` method.
@@ -35,7 +39,7 @@ object ActivityLifecycleManager : Application.ActivityLifecycleCallbacks {
      */
     fun initialize(application: Application) {
         application.registerActivityLifecycleCallbacks(this)
-                    apiPreferences = ApiPreferences.getInstance(application.applicationContext)
+        apiPreferences = ApiPreferences.getInstance(application.applicationContext)
     }
 
     /**
@@ -96,6 +100,15 @@ object ActivityLifecycleManager : Application.ActivityLifecycleCallbacks {
     override fun onActivityResumed(activity: Activity) {
         // When an activity is resumed, it becomes the current foreground activity.
         currentActivity = WeakReference(activity)
+
+        try {
+            val now = System.currentTimeMillis()
+            if (now - lastMicEnsureAtMs >= 2500L) {
+                lastMicEnsureAtMs = now
+                AIForegroundService.ensureMicrophoneForeground(activity.applicationContext)
+            }
+        } catch (_: Exception) {
+        }
     }
 
     override fun onActivityPaused(activity: Activity) {

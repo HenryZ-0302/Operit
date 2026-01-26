@@ -7,3 +7,6 @@
 [submodule "tools/hotbuild/OperitNightlyRelease"]
 	path = tools/hotbuild/OperitNightlyRelease
 	url = git@github.com:AAswordman/OperitNightlyRelease.git
+[submodule "llama/third_party/llama.cpp"]
+	path = llama/third_party/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp

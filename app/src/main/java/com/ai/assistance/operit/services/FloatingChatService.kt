@@ -8,23 +8,25 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
-import android.os.Binder
 import android.os.Build
+import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
-import com.ai.assistance.operit.util.AppLogger
 import android.view.View
+import android.widget.Toast
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
+import com.ai.assistance.operit.core.application.ForegroundServiceCompat
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.api.chat.AIForegroundService
+import com.ai.assistance.operit.api.speech.SpeechServiceFactory
+import com.ai.assistance.operit.api.voice.VoiceServiceFactory
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.InputProcessingState
@@ -34,17 +36,15 @@ import com.ai.assistance.operit.data.model.SerializableTypography
 import com.ai.assistance.operit.data.model.toComposeColorScheme
 import com.ai.assistance.operit.data.model.toComposeTypography
 import com.ai.assistance.operit.data.model.PromptFunctionType
-import com.ai.assistance.operit.api.chat.AIForegroundService
-import com.ai.assistance.operit.api.speech.SpeechServiceFactory
-import com.ai.assistance.operit.api.voice.VoiceServiceFactory
 import com.ai.assistance.operit.services.floating.FloatingWindowCallback
 import com.ai.assistance.operit.services.floating.FloatingWindowManager
 import com.ai.assistance.operit.services.floating.FloatingWindowState
 import com.ai.assistance.operit.services.floating.StatusIndicatorStyle
 import com.ai.assistance.operit.ui.floating.FloatingMode
-import android.widget.Toast
+import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.FileUtils
+import com.ai.assistance.operit.util.WaifuMessageProcessor
 import com.google.gson.Gson
-import com.google.gson.JsonSyntaxException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,7 +53,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class FloatingChatService : Service(), FloatingWindowCallback {
@@ -96,6 +95,9 @@ class FloatingChatService : Service(), FloatingWindowCallback {
     companion object {
         @Volatile
         private var instance: FloatingChatService? = null
+
+        const val ACTION_FLOATING_CHAT_SERVICE_STARTED = "com.ai.assistance.operit.action.FLOATING_CHAT_SERVICE_STARTED"
+        const val ACTION_FLOATING_CHAT_SERVICE_STOPPED = "com.ai.assistance.operit.action.FLOATING_CHAT_SERVICE_STOPPED"
 
         const val EXTRA_AUTO_ENTER_VOICE_CHAT = "AUTO_ENTER_VOICE_CHAT"
         const val EXTRA_WAKE_LAUNCHED = "WAKE_LAUNCHED"
@@ -144,6 +146,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
         private var closeCallback: (() -> Unit)? = null
         private var reloadCallback: (() -> Unit)? = null
         private var chatSyncCallback: ((String?, List<ChatMessage>) -> Unit)? = null
+        private var chatStatsCallback: ((String?, Int, Int, Int) -> Unit)? = null
         
         fun getService(): FloatingChatService = this@FloatingChatService
         fun getChatCore(): ChatServiceCore = chatCore
@@ -174,10 +177,21 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             return true
         }
 
+        fun setChatStatsCallback(callback: (chatId: String?, inputTokens: Int, outputTokens: Int, windowSize: Int) -> Unit) {
+            this.chatStatsCallback = callback
+        }
+
+        fun notifyChatStats(chatId: String?, inputTokens: Int, outputTokens: Int, windowSize: Int): Boolean {
+            val cb = chatStatsCallback ?: return false
+            cb(chatId, inputTokens, outputTokens, windowSize)
+            return true
+        }
+
         fun clearCallbacks() {
             closeCallback = null
             reloadCallback = null
             chatSyncCallback = null
+            chatStatsCallback = null
         }
     }
 
@@ -217,6 +231,14 @@ class FloatingChatService : Service(), FloatingWindowCallback {
 
         instance = this
 
+        try {
+            sendBroadcast(
+                Intent(ACTION_FLOATING_CHAT_SERVICE_STARTED)
+                    .setPackage(packageName)
+            )
+        } catch (_: Exception) {
+        }
+
         Thread.setDefaultUncaughtExceptionHandler(customExceptionHandler)
 
         prefs = getSharedPreferences("floating_chat_prefs", Context.MODE_PRIVATE)
@@ -234,11 +256,10 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             AppLogger.d(TAG, "ChatServiceCore 已初始化")
             
             // 设置额外的 onTurnComplete 回调，用于通知应用重新加载消息
-            chatCore.setAdditionalOnTurnComplete {
-                val chatId = chatCore.currentChatId.value
-                val messages = chatMessages.value
-                AppLogger.d(TAG, "流完成，推送消息到主界面. chatId=$chatId, messages=${messages.size}")
-                if (!binder.notifyChatSync(chatId, messages)) {
+            chatCore.setAdditionalOnTurnComplete { chatId, inputTokens, outputTokens, windowSize ->
+                binder.notifyChatStats(chatId, inputTokens, outputTokens, windowSize)
+                AppLogger.d(TAG, "流完成，通知主界面重新加载消息. chatId=$chatId")
+                if (!binder.notifyChatSync(chatId, emptyList())) {
                     AppLogger.d(TAG, "主界面未注册同步回调，回退为重新加载请求")
                     binder.notifyReload()
                 }
@@ -310,39 +331,16 @@ class FloatingChatService : Service(), FloatingWindowCallback {
                     )
             createNotificationChannel()
             val notification = createNotification()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val types =
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                        } else {
-                            0
-                        } or
-                        if (
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-                                hasRecordAudioPermission()
-                        ) {
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                        } else {
-                            0
-                        }
-                startForeground(NOTIFICATION_ID, notification, types)
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
-            }
+            ForegroundServiceCompat.startForeground(
+                service = this,
+                notificationId = NOTIFICATION_ID,
+                notification = notification,
+                types = ForegroundServiceCompat.buildTypes(dataSync = true, specialUse = true)
+            )
 
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error in onCreate", e)
             stopSelf()
-        }
-    }
-
-    private fun hasRecordAudioPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
-                PackageManager.PERMISSION_GRANTED
-        } else {
-            true
         }
     }
 
@@ -670,12 +668,18 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             }
 
             try {
-                runBlocking(Dispatchers.IO) {
+                CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
                     try {
-                        SpeechServiceFactory.getInstance(applicationContext).cancelRecognition()
+                        try {
+                            SpeechServiceFactory.getInstance(applicationContext).cancelRecognition()
+                        } catch (_: Exception) {
+                        }
+                        try {
+                            VoiceServiceFactory.getInstance(applicationContext).stop()
+                        } catch (_: Exception) {
+                        }
                     } catch (_: Exception) {
                     }
-                    VoiceServiceFactory.getInstance(applicationContext).stop()
                 }
             } catch (_: Exception) {
             }
@@ -692,6 +696,14 @@ class FloatingChatService : Service(), FloatingWindowCallback {
             prefs.edit().putInt("view_creation_retry", 0).apply()
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error in onDestroy", e)
+        }
+
+        try {
+            sendBroadcast(
+                Intent(ACTION_FLOATING_CHAT_SERVICE_STOPPED)
+                    .setPackage(packageName)
+            )
+        } catch (_: Exception) {
         }
         instance = null
     }

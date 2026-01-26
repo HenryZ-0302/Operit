@@ -21,11 +21,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.workflow.NodeExecutionState
 import com.ai.assistance.operit.data.model.WorkflowNode
 import com.ai.assistance.operit.data.model.TriggerNode
@@ -71,42 +73,42 @@ fun DraggableNodeCard(
             backgroundColor = Color(0xFFE8F5E9),
             borderColor = Color(0xFF81C784),
             icon = Icons.Default.PlayArrow,
-            label = "触发"
+            label = stringResource(R.string.workflow_node_label_trigger)
         )
         is ExecuteNode -> NodeStyle(
             primaryColor = Color(0xFF2196F3),
             backgroundColor = Color(0xFFE3F2FD),
             borderColor = Color(0xFF64B5F6),
             icon = Icons.Default.Settings,
-            label = "执行"
+            label = stringResource(R.string.workflow_node_label_execute)
         )
         is ConditionNode -> NodeStyle(
             primaryColor = Color(0xFFFF9800),
             backgroundColor = Color(0xFFFFF3E0),
             borderColor = Color(0xFFFFB74D),
             icon = Icons.Default.Settings,
-            label = "条件"
+            label = stringResource(R.string.workflow_node_label_condition)
         )
         is LogicNode -> NodeStyle(
             primaryColor = Color(0xFF7E57C2),
             backgroundColor = Color(0xFFF3E5F5),
             borderColor = Color(0xFFB39DDB),
             icon = Icons.Default.Settings,
-            label = "逻辑"
+            label = stringResource(R.string.workflow_node_label_logic)
         )
         is ExtractNode -> NodeStyle(
             primaryColor = Color(0xFF009688),
             backgroundColor = Color(0xFFE0F2F1),
             borderColor = Color(0xFF4DB6AC),
             icon = Icons.Default.Settings,
-            label = "运算"
+            label = stringResource(R.string.workflow_node_label_extract)
         )
         else -> NodeStyle(
             primaryColor = Color(0xFF9E9E9E),
             backgroundColor = Color(0xFFF5F5F5),
             borderColor = Color(0xFFBDBDBD),
             icon = Icons.Default.Settings,
-            label = "未知"
+            label = stringResource(R.string.workflow_node_label_unknown)
         )
     }
     
@@ -254,7 +256,7 @@ fun DraggableNodeCard(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "执行中",
+                                    text = stringResource(R.string.workflow_node_running),
                                     fontSize = 9.sp,
                                     color = Color(0xFF2196F3),
                                     fontWeight = FontWeight.Medium
@@ -269,7 +271,7 @@ fun DraggableNodeCard(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "成功",
+                                    text = stringResource(R.string.workflow_node_success),
                                     fontSize = 9.sp,
                                     color = Color(0xFF4CAF50),
                                     fontWeight = FontWeight.Medium
@@ -284,7 +286,7 @@ fun DraggableNodeCard(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "跳过",
+                                    text = stringResource(R.string.workflow_node_skipped),
                                     fontSize = 9.sp,
                                     color = Color(0xFF9E9E9E),
                                     fontWeight = FontWeight.Medium
@@ -299,7 +301,7 @@ fun DraggableNodeCard(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "失败",
+                                    text = stringResource(R.string.workflow_node_failed),
                                     fontSize = 9.sp,
                                     color = Color(0xFFF44336),
                                     fontWeight = FontWeight.Medium

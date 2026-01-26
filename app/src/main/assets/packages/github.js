@@ -671,10 +671,10 @@ function buildDeleteBlock(oldContent) {
   return ["[START-DELETE]", "[OLD]", String(oldContent != null ? oldContent : ""), "[/OLD]", "[END-DELETE]"].join("\n");
 }
 async function applyLocalReplace(params) {
-  return Tools.Files.apply(params.path, buildReplaceBlock(params.old, params.new), params.environment);
+  return Tools.Files.apply(params.path, "replace", params.old, params.new, params.environment);
 }
 async function applyLocalDelete(params) {
-  return Tools.Files.apply(params.path, buildDeleteBlock(params.old), params.environment);
+  return Tools.Files.apply(params.path, "delete", params.old, void 0, params.environment);
 }
 async function overwriteLocalFile(params) {
   var _a;

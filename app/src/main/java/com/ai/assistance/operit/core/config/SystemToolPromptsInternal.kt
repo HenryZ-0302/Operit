@@ -209,6 +209,175 @@ object SystemToolPromptsInternal {
                     )
             ),
             SystemToolPromptCategory(
+                categoryName = "Extended Memory Tools",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "create_memory",
+                            description = "Creates a new memory node in the library. Use this when you want to save important information for future reference.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "title", type = "string", description = "required, string", required = true),
+                                ToolParameterSchema(name = "content", type = "string", description = "required, string", required = true),
+                                ToolParameterSchema(name = "content_type", type = "string", description = "optional", required = false, default = "\"text/plain\""),
+                                ToolParameterSchema(name = "source", type = "string", description = "optional", required = false, default = "\"ai_created\""),
+                                ToolParameterSchema(name = "folder_path", type = "string", description = "optional", required = false, default = "\"\"")
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "update_memory",
+                            description = "Updates an existing memory node by title. Use this to modify an existing memory's content or metadata.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "old_title", type = "string", description = "required, string to identify the memory", required = true),
+                                ToolParameterSchema(name = "new_title", type = "string", description = "optional, string, new title if renaming", required = false),
+                                ToolParameterSchema(name = "content", type = "string", description = "optional, string", required = false),
+                                ToolParameterSchema(name = "content_type", type = "string", description = "optional, string", required = false),
+                                ToolParameterSchema(name = "source", type = "string", description = "optional, string", required = false),
+                                ToolParameterSchema(name = "credibility", type = "number", description = "optional, float 0-1", required = false),
+                                ToolParameterSchema(name = "importance", type = "number", description = "optional, float 0-1", required = false),
+                                ToolParameterSchema(name = "folder_path", type = "string", description = "optional, string", required = false),
+                                ToolParameterSchema(name = "tags", type = "string", description = "optional, comma-separated string", required = false)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "delete_memory",
+                            description = "Deletes a memory node from the library by title. Use with caution as this operation is irreversible.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "title", type = "string", description = "required, string to identify the memory", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "link_memories",
+                            description = "Creates a semantic link between two memories in the library. Use this to establish relationships between related concepts, facts, or pieces of information. This helps build a knowledge graph structure for better memory retrieval and understanding.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source_title", type = "string", description = "required, string, the title of the source memory", required = true),
+                                ToolParameterSchema(name = "target_title", type = "string", description = "required, string, the title of the target memory", required = true),
+                                ToolParameterSchema(name = "link_type", type = "string", description = "optional, string, the type of relationship such as \"related\", \"causes\", \"explains\", \"part_of\", \"contradicts\", etc.", required = false, default = "\"related\""),
+                                ToolParameterSchema(name = "weight", type = "number", description = "optional, float 0.0-1.0, the strength of the link with 1.0 being strongest", required = false, default = "0.7"),
+                                ToolParameterSchema(name = "description", type = "string", description = "optional, string, additional context about the relationship", required = false, default = "\"\"")
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "update_user_preferences",
+                            description = "Updates user preference information directly. Use this when you learn new information about the user that should be remembered (e.g., their birthday, gender, personality traits, identity, occupation, or preferred AI interaction style). This allows immediate updates without waiting for the automatic system.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "birth_date", type = "integer", description = "optional, Unix timestamp in milliseconds", required = false),
+                                ToolParameterSchema(name = "gender", type = "string", description = "optional, string", required = false),
+                                ToolParameterSchema(name = "personality", type = "string", description = "optional, string describing personality traits", required = false),
+                                ToolParameterSchema(name = "identity", type = "string", description = "optional, string describing identity/role", required = false),
+                                ToolParameterSchema(name = "occupation", type = "string", description = "optional, string", required = false),
+                                ToolParameterSchema(name = "ai_style", type = "string", description = "optional, string describing preferred AI interaction style. At least one parameter must be provided", required = false)
+                            )
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
+                categoryName = "Extended HTTP Tools",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "http_request",
+                            description = "Send HTTP request.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "url", type = "string", description = "url", required = true),
+                                ToolParameterSchema(name = "method", type = "string", description = "GET/POST/PUT/DELETE", required = true),
+                                ToolParameterSchema(name = "headers", type = "string", description = "headers", required = false),
+                                ToolParameterSchema(name = "body", type = "string", description = "body", required = false),
+                                ToolParameterSchema(name = "body_type", type = "string", description = "json/form/text/xml", required = false)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "multipart_request",
+                            description = "Upload files.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "url", type = "string", description = "url", required = true),
+                                ToolParameterSchema(name = "method", type = "string", description = "POST/PUT", required = true),
+                                ToolParameterSchema(name = "headers", type = "string", description = "headers", required = false),
+                                ToolParameterSchema(name = "form_data", type = "string", description = "form_data", required = false),
+                                ToolParameterSchema(name = "files", type = "string", description = "JSON array string. Each item is an object: {\"field_name\": string, \"file_path\": string, \"content_type\"?: string, \"file_name\"?: string}", required = false)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "manage_cookies",
+                            description = "Manage cookies.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "action", type = "string", description = "get/set/clear", required = true),
+                                ToolParameterSchema(name = "domain", type = "string", description = "domain", required = false),
+                                ToolParameterSchema(name = "cookies", type = "string", description = "cookies", required = false)
+                            )
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
+                categoryName = "Extended File Tools",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "file_exists",
+                            description = "Check if a file or directory exists.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "path", type = "string", description = "target path", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "move_file",
+                            description = "Move or rename a file or directory.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source", type = "string", description = "source path", required = true),
+                                ToolParameterSchema(name = "destination", type = "string", description = "destination path", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "copy_file",
+                            description = "Copy a file or directory. Supports cross-environment copying between Android and Linux.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source", type = "string", description = "source path", required = true),
+                                ToolParameterSchema(name = "destination", type = "string", description = "destination path", required = true),
+                                ToolParameterSchema(name = "recursive", type = "boolean", description = "boolean", required = false, default = "false"),
+                                ToolParameterSchema(name = "source_environment", type = "string", description = "optional, \"android\" or \"linux\"", required = false, default = "\"android\""),
+                                ToolParameterSchema(name = "dest_environment", type = "string", description = "optional, \"android\" or \"linux\". For cross-environment copy (e.g., Android → Linux or Linux → Android), specify both source_environment and dest_environment", required = false, default = "\"android\"")
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "file_info",
+                            description = "Get detailed information about a file or directory including type, size, permissions, owner, group, and last modified time.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "path", type = "string", description = "target path", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "zip_files",
+                            description = "Compress files or directories.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source", type = "string", description = "path to compress", required = true),
+                                ToolParameterSchema(name = "destination", type = "string", description = "output zip file", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "unzip_files",
+                            description = "Extract a zip file.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source", type = "string", description = "zip file path", required = true),
+                                ToolParameterSchema(name = "destination", type = "string", description = "extract path", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "open_file",
+                            description = "Open a file using the system's default application.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "path", type = "string", description = "file path", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "share_file",
+                            description = "Share a file with other applications.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "path", type = "string", description = "file path", required = true),
+                                ToolParameterSchema(name = "title", type = "string", description = "optional share title", required = false, default = "\"Share File\"")
+                            )
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
                 categoryName = "Tasker Tools",
                 tools =
                     listOf(
@@ -835,7 +1004,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "agent_id",
                                         type = "string",
-                                        description = "optional, reuse agent session id",
+                                        description = "optional, reuse agent session id. If omitted or 'default', uses the main screen. If provided and not 'default', the requested virtual screen session must be active/available; otherwise the run fails.",
                                         required = false
                                     ),
                                     ToolParameterSchema(
@@ -1332,6 +1501,175 @@ object SystemToolPromptsInternal {
                             name = "device_info",
                             description = "获取设备信息。",
                             parametersStructured = listOf()
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
+                categoryName = "拓展记忆工具",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "create_memory",
+                            description = "在记忆库中创建新的记忆节点。当你想保存重要信息供将来参考时使用。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "title", type = "string", description = "必需, 字符串", required = true),
+                                ToolParameterSchema(name = "content", type = "string", description = "必需, 字符串", required = true),
+                                ToolParameterSchema(name = "content_type", type = "string", description = "可选", required = false, default = "\"text/plain\""),
+                                ToolParameterSchema(name = "source", type = "string", description = "可选", required = false, default = "\"ai_created\""),
+                                ToolParameterSchema(name = "folder_path", type = "string", description = "可选", required = false, default = "\"\"")
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "update_memory",
+                            description = "通过标题更新现有的记忆节点。用于修改现有记忆的内容或元数据。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "old_title", type = "string", description = "必需, 字符串，用于识别记忆", required = true),
+                                ToolParameterSchema(name = "new_title", type = "string", description = "可选, 字符串, 重命名时的新标题", required = false),
+                                ToolParameterSchema(name = "content", type = "string", description = "可选, 字符串", required = false),
+                                ToolParameterSchema(name = "content_type", type = "string", description = "可选, 字符串", required = false),
+                                ToolParameterSchema(name = "source", type = "string", description = "可选, 字符串", required = false),
+                                ToolParameterSchema(name = "credibility", type = "number", description = "可选, 浮点数 0-1", required = false),
+                                ToolParameterSchema(name = "importance", type = "number", description = "可选, 浮点数 0-1", required = false),
+                                ToolParameterSchema(name = "folder_path", type = "string", description = "可选, 字符串", required = false),
+                                ToolParameterSchema(name = "tags", type = "string", description = "可选, 逗号分隔的字符串", required = false)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "delete_memory",
+                            description = "通过标题从记忆库中删除记忆节点。谨慎使用，此操作不可逆。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "title", type = "string", description = "必需, 字符串，用于识别记忆", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "link_memories",
+                            description = "在记忆库中的两个记忆之间创建语义链接。用于建立相关概念、事实或信息片段之间的关系。这有助于构建知识图谱结构，以便更好地检索和理解记忆。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source_title", type = "string", description = "必需, 字符串, 源记忆的标题", required = true),
+                                ToolParameterSchema(name = "target_title", type = "string", description = "必需, 字符串, 目标记忆的标题", required = true),
+                                ToolParameterSchema(name = "link_type", type = "string", description = "可选, 字符串, 关系类型，如\"related\"（相关）、\"causes\"（导致）、\"explains\"（解释）、\"part_of\"（部分）、\"contradicts\"（矛盾）等", required = false, default = "\"related\""),
+                                ToolParameterSchema(name = "weight", type = "number", description = "可选, 浮点数 0.0-1.0, 链接强度，1.0表示最强", required = false, default = "0.7"),
+                                ToolParameterSchema(name = "description", type = "string", description = "可选, 字符串, 关于关系的额外上下文", required = false, default = "\"\"")
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "update_user_preferences",
+                            description = "直接更新用户偏好信息。当你了解到用户的新信息时使用（例如生日、性别、性格特征、身份、职业或首选AI交互风格）。这允许立即更新而无需等待自动系统。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "birth_date", type = "integer", description = "可选, Unix时间戳，毫秒", required = false),
+                                ToolParameterSchema(name = "gender", type = "string", description = "可选, 字符串", required = false),
+                                ToolParameterSchema(name = "personality", type = "string", description = "可选, 描述性格特征的字符串", required = false),
+                                ToolParameterSchema(name = "identity", type = "string", description = "可选, 描述身份/角色的字符串", required = false),
+                                ToolParameterSchema(name = "occupation", type = "string", description = "可选, 字符串", required = false),
+                                ToolParameterSchema(name = "ai_style", type = "string", description = "可选, 描述首选AI交互风格的字符串. 必须提供至少一个参数", required = false)
+                            )
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
+                categoryName = "拓展 HTTP 工具",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "http_request",
+                            description = "发送HTTP请求。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "url", type = "string", description = "url", required = true),
+                                ToolParameterSchema(name = "method", type = "string", description = "GET/POST/PUT/DELETE", required = true),
+                                ToolParameterSchema(name = "headers", type = "string", description = "headers", required = false),
+                                ToolParameterSchema(name = "body", type = "string", description = "body", required = false),
+                                ToolParameterSchema(name = "body_type", type = "string", description = "json/form/text/xml", required = false)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "multipart_request",
+                            description = "上传文件。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "url", type = "string", description = "url", required = true),
+                                ToolParameterSchema(name = "method", type = "string", description = "POST/PUT", required = true),
+                                ToolParameterSchema(name = "headers", type = "string", description = "headers", required = false),
+                                ToolParameterSchema(name = "form_data", type = "string", description = "form_data", required = false),
+                                ToolParameterSchema(name = "files", type = "string", description = "JSON数组字符串。每个元素是对象: {\"field_name\": 字符串, \"file_path\": 字符串, 可选 \"content_type\": 字符串, 可选 \"file_name\": 字符串}", required = false)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "manage_cookies",
+                            description = "管理cookies。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "action", type = "string", description = "get/set/clear", required = true),
+                                ToolParameterSchema(name = "domain", type = "string", description = "domain", required = false),
+                                ToolParameterSchema(name = "cookies", type = "string", description = "cookies", required = false)
+                            )
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
+                categoryName = "拓展文件工具",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "file_exists",
+                            description = "检查文件或目录是否存在。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "path", type = "string", description = "目标路径", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "move_file",
+                            description = "移动或重命名文件或目录。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source", type = "string", description = "源路径", required = true),
+                                ToolParameterSchema(name = "destination", type = "string", description = "目标路径", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "copy_file",
+                            description = "复制文件或目录。支持Android和Linux之间的跨环境复制。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source", type = "string", description = "源路径", required = true),
+                                ToolParameterSchema(name = "destination", type = "string", description = "目标路径", required = true),
+                                ToolParameterSchema(name = "recursive", type = "boolean", description = "布尔值", required = false, default = "false"),
+                                ToolParameterSchema(name = "source_environment", type = "string", description = "可选，\"android\"或\"linux\"", required = false, default = "\"android\""),
+                                ToolParameterSchema(name = "dest_environment", type = "string", description = "可选，\"android\"或\"linux\"。跨环境复制（如Android → Linux或Linux → Android）时，需指定source_environment和dest_environment", required = false, default = "\"android\"")
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "file_info",
+                            description = "获取文件或目录的详细信息，包括类型、大小、权限、所有者、组和最后修改时间。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "path", type = "string", description = "目标路径", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "zip_files",
+                            description = "压缩文件或目录。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source", type = "string", description = "要压缩的路径", required = true),
+                                ToolParameterSchema(name = "destination", type = "string", description = "输出zip文件", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "unzip_files",
+                            description = "解压zip文件。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "source", type = "string", description = "zip文件路径", required = true),
+                                ToolParameterSchema(name = "destination", type = "string", description = "解压路径", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "open_file",
+                            description = "使用系统默认应用程序打开文件。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "path", type = "string", description = "文件路径", required = true)
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "share_file",
+                            description = "与其他应用程序共享文件。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "path", type = "string", description = "文件路径", required = true),
+                                ToolParameterSchema(name = "title", type = "string", description = "可选的共享标题", required = false, default = "\"Share File\"")
+                            )
                         )
                     )
             ),
@@ -1935,7 +2273,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "agent_id",
                                         type = "string",
-                                        description = "可选，可复用的 agent 会话 ID",
+                                        description = "可选，可复用的 agent 会话 ID。不传或传 'default' 时使用主屏幕；传入且不为 'default' 时表示请求使用对应的虚拟屏幕会话，虚拟屏幕必须处于可用状态，否则本次运行将失败。",
                                         required = false
                                     ),
                                     ToolParameterSchema(

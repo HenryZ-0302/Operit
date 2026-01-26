@@ -1,15 +1,12 @@
 package com.ai.assistance.operit.data.backup
 
-import android.os.Environment
+import com.ai.assistance.operit.util.OperitPaths
 import java.io.File
 
 object OperitBackupDirs {
 
     fun operitRootDir(): File {
-        return File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "Operit"
-        )
+        return OperitPaths.operitRootDir()
     }
 
     fun backupRootDir(): File {
@@ -30,6 +27,10 @@ object OperitBackupDirs {
 
     fun modelConfigDir(): File {
         return ensureDir(File(backupRootDir(), "model_config"))
+    }
+
+    fun characterCardsDir(): File {
+        return ensureDir(File(backupRootDir(), "character_cards"))
     }
 
     private fun ensureDir(dir: File): File {

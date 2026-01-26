@@ -43,12 +43,18 @@ android {
         }
     }
 
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
+    }
+
     defaultConfig {
         applicationId = "com.hy.aetherai"
         minSdk = 26
         targetSdk = 34
         versionCode = 39
-        versionName = "1.8.0+1"
+        versionName = "1.8.0+4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -60,6 +66,12 @@ android {
             // for both 32-bit and 64-bit ARM devices are included in the APK,
             // resolving conflicts between dependencies with different native library sets.
             abiFilters.addAll(listOf("arm64-v8a"))
+        }
+
+        externalNativeBuild {
+            cmake {
+                cppFlags("-std=c++17")
+            }
         }
 
         buildConfigField("String", "GITHUB_CLIENT_ID", "\"${localProperties.getProperty("GITHUB_CLIENT_ID")}\"")
@@ -167,6 +179,7 @@ dependencies {
     implementation(project(":dragonbones"))
     implementation(project(":terminal"))
     implementation(project(":mnn"))
+    implementation(project(":llama"))
     implementation(project(":showerclient"))
     implementation(libs.androidx.ui.graphics.android)
     implementation(files("libs\\ffmpegkit.jar"))

@@ -98,8 +98,10 @@ fun getJsToolsDefinition(): String {
                     return toolCall("file_info", params);
                 },
                 // 智能应用文件绑定
-                apply: (path, content, environment) => {
-                    const params = { path, content };
+                apply: (path, type, oldContent, newContent, environment) => {
+                    const params = { path, type };
+                    if (oldContent !== undefined && oldContent !== null) params.old = String(oldContent);
+                    if (newContent !== undefined && newContent !== null) params.new = String(newContent);
                     if (environment) params.environment = environment;
                     return toolCall("apply_file", params);
                 },
@@ -124,9 +126,28 @@ fun getJsToolsDefinition(): String {
                     if (environment) params.environment = environment;
                     return toolCall("share_file", params);
                 },
-                download: (url, destination, environment) => {
-                    const params = { url, destination };
-                    if (environment) params.environment = environment;
+                download: (urlOrOptions, destination, environment, headers) => {
+                    let params;
+                    if (typeof urlOrOptions === 'string') {
+                        params = { url: urlOrOptions };
+                        if (destination !== undefined && destination !== null) params.destination = destination;
+                        if (environment) params.environment = environment;
+                        if (headers !== undefined && headers !== null && typeof headers === 'object') {
+                            params.headers = JSON.stringify(headers);
+                        }
+                    } else if (urlOrOptions && typeof urlOrOptions === 'object') {
+                        params = { ...urlOrOptions };
+                        if (destination !== undefined && destination !== null) params.destination = destination;
+                        if (environment) params.environment = environment;
+                        if (headers !== undefined && headers !== null && typeof headers === 'object') {
+                            params.headers = JSON.stringify(headers);
+                        }
+                        if (params.headers !== undefined && params.headers !== null && typeof params.headers === 'object') {
+                            params.headers = JSON.stringify(params.headers);
+                        }
+                    } else {
+                        params = {};
+                    }
                     return toolCall("download_file", params);
                 },
             },
@@ -146,6 +167,9 @@ fun getJsToolsDefinition(): String {
                         return toolCall("visit_web", { url: params });
                     }
                     // 否则，假定为参数对象
+                    if (params && typeof params === 'object' && params.headers !== undefined && typeof params.headers === 'object') {
+                        params = { ...params, headers: JSON.stringify(params.headers) };
+                    }
                     return toolCall("visit_web", params);
                 },
                 // 新增增强版HTTP请求

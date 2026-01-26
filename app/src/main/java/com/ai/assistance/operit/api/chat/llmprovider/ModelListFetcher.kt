@@ -521,6 +521,39 @@ object ModelListFetcher {
         }
     }
 
+    suspend fun getLlamaLocalModels(context: Context): Result<List<ModelOption>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val modelsDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "Operit/models/llama"
+                )
+
+                AppLogger.d(TAG, "读取llama.cpp模型目录: ${modelsDir.absolutePath}")
+
+                if (!modelsDir.exists()) {
+                    AppLogger.w(TAG, "llama.cpp模型目录不存在")
+                    return@withContext Result.success(emptyList())
+                }
+
+                val models = modelsDir.listFiles { file ->
+                    file.isFile && file.name.lowercase().endsWith(".gguf")
+                }?.map { file ->
+                    ModelOption(
+                        id = file.name,
+                        name = "${file.name} (${formatFileSize(file.length())})"
+                    )
+                }?.sortedBy { it.name } ?: emptyList()
+
+                AppLogger.d(TAG, "找到 ${models.size} 个可用的llama.cpp模型")
+                Result.success(models)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "读取llama.cpp模型列表失败", e)
+                Result.failure(e)
+            }
+        }
+    }
+
     /**
      * 格式化文件大小
      */

@@ -33,6 +33,7 @@ import android.util.Base64
 import com.ai.assistance.operit.core.tools.BinaryResultData
 import com.ai.assistance.operit.core.tools.javascript.JsTimeoutConfig
 import com.ai.assistance.operit.util.ImagePoolManager
+import com.ai.assistance.operit.util.OperitPaths
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -136,6 +137,9 @@ class JsEngine(private val context: Context) {
         if (jsEnvironmentInitialized) {
             return // 如果已经初始化，直接返回
         }
+
+        val operitDownloadDir = OperitPaths.operitRootPathSdcard()
+        val operitCleanOnExitDir = OperitPaths.cleanOnExitPathSdcard()
 
         val initScript =
                 """
@@ -448,6 +452,10 @@ class JsEngine(private val context: Context) {
                     return undefined;
                 }
             }
+
+            // Operit standard directories (injected from native)
+            var OPERIT_DOWNLOAD_DIR = ${JSONObject.quote(operitDownloadDir)};
+            var OPERIT_CLEAN_ON_EXIT_DIR = ${JSONObject.quote(operitCleanOnExitDir)};
             
             // 加载工具调用的便捷方法
             ${getJsToolsDefinition()}

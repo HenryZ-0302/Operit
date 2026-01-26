@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.LocaleList
+import android.system.Os
 import com.ai.assistance.operit.util.AppLogger
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
@@ -42,6 +43,7 @@ import com.ai.assistance.operit.util.GlobalExceptionHandler
 import com.ai.assistance.operit.util.ImagePoolManager
 import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.util.MediaPoolManager
+import com.ai.assistance.operit.util.SkillRepoZipPoolManager
 import com.ai.assistance.operit.util.SerializationSetup
 import com.ai.assistance.operit.util.TextSegmenter
 import com.ai.assistance.operit.util.WaifuMessageProcessor
@@ -85,10 +87,22 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
     // 懒加载数据库实例
     private val database by lazy { AppDatabase.getDatabase(this) }
 
+    private fun configureOpenMpEnvironment() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                Os.setenv("KMP_AFFINITY", "disabled", true)
+                Os.setenv("OMP_PROC_BIND", "false", true)
+            }
+        } catch (_: Throwable) {
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         val startTime = System.currentTimeMillis()
         instance = this
+
+        configureOpenMpEnvironment()
 
         // 每次应用冷启动时重置上一轮日志，避免日志无限增长
         AppLogger.resetLogFile()
@@ -232,6 +246,8 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
         // 初始化媒体池管理器（音频/视频），支持本地持久化缓存
         MediaPoolManager.initialize(filesDir, preloadNow = false)
         AppLogger.d(TAG, "【启动计时】媒体池管理器初始化完成 - ${System.currentTimeMillis() - startTime}ms")
+
+        SkillRepoZipPoolManager.initialize(filesDir)
 
         // 启动后重任务统一后台串行执行，避免多个大任务同时跑导致首屏掉帧
         applicationScope.launch(Dispatchers.Default) {
@@ -385,6 +401,7 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
     }
 
     override fun attachBaseContext(base: Context) {
+        configureOpenMpEnvironment()
         // 在基础上下文附加前应用语言设置
         try {
             val code = LocaleUtils.getCurrentLanguage(base)

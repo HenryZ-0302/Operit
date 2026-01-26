@@ -15,8 +15,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
@@ -33,8 +31,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.preferences.WakeWordPreferences
+import com.ai.assistance.operit.api.speech.PersonalWakeEnrollment
 import com.ai.assistance.operit.ui.features.assistant.components.AvatarConfigSection
 import com.ai.assistance.operit.ui.features.assistant.components.AvatarPreviewSection
+import com.ai.assistance.operit.ui.features.assistant.components.CompactSwitchRow
+import com.ai.assistance.operit.ui.features.assistant.components.VoiceAutoAttachGrid
 import com.ai.assistance.operit.ui.features.assistant.viewmodel.AssistantConfigViewModel
 import kotlinx.coroutines.launch
 
@@ -51,6 +52,8 @@ fun AssistantConfigScreen() {
     val wakeListeningEnabled by wakePrefs.alwaysListeningEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_ALWAYS_LISTENING_ENABLED)
     val wakePhrase by wakePrefs.wakePhraseFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_WAKE_PHRASE)
     val wakePhraseRegexEnabled by wakePrefs.wakePhraseRegexEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_WAKE_PHRASE_REGEX_ENABLED)
+    val wakeRecognitionMode by wakePrefs.wakeRecognitionModeFlow.collectAsState(initial = WakeWordPreferences.WakeRecognitionMode.STT)
+    val personalWakeTemplates by wakePrefs.personalWakeTemplatesFlow.collectAsState(initial = emptyList())
     val inactivityTimeoutSeconds by wakePrefs.voiceCallInactivityTimeoutSecondsFlow.collectAsState(
         initial = WakeWordPreferences.DEFAULT_VOICE_CALL_INACTIVITY_TIMEOUT_SECONDS
     )
@@ -63,6 +66,10 @@ fun AssistantConfigScreen() {
     val voiceAutoAttachEnabled by wakePrefs.voiceAutoAttachEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_ENABLED)
     val voiceAutoAttachItems by wakePrefs.voiceAutoAttachItemsFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_VOICE_AUTO_ATTACH_ITEMS)
     val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(wakePrefs) {
+        wakePrefs.migrateVoiceAutoAttachItemsIfNeeded()
+    }
 
     val requestMicPermissionLauncher =
         rememberLauncherForActivityResult(
@@ -88,6 +95,8 @@ fun AssistantConfigScreen() {
     var autoNewChatGroupInput by remember { mutableStateOf("") }
 
     var voiceWakeupExpanded by rememberSaveable { mutableStateOf(true) }
+
+    var personalWakeConfigDialogVisible by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(wakePhrase) {
         if (wakePhraseInput.isBlank()) {
@@ -238,6 +247,94 @@ fun AssistantConfigScreen() {
                             .padding(8.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        // Wake Mode
+                        Text(
+                            text = stringResource(R.string.voice_wakeup_mode_label),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        var modeExpanded by remember { mutableStateOf(false) }
+                        ExposedDropdownMenuBox(
+                            expanded = modeExpanded,
+                            onExpandedChange = { modeExpanded = it }
+                        ) {
+                            val modeLabel =
+                                when (wakeRecognitionMode) {
+                                    WakeWordPreferences.WakeRecognitionMode.STT -> stringResource(R.string.voice_wakeup_mode_stt)
+                                    WakeWordPreferences.WakeRecognitionMode.PERSONAL_TEMPLATE -> stringResource(R.string.voice_wakeup_mode_personal)
+                                }
+                            OutlinedTextField(
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth(),
+                                value = modeLabel,
+                                onValueChange = {},
+                                readOnly = true,
+                                singleLine = true,
+                                label = { Text(text = stringResource(R.string.voice_wakeup_mode_label)) },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeExpanded) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                            )
+
+                            ExposedDropdownMenu(
+                                expanded = modeExpanded,
+                                onDismissRequest = { modeExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(text = stringResource(R.string.voice_wakeup_mode_stt)) },
+                                    onClick = {
+                                        modeExpanded = false
+                                        coroutineScope.launch {
+                                            wakePrefs.saveWakeRecognitionMode(WakeWordPreferences.WakeRecognitionMode.STT)
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(text = stringResource(R.string.voice_wakeup_mode_personal)) },
+                                    onClick = {
+                                        modeExpanded = false
+                                        coroutineScope.launch {
+                                            wakePrefs.saveWakeRecognitionMode(WakeWordPreferences.WakeRecognitionMode.PERSONAL_TEMPLATE)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+
+                        if (wakeRecognitionMode == WakeWordPreferences.WakeRecognitionMode.PERSONAL_TEMPLATE) {
+                            if (personalWakeTemplates.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.voice_wakeup_personal_no_templates),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            FilledTonalButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = { personalWakeConfigDialogVisible = true },
+                            ) {
+                                Text(text = stringResource(R.string.voice_wakeup_personal_configure))
+                            }
+
+                            OutlinedButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = personalWakeTemplates.isNotEmpty(),
+                                onClick = {
+                                    coroutineScope.launch {
+                                        wakePrefs.savePersonalWakeTemplates(emptyList())
+                                    }
+                                },
+                            ) {
+                                Text(text = stringResource(R.string.voice_wakeup_personal_clear))
+                            }
+                        }
+
                         // Always Listening
                         CompactSwitchRow(
                             title = stringResource(R.string.voice_wakeup_always_listen_title),
@@ -265,37 +362,39 @@ fun AssistantConfigScreen() {
                             }
                         )
 
-                        // Wake Phrase Input
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = wakePhraseInput,
-                            onValueChange = { newValue ->
-                                wakePhraseInput = newValue
-                                coroutineScope.launch {
-                                    wakePrefs.saveWakePhrase(newValue.ifBlank { WakeWordPreferences.DEFAULT_WAKE_PHRASE })
-                                }
-                            },
-                            singleLine = true,
-                            label = { Text(stringResource(R.string.voice_wakeup_phrase_label)) },
-                            supportingText = { Text(stringResource(R.string.voice_wakeup_phrase_supporting)) },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent
+                        if (wakeRecognitionMode == WakeWordPreferences.WakeRecognitionMode.STT) {
+                            // Wake Phrase Input
+                            OutlinedTextField(
+                                modifier = Modifier.fillMaxWidth(),
+                                value = wakePhraseInput,
+                                onValueChange = { newValue ->
+                                    wakePhraseInput = newValue
+                                    coroutineScope.launch {
+                                        wakePrefs.saveWakePhrase(newValue.ifBlank { WakeWordPreferences.DEFAULT_WAKE_PHRASE })
+                                    }
+                                },
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.voice_wakeup_phrase_label)) },
+                                supportingText = { Text(stringResource(R.string.voice_wakeup_phrase_supporting)) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent
+                                )
                             )
-                        )
 
-                        // Regex Toggle
-                        CompactSwitchRow(
-                            title = stringResource(R.string.voice_wakeup_regex_title),
-                            description = stringResource(R.string.voice_wakeup_regex_desc),
-                            checked = wakePhraseRegexEnabled,
-                            onCheckedChange = { enabled ->
-                                coroutineScope.launch {
-                                    wakePrefs.saveWakePhraseRegexEnabled(enabled)
+                            // Regex Toggle
+                            CompactSwitchRow(
+                                title = stringResource(R.string.voice_wakeup_regex_title),
+                                description = stringResource(R.string.voice_wakeup_regex_desc),
+                                checked = wakePhraseRegexEnabled,
+                                onCheckedChange = { enabled ->
+                                    coroutineScope.launch {
+                                        wakePrefs.saveWakePhraseRegexEnabled(enabled)
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
 
                         // Timeout Input
                         OutlinedTextField(
@@ -415,48 +514,124 @@ fun AssistantConfigScreen() {
                         )
 
                         if (voiceAutoAttachEnabled) {
-                            voiceAutoAttachItems.forEach { item ->
-                                VoiceAutoAttachItemEditor(
-                                    item = item,
-                                    onItemChange = { updated ->
-                                        val newItems = voiceAutoAttachItems.map { if (it.id == updated.id) updated else it }
-                                        coroutineScope.launch {
-                                            wakePrefs.saveVoiceAutoAttachItems(newItems)
-                                        }
-                                    },
-                                    onDelete = {
-                                        val newItems = voiceAutoAttachItems.filterNot { it.id == item.id }
-                                        coroutineScope.launch {
-                                            wakePrefs.saveVoiceAutoAttachItems(newItems)
-                                        }
-                                    }
-                                )
-                            }
-
-                            FilledTonalButton(
-                                modifier = Modifier.fillMaxWidth(),
-                                onClick = {
-                                    val newItem = WakeWordPreferences.VoiceAutoAttachItem(
-                                        id = "item_${System.currentTimeMillis()}",
-                                        type = WakeWordPreferences.VoiceAutoAttachType.SCREEN_OCR,
-                                        enabled = true,
-                                        keywords = ""
-                                    )
+                            VoiceAutoAttachGrid(
+                                items = voiceAutoAttachItems,
+                                onItemsChange = { newItems ->
                                     coroutineScope.launch {
-                                        wakePrefs.saveVoiceAutoAttachItems(voiceAutoAttachItems + newItem)
+                                        wakePrefs.saveVoiceAutoAttachItems(newItems)
                                     }
                                 }
-                            ) {
-                                Icon(imageVector = Icons.Filled.Add, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(text = "添加附件项")
-                            }
+                            )
                         }
                     }
                 }
 
                 // 底部空间
                 Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            if (personalWakeConfigDialogVisible) {
+                val scope = rememberCoroutineScope()
+                var step1 by remember { mutableStateOf<FloatArray?>(null) }
+                var step2 by remember { mutableStateOf<FloatArray?>(null) }
+                var step3 by remember { mutableStateOf<FloatArray?>(null) }
+                var recordingStep by remember { mutableStateOf(0) }
+
+                AlertDialog(
+                    onDismissRequest = {
+                        if (recordingStep == 0) personalWakeConfigDialogVisible = false
+                    },
+                    title = { Text(text = stringResource(R.string.voice_wakeup_personal_config_dialog_title)) },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = stringResource(R.string.voice_wakeup_personal_config_dialog_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            @Composable
+                            fun stepRow(index: Int, value: FloatArray?, onRecord: () -> Unit) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.voice_wakeup_personal_config_step, index),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+
+                                    val busy = recordingStep == index
+                                    val label =
+                                        when {
+                                            busy -> stringResource(R.string.voice_wakeup_personal_config_recording)
+                                            value != null -> stringResource(R.string.voice_wakeup_personal_config_record_done)
+                                            else -> stringResource(R.string.voice_wakeup_personal_config_record)
+                                        }
+                                    FilledTonalButton(
+                                        onClick = onRecord,
+                                        enabled = recordingStep == 0,
+                                    ) {
+                                        Text(text = label)
+                                    }
+                                }
+                            }
+
+                            stepRow(1, step1) {
+                                recordingStep = 1
+                                scope.launch {
+                                    val feat = PersonalWakeEnrollment.recordOneTemplate(context)
+                                    if (feat != null) step1 = feat
+                                    recordingStep = 0
+                                }
+                            }
+                            stepRow(2, step2) {
+                                recordingStep = 2
+                                scope.launch {
+                                    val feat = PersonalWakeEnrollment.recordOneTemplate(context)
+                                    if (feat != null) step2 = feat
+                                    recordingStep = 0
+                                }
+                            }
+                            stepRow(3, step3) {
+                                recordingStep = 3
+                                scope.launch {
+                                    val feat = PersonalWakeEnrollment.recordOneTemplate(context)
+                                    if (feat != null) step3 = feat
+                                    recordingStep = 0
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        val canSave = step1 != null && step2 != null && step3 != null && recordingStep == 0
+                        TextButton(
+                            enabled = canSave,
+                            onClick = {
+                                if (!canSave) return@TextButton
+                                coroutineScope.launch {
+                                    val templates =
+                                        listOf(step1!!, step2!!, step3!!).map { f ->
+                                            WakeWordPreferences.PersonalWakeTemplate(features = f.toList())
+                                        }
+                                    wakePrefs.savePersonalWakeTemplates(templates)
+                                }
+                                personalWakeConfigDialogVisible = false
+                            }
+                        ) {
+                            Text(text = stringResource(R.string.voice_wakeup_personal_config_save))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            enabled = recordingStep == 0,
+                            onClick = { personalWakeConfigDialogVisible = false }
+                        ) {
+                            Text(text = stringResource(R.string.voice_wakeup_personal_config_cancel))
+                        }
+                    }
+                )
             }
 
             // 加载指示器覆盖层
@@ -487,133 +662,3 @@ fun AssistantConfigScreen() {
     }
 }
 
-@Composable
-private fun CompactSwitchRow(
-    title: String,
-    description: String,
-    checked: Boolean,
-    enabled: Boolean = true,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-            Text(text = title, style = MaterialTheme.typography.bodyMedium)
-            if (description.isNotBlank()) {
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun VoiceAutoAttachItemEditor(
-    item: WakeWordPreferences.VoiceAutoAttachItem,
-    onItemChange: (WakeWordPreferences.VoiceAutoAttachItem) -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = voiceAutoAttachTypeLabel(item.type),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Switch(
-                        checked = item.enabled,
-                        onCheckedChange = { onItemChange(item.copy(enabled = it)) }
-                    )
-                    IconButton(onClick = onDelete) {
-                        Icon(imageVector = Icons.Filled.Delete, contentDescription = null)
-                    }
-                }
-            }
-
-            var typeExpanded by remember(item.id) { mutableStateOf(false) }
-            ExposedDropdownMenuBox(
-                expanded = typeExpanded,
-                onExpandedChange = { typeExpanded = it }
-            ) {
-                OutlinedTextField(
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth(),
-                    value = voiceAutoAttachTypeLabel(item.type),
-                    onValueChange = {},
-                    readOnly = true,
-                    singleLine = true,
-                    label = { Text(text = "类型") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeExpanded) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent
-                    )
-                )
-
-                ExposedDropdownMenu(
-                    expanded = typeExpanded,
-                    onDismissRequest = { typeExpanded = false }
-                ) {
-                    WakeWordPreferences.VoiceAutoAttachType.entries.forEach { t ->
-                        DropdownMenuItem(
-                            text = { Text(text = voiceAutoAttachTypeLabel(t)) },
-                            onClick = {
-                                typeExpanded = false
-                                onItemChange(item.copy(type = t))
-                            }
-                        )
-                    }
-                }
-            }
-
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = item.keywords,
-                onValueChange = { onItemChange(item.copy(keywords = it)) },
-                singleLine = true,
-                label = { Text(text = "关键词") },
-                supportingText = { Text(text = stringResource(R.string.voice_keyword_attachments_keyword_supporting)) },
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent
-                )
-            )
-        }
-    }
-}
-
-private fun voiceAutoAttachTypeLabel(type: WakeWordPreferences.VoiceAutoAttachType): String {
-    return when (type) {
-        WakeWordPreferences.VoiceAutoAttachType.SCREEN_OCR -> "屏幕内容"
-        WakeWordPreferences.VoiceAutoAttachType.NOTIFICATIONS -> "通知"
-        WakeWordPreferences.VoiceAutoAttachType.LOCATION -> "位置"
-    }
-}
