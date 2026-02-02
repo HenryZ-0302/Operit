@@ -11,7 +11,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
@@ -25,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -45,6 +48,8 @@ fun WorkflowListScreen(
     onNavigateToDetail: (String) -> Unit,
     viewModel: WorkflowViewModel = viewModel()
 ) {
+    val context = LocalContext.current
+
     var showCreateDialog by remember { mutableStateOf(false) }
     var showTemplateDialog by remember { mutableStateOf(false) }
     var isFabMenuExpanded by remember { mutableStateOf(false) }
@@ -65,7 +70,7 @@ fun WorkflowListScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         SpeedDialAction(
-                            text = "新建空白",
+                            text = stringResource(R.string.workflow_create_blank),
                             icon = Icons.Default.Add,
                             onClick = {
                                 showCreateDialog = true
@@ -73,7 +78,7 @@ fun WorkflowListScreen(
                             }
                         )
                         SpeedDialAction(
-                            text = "从模板新建",
+                            text = stringResource(R.string.workflow_create_from_template),
                             icon = Icons.Outlined.PlayCircle,
                             onClick = {
                                 showTemplateDialog = true
@@ -130,23 +135,23 @@ fun WorkflowListScreen(
                         Spacer(modifier = Modifier.height(24.dp))
                         
                         Text(
-                            text = "开始创建工作流",
+                            text = stringResource(R.string.workflow_start_creation),
                             style = MaterialTheme.typography.headlineSmall.copy(
                                 fontWeight = FontWeight.SemiBold
                             ),
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        
+
                         Spacer(modifier = Modifier.height(8.dp))
-                        
+
                         Text(
-                            text = "自动化你的任务流程",
+                            text = stringResource(R.string.workflow_automation_desc),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
-                        
+
                         Spacer(modifier = Modifier.height(32.dp))
-                        
+
                         FilledTonalButton(
                             onClick = { showCreateDialog = true },
                             modifier = Modifier.height(48.dp),
@@ -159,7 +164,7 @@ fun WorkflowListScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "新建工作流",
+                                text = stringResource(R.string.workflow_new),
                                 style = MaterialTheme.typography.labelLarge
                             )
                         }
@@ -209,49 +214,49 @@ fun WorkflowListScreen(
                     onDismiss = { showTemplateDialog = false },
                     onSelectIntentChatBroadcastTemplate = {
                         showTemplateDialog = false
-                        viewModel.createIntentChatBroadcastTemplateWorkflow { workflow ->
+                        viewModel.createIntentChatBroadcastTemplateWorkflow(context) { workflow ->
                             onNavigateToDetail(workflow.id)
                         }
                     },
                     onSelectChatTemplate = {
                         showTemplateDialog = false
-                        viewModel.createChatTemplateWorkflow { workflow ->
+                        viewModel.createChatTemplateWorkflow(context) { workflow ->
                             onNavigateToDetail(workflow.id)
                         }
                     },
                     onSelectConditionTemplate = {
                         showTemplateDialog = false
-                        viewModel.createConditionTemplateWorkflow { workflow ->
+                        viewModel.createConditionTemplateWorkflow(context) { workflow ->
                             onNavigateToDetail(workflow.id)
                         }
                     },
                     onSelectLogicAndTemplate = {
                         showTemplateDialog = false
-                        viewModel.createLogicAndTemplateWorkflow { workflow ->
+                        viewModel.createLogicAndTemplateWorkflow(context) { workflow ->
                             onNavigateToDetail(workflow.id)
                         }
                     },
                     onSelectLogicOrTemplate = {
                         showTemplateDialog = false
-                        viewModel.createLogicOrTemplateWorkflow { workflow ->
+                        viewModel.createLogicOrTemplateWorkflow(context) { workflow ->
                             onNavigateToDetail(workflow.id)
                         }
                     },
                     onSelectExtractTemplate = {
                         showTemplateDialog = false
-                        viewModel.createExtractTemplateWorkflow { workflow ->
+                        viewModel.createExtractTemplateWorkflow(context) { workflow ->
                             onNavigateToDetail(workflow.id)
                         }
                     },
                     onSelectErrorBranchTemplate = {
                         showTemplateDialog = false
-                        viewModel.createErrorBranchTemplateWorkflow { workflow ->
+                        viewModel.createErrorBranchTemplateWorkflow(context) { workflow ->
                             onNavigateToDetail(workflow.id)
                         }
                     },
                     onSelectSpeechTriggerTemplate = {
                         showTemplateDialog = false
-                        viewModel.createSpeechTriggerTemplateWorkflow { workflow ->
+                        viewModel.createSpeechTriggerTemplateWorkflow(context) { workflow ->
                             onNavigateToDetail(workflow.id)
                         }
                     }
@@ -275,50 +280,52 @@ private fun TemplateTypeDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择模板类型") },
+        title = { Text(stringResource(R.string.workflow_select_template_type)) },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 TemplateTypeItem(
-                    title = "Intent对话回传模板",
-                    subtitle = "Intent触发 -> 悬浮窗对话 -> 关闭 -> 广播回传AI结果",
+                    title = stringResource(R.string.workflow_template_intent_chat_broadcast_title),
+                    subtitle = stringResource(R.string.workflow_template_intent_chat_broadcast_desc),
                     onClick = onSelectIntentChatBroadcastTemplate
                 )
                 TemplateTypeItem(
-                    title = "对话模板",
-                    subtitle = "启动悬浮窗 -> 创建对话 -> 发送消息",
+                    title = stringResource(R.string.workflow_template_chat_title),
+                    subtitle = stringResource(R.string.workflow_template_chat_desc),
                     onClick = onSelectChatTemplate
                 )
                 TemplateTypeItem(
-                    title = "判断（条件比较）",
-                    subtitle = "访问网页 -> 关键字判断 -> 分支跟进",
+                    title = stringResource(R.string.workflow_template_condition_title),
+                    subtitle = stringResource(R.string.workflow_template_condition_desc),
                     onClick = onSelectConditionTemplate
                 )
                 TemplateTypeItem(
-                    title = "逻辑（AND）",
-                    subtitle = "网页内容 -> 条件A/B -> AND -> 分支",
+                    title = stringResource(R.string.workflow_template_logic_and_title),
+                    subtitle = stringResource(R.string.workflow_template_logic_and_desc),
                     onClick = onSelectLogicAndTemplate
                 )
                 TemplateTypeItem(
-                    title = "逻辑（OR）",
-                    subtitle = "网页内容 -> 条件A/B -> OR -> 分支",
+                    title = stringResource(R.string.workflow_template_logic_or_title),
+                    subtitle = stringResource(R.string.workflow_template_logic_or_desc),
                     onClick = onSelectLogicOrTemplate
                 )
                 TemplateTypeItem(
-                    title = "运算（Operator）",
-                    subtitle = "运算 visit_key -> 跟进搜索链接",
+                    title = stringResource(R.string.workflow_template_extract_title),
+                    subtitle = stringResource(R.string.workflow_template_extract_desc),
                     onClick = onSelectExtractTemplate
                 )
                 TemplateTypeItem(
-                    title = "失败分支（On Error）",
-                    subtitle = "主节点失败 -> 错误处理分支；成功 -> 正常分支",
+                    title = stringResource(R.string.workflow_template_error_branch_title),
+                    subtitle = stringResource(R.string.workflow_template_error_branch_desc),
                     onClick = onSelectErrorBranchTemplate
                 )
                 TemplateTypeItem(
-                    title = "语音触发",
-                    subtitle = "语音识别命中正则 -> 执行动作",
+                    title = stringResource(R.string.workflow_template_speech_trigger_title),
+                    subtitle = stringResource(R.string.workflow_template_speech_trigger_desc),
                     onClick = onSelectSpeechTriggerTemplate
                 )
             }
@@ -326,7 +333,7 @@ private fun TemplateTypeDialog(
         confirmButton = {},
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.workflow_close))
             }
         }
     )
@@ -445,7 +452,7 @@ fun WorkflowCard(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "禁用",
+                            text = stringResource(R.string.workflow_disabled),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                             fontSize = 10.sp
@@ -505,7 +512,7 @@ fun WorkflowCard(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "节点",
+                            text = stringResource(R.string.workflow_node),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -554,17 +561,17 @@ fun ExecutionStatusBar(
         ExecutionStatus.SUCCESS -> Triple(
             MaterialTheme.colorScheme.tertiary,
             Icons.Filled.CheckCircle,
-            "执行成功"
+            stringResource(R.string.workflow_execution_success)
         )
         ExecutionStatus.FAILED -> Triple(
             MaterialTheme.colorScheme.error,
             Icons.Filled.Error,
-            "执行失败"
+            stringResource(R.string.workflow_execution_failed)
         )
         ExecutionStatus.RUNNING -> Triple(
             MaterialTheme.colorScheme.primary,
             Icons.Outlined.PlayCircle,
-            "运行中"
+            stringResource(R.string.workflow_execution_running)
         )
     }
     
@@ -665,12 +672,12 @@ fun CreateWorkflowDialog(
                 onClick = { onCreate(name, description) },
                 enabled = name.isNotBlank()
             ) {
-                Text("创建")
+                Text(stringResource(R.string.workflow_action_create))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.workflow_close))
             }
         }
     )
@@ -681,15 +688,16 @@ private fun formatDate(timestamp: Long): String {
     return sdf.format(Date(timestamp))
 }
 
+@Composable
 private fun formatRelativeTime(timestamp: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - timestamp
-    
+
     return when {
-        diff < 60_000 -> "刚刚"
-        diff < 3600_000 -> "${diff / 60_000} 分钟前"
-        diff < 86400_000 -> "${diff / 3600_000} 小时前"
-        diff < 604800_000 -> "${diff / 86400_000} 天前"
+        diff < 60_000 -> stringResource(R.string.time_just_now)
+        diff < 3600_000 -> stringResource(R.string.time_minutes_ago, diff / 60_000)
+        diff < 86400_000 -> stringResource(R.string.time_hours_ago, diff / 3600_000)
+        diff < 604800_000 -> stringResource(R.string.time_days_ago, diff / 86400_000)
         else -> formatDate(timestamp)
     }
 }

@@ -251,7 +251,7 @@ private fun TitleBar(
             ) {
                 TitleBarButton(
                     icon = Icons.Default.Fullscreen,
-                    description = "全屏",
+                    description = stringResource(R.string.floating_fullscreen),
                     onClick = { floatContext.onModeChange(FloatingMode.FULLSCREEN) }
                 )
                 MinimizeButton(viewModel, primaryColor) {
@@ -289,7 +289,7 @@ private fun TitleBar(
                 // 返回主应用按钮
                 TitleBarButton(
                     icon = Icons.Default.Home,
-                    description = "返回主应用",
+                    description = stringResource(R.string.floating_back_to_main),
                     onClick = {
                         // 启动 MainActivity 返回主应用
                         try {
@@ -370,7 +370,7 @@ private fun MinimizeButton(
     ) {
         Icon(
             imageVector = Icons.Default.KeyboardArrowDown,
-            contentDescription = "最小化",
+            contentDescription = stringResource(R.string.floating_minimize),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp)
         )
@@ -405,7 +405,7 @@ private fun CloseButton(
     ) {
         Icon(
             imageVector = Icons.Default.Close,
-            contentDescription = "关闭",
+            contentDescription = stringResource(R.string.floating_close),
             tint = if (viewModel.closeHover) errorColor else onSurfaceVariantColor,
             modifier = Modifier.size(20.dp)
         )
@@ -616,7 +616,7 @@ private fun InputDialogHeader(viewModel: FloatingChatWindowModeViewModel) {
         IconButton(onClick = { viewModel.hideInputDialog() }) {
             Icon(
                 imageVector = Icons.Default.Close,
-                contentDescription = "关闭",
+                contentDescription = stringResource(R.string.floating_close),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -677,7 +677,7 @@ private fun ColumnScope.InputTextField(
         OutlinedTextField(
             value = floatContext.userMessage,
             onValueChange = { floatContext.userMessage = it },
-            placeholder = { Text("请输入您的问题...") },
+            placeholder = { Text(stringResource(R.string.floating_enter_your_question)) },
             modifier = Modifier
                 .fillMaxSize()
                 .focusRequester(focusRequester),
@@ -739,7 +739,7 @@ private fun ColumnScope.InputTextField(
         ) {
             Icon(
                 imageVector = if (isProcessing) Icons.Default.Close else Icons.AutoMirrored.Filled.Send,
-                contentDescription = if (isProcessing) "取消" else "发送",
+                contentDescription = if (isProcessing) stringResource(R.string.floating_chat_cancel) else stringResource(R.string.floating_chat_send),
                 tint = if (isProcessing)
                     MaterialTheme.colorScheme.onError
                 else
@@ -1004,12 +1004,12 @@ private fun ProcessingStatusIndicator(floatContext: FloatContext) {
             is InputProcessingState.Processing -> state.message
             is InputProcessingState.Connecting -> state.message
             is InputProcessingState.Receiving -> state.message
-            is InputProcessingState.ExecutingTool -> "正在使用工具: ${state.toolName}"
-            is InputProcessingState.ProcessingToolResult -> "正在处理工具结果: ${state.toolName}"
+            is InputProcessingState.ExecutingTool -> stringResource(R.string.floating_using_tool, state.toolName)
+            is InputProcessingState.ProcessingToolResult -> stringResource(R.string.floating_processing_tool_result, state.toolName)
             is InputProcessingState.Summarizing -> state.message
             is InputProcessingState.ExecutingPlan -> state.message
-            is InputProcessingState.Error -> "错误: ${state.message}"
-            else -> "处理中..."
+            is InputProcessingState.Error -> stringResource(R.string.floating_error, state.message)
+            else -> stringResource(R.string.floating_processing)
         }
         
         val backgroundColor = if (state is InputProcessingState.Error) 

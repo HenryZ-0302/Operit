@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.services.core
 
+import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.core.chat.AIMessageManager
@@ -24,6 +26,7 @@ import kotlinx.coroutines.CancellationException
  * 负责消息发送、自动总结、附件清理等核心协调逻辑
  */
 class MessageCoordinationDelegate(
+    private val context: Context,
     private val coroutineScope: CoroutineScope,
     private val chatHistoryDelegate: ChatHistoryDelegate,
     private val messageProcessingDelegate: MessageProcessingDelegate,
@@ -99,7 +102,7 @@ class MessageCoordinationDelegate(
 
                 if (chatHistoryDelegate.currentChatId.value == null) {
                     AppLogger.e(TAG, "创建新对话超时，无法发送消息")
-                    uiStateDelegate.showErrorMessage("无法创建新对话，请重试")
+                    uiStateDelegate.showErrorMessage(context.getString(R.string.chat_cannot_create_new))
                     return@launch
                 }
 
@@ -133,11 +136,12 @@ class MessageCoordinationDelegate(
         // 获取当前聊天ID和工作区路径
         val chatId = chatHistoryDelegate.currentChatId.value
         if (chatId == null) {
-            uiStateDelegate.showErrorMessage("当前没有活跃对话")
+            uiStateDelegate.showErrorMessage(context.getString(R.string.chat_no_active_conversation))
             return
         }
         val currentChat = chatHistoryDelegate.chatHistories.value.find { it.id == chatId }
         val workspacePath = currentChat?.workspace
+        val workspaceEnv = currentChat?.workspaceEnv
 
         // 更新本地Web服务器的聊天ID
         updateWebServerForCurrentChat(chatId)
@@ -189,8 +193,11 @@ class MessageCoordinationDelegate(
             attachments = currentAttachments,
             chatId = chatId,
             workspacePath = workspacePath,
+            workspaceEnv = workspaceEnv,
             promptFunctionType = promptFunctionType,
-            enableThinking = apiConfigDelegate.enableThinkingMode.value,
+            // Safety: thinking guidance and thinking mode are mutually exclusive.
+            // When guidance is enabled, we avoid enabling provider-level thinking simultaneously.
+            enableThinking = apiConfigDelegate.enableThinkingMode.value && !apiConfigDelegate.enableThinkingGuidance.value,
             thinkingGuidance = apiConfigDelegate.enableThinkingGuidance.value,
             enableMemoryQuery = shouldEnableMemoryQuery,
             enableWorkspaceAttachment = !workspacePath.isNullOrBlank(),
@@ -218,11 +225,11 @@ class MessageCoordinationDelegate(
         coroutineScope.launch {
             val enhancedAiService = getEnhancedAiService()
             if (enhancedAiService == null) {
-                uiStateDelegate.showToast("AI服务不可用，无法更新记忆")
+                uiStateDelegate.showToast(context.getString(R.string.chat_ai_service_unavailable_memory))
                 return@launch
             }
             if (chatHistoryDelegate.chatHistory.value.isEmpty()) {
-                uiStateDelegate.showToast("聊天历史为空，无需更新记忆")
+                uiStateDelegate.showToast(context.getString(R.string.chat_history_empty_no_update))
                 return@launch
             }
 
@@ -237,10 +244,15 @@ class MessageCoordinationDelegate(
                     history,
                     lastMessageContent
                 )
-                uiStateDelegate.showToast("记忆已手动更新")
+                uiStateDelegate.showToast(context.getString(R.string.chat_memory_manually_updated))
             } catch (e: Exception) {
                 AppLogger.e(TAG, "手动更新记忆失败", e)
-                uiStateDelegate.showErrorMessage("手动更新记忆失败: ${e.message}")
+                uiStateDelegate.showErrorMessage(
+                    context.getString(
+                        R.string.chat_manual_update_memory_failed,
+                        e.message ?: ""
+                    )
+                )
             }
         }
     }
@@ -250,13 +262,13 @@ class MessageCoordinationDelegate(
      */
     fun manuallySummarizeConversation() {
         if (_isSummarizing.value) {
-            uiStateDelegate.showToast("正在总结中，请稍候")
+            uiStateDelegate.showToast(context.getString(R.string.chat_summarizing_please_wait))
             return
         }
         coroutineScope.launch {
             val success = summarizeHistory(autoContinue = false)
             if (success) {
-                uiStateDelegate.showToast("对话总结已生成")
+                uiStateDelegate.showToast(context.getString(R.string.chat_conversation_summary_generated))
             }
         }
     }
@@ -311,7 +323,7 @@ class MessageCoordinationDelegate(
         messageProcessingDelegate.setSuppressIdleCompletedStateForChat(originalChatId, true)
         messageProcessingDelegate.setInputProcessingStateForChat(
             originalChatId,
-            InputProcessingState.Summarizing("正在总结记忆...")
+            InputProcessingState.Summarizing(context.getString(R.string.chat_compressing_history))
         )
 
         coroutineScope.launch {
@@ -414,7 +426,7 @@ class MessageCoordinationDelegate(
             messageProcessingDelegate.setSuppressIdleCompletedStateForChat(currentChatId, true)
             messageProcessingDelegate.setInputProcessingStateForChat(
                 currentChatId,
-                InputProcessingState.Summarizing("正在压缩历史记录...")
+                InputProcessingState.Summarizing(context.getString(R.string.chat_compressing_history))
             )
         }
 
@@ -422,7 +434,7 @@ class MessageCoordinationDelegate(
         try {
             val service = getEnhancedAiService()
             if (service == null) {
-                uiStateDelegate.showErrorMessage("AI服务不可用，无法进行总结")
+                uiStateDelegate.showErrorMessage(context.getString(R.string.chat_ai_service_unavailable_summarize))
                 return false
             }
 
@@ -466,7 +478,7 @@ class MessageCoordinationDelegate(
                 summarySuccess = true
             } else {
                 AppLogger.w(TAG, "总结失败或无需总结")
-                uiStateDelegate.showErrorMessage("总结失败: 未能生成有效总结")
+                uiStateDelegate.showErrorMessage(context.getString(R.string.chat_summarize_failed_no_valid_summary))
             }
         } catch (e: CancellationException) {
             // 总结被取消，这是正常流程
@@ -474,7 +486,12 @@ class MessageCoordinationDelegate(
             throw e // 重新抛出取消异常，让协程正确取消
         } catch (e: Exception) {
             AppLogger.e(TAG, "生成总结时出错: ${e.message}", e)
-            uiStateDelegate.showErrorMessage("总结生成失败: ${e.message ?: "发生未知错误"}")
+            uiStateDelegate.showErrorMessage(
+                context.getString(
+                    R.string.chat_summarize_generation_failed,
+                    e.message ?: ""
+                )
+            )
         } finally {
             _isSummarizing.value = false
             if (_summarizingChatId.value == currentChatId) {

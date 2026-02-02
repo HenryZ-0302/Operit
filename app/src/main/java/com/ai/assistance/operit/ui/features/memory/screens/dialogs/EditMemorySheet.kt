@@ -14,8 +14,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.Memory
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -36,13 +38,14 @@ fun EditMemorySheet(
         tags: List<String>
     ) -> Unit
 ) {
+    val defaultFolder = stringResource(R.string.memory_uncategorized)
     var title by remember { mutableStateOf(memory?.title ?: "") }
     var content by remember { mutableStateOf(memory?.content ?: "") }
     var contentType by remember { mutableStateOf(memory?.contentType ?: "text/plain") }
     var source by remember { mutableStateOf(memory?.source ?: "user_input") }
     var credibility by remember { mutableStateOf(memory?.credibility ?: 0.8f) }
     var importance by remember { mutableStateOf(memory?.importance ?: 0.5f) }
-    var folderPath by remember { mutableStateOf(memory?.folderPath ?: "未分类") }
+    var folderPath by remember { mutableStateOf(memory?.folderPath ?: defaultFolder) }
     val tags = remember { mutableStateListOf<String>() }
     
     LaunchedEffect(memory) {
@@ -63,7 +66,7 @@ fun EditMemorySheet(
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                text = if (memory == null) "新建记忆" else "编辑记忆",
+                text = if (memory == null) stringResource(R.string.memory_create_new) else stringResource(R.string.memory_edit_memory),
                 style = MaterialTheme.typography.headlineSmall,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
@@ -71,7 +74,7 @@ fun EditMemorySheet(
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
-                label = { Text("标题") },
+                label = { Text(stringResource(R.string.memory_title)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -79,7 +82,7 @@ fun EditMemorySheet(
             OutlinedTextField(
                 value = content,
                 onValueChange = { content = it },
-                label = { Text("内容") },
+                label = { Text(stringResource(R.string.memory_content)) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 100.dp, max = 200.dp),
@@ -102,14 +105,14 @@ fun EditMemorySheet(
             OutlinedTextField(
                 value = source,
                 onValueChange = { source = it },
-                label = { Text("来源") },
+                label = { Text(stringResource(R.string.memory_source)) },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             // Credibility Slider
-            Text("可信度: ${String.format("%.2f", credibility)}")
+            Text("${stringResource(R.string.memory_credibility)}: ${String.format("%.2f", credibility)}")
             Slider(
                 value = credibility,
                 onValueChange = { credibility = it },
@@ -118,7 +121,7 @@ fun EditMemorySheet(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Importance Slider
-            Text("重要性: ${String.format("%.2f", importance)}")
+            Text("${stringResource(R.string.memory_importance)}: ${String.format("%.2f", importance)}")
             Slider(
                 value = importance,
                 onValueChange = { importance = it },
@@ -131,14 +134,14 @@ fun EditMemorySheet(
                 horizontalArrangement = Arrangement.End
             ) {
                 TextButton(onClick = onDismiss) {
-                    Text("取消")
+                    Text(stringResource(R.string.memory_cancel))
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(onClick = {
                     onSave(memory, title, content, contentType, source, credibility, importance, folderPath, tags.toList())
                     onDismiss()
                 }) {
-                    Text("保存")
+                    Text(stringResource(R.string.memory_save))
                 }
             }
         }
@@ -162,7 +165,7 @@ private fun FolderSelector(
             value = selectedPath,
             onValueChange = {},
             readOnly = true,
-            label = { Text("文件夹") },
+            label = { Text(stringResource(R.string.memory_folder_label2)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .fillMaxWidth()
@@ -195,7 +198,7 @@ private fun TagsEditor(
     val keyboardController = LocalSoftwareKeyboardController.current
 
     Column {
-        Text("标签", style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(R.string.memory_tags), style = MaterialTheme.typography.labelLarge)
         Spacer(modifier = Modifier.height(8.dp))
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
@@ -222,7 +225,7 @@ private fun TagsEditor(
         OutlinedTextField(
             value = newTagText,
             onValueChange = { newTagText = it },
-            placeholder = { Text("添加新标签...") },
+            placeholder = { Text(stringResource(R.string.memory_add_tag_hint)) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),

@@ -10,6 +10,7 @@ import com.ai.assistance.operit.data.repository.UIHierarchyManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
+import com.ai.assistance.operit.R
 
 /**
  * 基于无障碍服务的UI操作监听器 实现ACCESSIBILITY权限级别的操作监听
@@ -34,7 +35,7 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
         return if (UIHierarchyManager.isAccessibilityServiceEnabled(context)) {
             ActionListener.PermissionStatus.granted()
         } else {
-            ActionListener.PermissionStatus.denied("无障碍服务未启用")
+            ActionListener.PermissionStatus.denied(context.getString(R.string.a11y_service_not_enabled))
         }
     }
 
@@ -74,7 +75,7 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
 
                 if (!isListening.compareAndSet(false, true)) {
                     AppLogger.w(TAG, "启动监听失败：已在监听中")
-                    return@withContext ActionListener.ListeningResult.failure("已在监听中")
+                    return@withContext ActionListener.ListeningResult.failure(context.getString(R.string.admin_already_listening))
                 }
 
                 actionCallback = onAction
@@ -82,12 +83,12 @@ class AccessibilityActionListener(private val context: Context) : ActionListener
                 // 直接启动监听，不需要注册回调
                 isListening.set(true)
                 AppLogger.d(TAG, "无障碍UI操作监听已启动")
-                ActionListener.ListeningResult.success("无障碍UI操作监听已启动")
+                ActionListener.ListeningResult.success(context.getString(R.string.a11y_ui_listener_started))
             } catch (e: Exception) {
                 AppLogger.e(TAG, "启动无障碍UI操作监听失败", e)
                 isListening.set(false)
                 actionCallback = null
-                ActionListener.ListeningResult.failure("启动失败: ${e.message}")
+                ActionListener.ListeningResult.failure(context.getString(R.string.admin_start_failed, e.message))
             }
         }
 

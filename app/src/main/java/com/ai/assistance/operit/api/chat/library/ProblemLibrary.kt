@@ -3,6 +3,7 @@ package com.ai.assistance.operit.api.chat.library
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.ChatMarkupRegex
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.llmprovider.AIService
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.Memory
@@ -163,12 +164,12 @@ object ProblemLibrary {
             useEnglish = useEnglish
         )
 
-        val userMessage = if (useEnglish) "Please categorize the memories above." else "请为以上记忆分类"
+        val userMessage = FunctionalPrompts.memoryAutoCategorizeUserMessage(useEnglish)
         val messages = listOf(Pair("system", systemPrompt), Pair("user", userMessage))
         val result = StringBuilder()
         
         withContext(Dispatchers.IO) {
-            val stream = aiService.sendMessage(message = userMessage, chatHistory = messages)
+            val stream = aiService.sendMessage(context = context, message = userMessage, chatHistory = messages)
             stream.collect { content -> result.append(content) }
         }
         
@@ -244,7 +245,7 @@ object ProblemLibrary {
             val memoryRepository = MemoryRepository(context, profileId)
 
             // Prune tool results to reduce token usage
-            val prunedContent = pruneToolResultContent(content)
+            val prunedContent = pruneToolResultContent(context, content)
 
             // Process conversation history: remove system messages and clean user messages
             val processedHistory = conversationHistory
@@ -255,7 +256,7 @@ object ProblemLibrary {
                     } else {
                         msgContent
                     }
-                    role to pruneToolResultContent(cleanedContent)
+                    role to pruneToolResultContent(context, cleanedContent)
                 }
 
             if (processedHistory.isEmpty()) {
@@ -326,7 +327,7 @@ object ProblemLibrary {
             if (analysis.userPreferences.isNotEmpty()) {
                 try {
                     withContext(Dispatchers.IO) {
-                        updateUserPreferencesFromAnalysis(analysis.userPreferences)
+                        updateUserPreferencesFromAnalysis(context, analysis.userPreferences)
                         AppLogger.d(TAG, "用户偏好已更新")
                     }
                 } catch (e: Exception) {
@@ -469,7 +470,7 @@ object ProblemLibrary {
             val currentPreferences = withContext(Dispatchers.IO) {
                 var preferences = ""
                 preferencesManager.getUserPreferencesFlow().take(1).collect { profile ->
-                    preferences = buildPreferencesText(profile)
+                    preferences = buildPreferencesText(context, profile)
                 }
                 preferences
             }
@@ -484,36 +485,18 @@ object ProblemLibrary {
             val duplicatesPromptPart = findAndDescribeDuplicates(candidateMemories, memoryRepository, useEnglish)
 
             val existingMemoriesPrompt = if (candidateMemories.isNotEmpty()) {
-                if (useEnglish) {
-                    "To avoid duplicates, please refer to these potentially relevant existing memories. If an extracted entity is semantically the same as an existing memory, use the `alias_for` field:\n" +
-                        candidateMemories.joinToString("\n") { "- \"${it.title}\": ${it.content.take(150).replace("\n", " ")}..." }
-                } else {
-                    "为避免重复，请参考以下记忆库中可能相关的已有记忆。在提取实体时，如果发现与下列记忆语义相同的实体，请使用`alias_for`字段进行标注：\n" +
-                        candidateMemories.joinToString("\n") { "- \"${it.title}\": ${it.content.take(150).replace("\n", " ")}..." }
-                }
+                FunctionalPrompts.knowledgeGraphExistingMemoriesPrefix(useEnglish) +
+                    candidateMemories.joinToString("\n") { "- \"${it.title}\": ${it.content.take(150).replace("\n", " ")}..." }
             } else {
-                if (useEnglish) {
-                    "The memory library is empty or no relevant memories were found. You may extract entities freely."
-                } else {
-                    "记忆库目前为空或没有找到相关记忆，请自由提取实体。"
-                }
+                FunctionalPrompts.knowledgeGraphNoExistingMemoriesMessage(useEnglish)
             }
 
             // 获取现有文件夹列表
             val existingFolders = memoryRepository.getAllFolderPaths()
-            val existingFoldersPrompt = if (existingFolders.isNotEmpty()) {
-                if (useEnglish) {
-                    "Existing folder categories (prefer reusing them):\n${existingFolders.joinToString(", ")}"
-                } else {
-                    "当前已存在的文件夹分类如下，请优先使用或参考它们来决定新知识的分类：\n${existingFolders.joinToString(", ")}"
-                }
-            } else {
-                if (useEnglish) {
-                    "No folder categories exist yet. Please create a suitable category based on the content."
-                } else {
-                    "当前还没有文件夹分类，请根据内容创建一个合适的分类。"
-                }
-            }
+            val existingFoldersPrompt = FunctionalPrompts.knowledgeGraphExistingFoldersPrompt(
+                existingFolders = existingFolders,
+                useEnglish = useEnglish
+            )
 
             val systemPrompt = FunctionalPrompts.buildKnowledgeGraphExtractionPrompt(
                 duplicatesPromptPart = duplicatesPromptPart,
@@ -523,12 +506,12 @@ object ProblemLibrary {
                 useEnglish = useEnglish
             )
 
-            val analysisMessage = buildAnalysisMessage(query, solution, conversationHistory, useEnglish)
+            val analysisMessage = buildAnalysisMessage(context, query, solution, conversationHistory, useEnglish)
             val messages = listOf(Pair("system", systemPrompt), Pair("user", analysisMessage))
             val result = StringBuilder()
 
             withContext(Dispatchers.IO) {
-                val stream = aiService.sendMessage(message = analysisMessage, chatHistory = messages)
+                val stream = aiService.sendMessage(context = context, message = analysisMessage, chatHistory = messages)
                 stream.collect { content -> result.append(content) }
             }
 
@@ -542,7 +525,7 @@ object ProblemLibrary {
             // Update request count
             apiPreferences?.incrementRequestCountForProviderModel(aiService.providerModel)
 
-            return parseAnalysisResult(ChatUtils.removeThinkingContent(result.toString()))
+            return parseAnalysisResult(context, ChatUtils.removeThinkingContent(result.toString()))
         } catch (e: Exception) {
             AppLogger.e(TAG, "生成分析失败", e)
             return ParsedAnalysis(null)
@@ -560,27 +543,24 @@ object ProblemLibrary {
             val memoriesWithSameTitle = memoryRepository.findMemoriesByTitle(title)
             if (memoriesWithSameTitle.size > 1) {
                 duplicatesFound.add(
-                    if (useEnglish) {
-                        "Found ${memoriesWithSameTitle.size} memories with the exact same title: \"$title\". Please use `merge` to combine them into a single, better memory in this analysis."
-                    } else {
-                        "发现 ${memoriesWithSameTitle.size} 个标题完全相同的记忆: \"$title\"。请在本次分析中使用 `merge` 功能将它们合并成一个单一、更完善的记忆。"
-                    }
+                    FunctionalPrompts.knowledgeGraphDuplicateTitleInstruction(
+                        title = title,
+                        count = memoriesWithSameTitle.size,
+                        useEnglish = useEnglish
+                    )
                 )
             }
         }
 
         return if (duplicatesFound.isNotEmpty()) {
-            if (useEnglish) {
-                "[IMPORTANT: deduplicate memories]\n" + duplicatesFound.joinToString("\n") + "\n"
-            } else {
-                "【重要指令：清理重复记忆】\n" + duplicatesFound.joinToString("\n") + "\n"
-            }
+            FunctionalPrompts.knowledgeGraphDuplicateHeader(useEnglish) + duplicatesFound.joinToString("\n") + "\n"
         } else {
             ""
         }
     }
 
     private fun buildAnalysisMessage(
+            context: Context,
             query: String,
             solution: String,
             conversationHistory: List<Pair<String, String>>,
@@ -595,16 +575,16 @@ object ProblemLibrary {
             messageBuilder.appendLine(solution.take(3000))
             messageBuilder.appendLine()
         } else {
-            messageBuilder.appendLine("问题:")
+            messageBuilder.appendLine(context.getString(R.string.problem_library_question))
             messageBuilder.appendLine(query)
             messageBuilder.appendLine()
-            messageBuilder.appendLine("解决方案:")
+            messageBuilder.appendLine(context.getString(R.string.problem_library_solution))
             messageBuilder.appendLine(solution.take(3000))
             messageBuilder.appendLine()
         }
         val recentHistory = conversationHistory.takeLast(10)
         if (recentHistory.isNotEmpty()) {
-            messageBuilder.appendLine(if (useEnglish) "History:" else "历史记录:")
+            messageBuilder.appendLine(if (useEnglish) "History:" else context.getString(R.string.problem_library_history))
             recentHistory.forEachIndexed { index, (role, content) ->
                 messageBuilder.appendLine("#${index + 1} $role: ${content.take(4000)}")
             }
@@ -615,7 +595,7 @@ object ProblemLibrary {
     /**
      * Parses the JSON response from the AI into a ParsedAnalysis object.
      */
-    private fun parseAnalysisResult(jsonString: String): ParsedAnalysis {
+    private fun parseAnalysisResult(context: Context, jsonString: String): ParsedAnalysis {
         return try {
             val cleanJson = ChatUtils.extractJson(jsonString)
             if (cleanJson.isEmpty() || !cleanJson.startsWith("{")) return ParsedAnalysis(null)
@@ -708,9 +688,8 @@ object ProblemLibrary {
                 }
             } ?: emptyList()
 
-
             val userPreferences = json.optJSONObject("user")?.let {
-                parseUserPreferences(it)
+                parseUserPreferences(context, it)
             } ?: ""
 
             ParsedAnalysis(
@@ -727,7 +706,7 @@ object ProblemLibrary {
         }
     }
 
-    private fun parseUserPreferences(preferencesObj: JSONObject): String {
+    private fun parseUserPreferences(context: Context, preferencesObj: JSONObject): String {
         val preferenceParts = mutableListOf<String>()
         // Helper to add preference if it exists and is not "<UNCHANGED>"
         fun addPref(key: String, prefix: String) {
@@ -736,60 +715,66 @@ object ProblemLibrary {
                 if (value.isNotEmpty()) preferenceParts.add("$prefix: $value")
             }
         }
-        addPref("age", "出生年份")
-        addPref("gender", "性别")
-        addPref("personality", "性格特点")
-        addPref("identity", "身份认同")
-        addPref("occupation", "职业")
-        addPref("aiStyle", "期待的AI风格")
+        addPref("age", context.getString(R.string.profile_birth_year))
+        addPref("gender", context.getString(R.string.profile_gender))
+        addPref("personality", context.getString(R.string.profile_personality))
+        addPref("identity", context.getString(R.string.profile_identity))
+        addPref("occupation", context.getString(R.string.profile_occupation))
+        addPref("aiStyle", context.getString(R.string.profile_ai_style))
         return preferenceParts.joinToString("; ")
     }
 
 
-    private fun buildPreferencesText(profile: com.ai.assistance.operit.data.model.PreferenceProfile): String {
+    private fun buildPreferencesText(context: Context, profile: com.ai.assistance.operit.data.model.PreferenceProfile): String {
         val parts = mutableListOf<String>()
-        if (profile.gender.isNotEmpty()) parts.add("性别: ${profile.gender}")
+        if (profile.gender.isNotEmpty()) parts.add(context.getString(R.string.profile_gender_value, profile.gender))
         if (profile.birthDate > 0) {
             val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-            parts.add("出生日期: ${dateFormat.format(java.util.Date(profile.birthDate))}")
+            parts.add(context.getString(R.string.profile_birth_date, dateFormat.format(java.util.Date(profile.birthDate))))
             val today = java.util.Calendar.getInstance()
             val birthCal = java.util.Calendar.getInstance().apply { timeInMillis = profile.birthDate }
             var age = today.get(java.util.Calendar.YEAR) - birthCal.get(java.util.Calendar.YEAR)
             if (today.get(java.util.Calendar.DAY_OF_YEAR) < birthCal.get(java.util.Calendar.DAY_OF_YEAR)) {
                 age--
             }
-            parts.add("年龄: ${age}岁")
+            parts.add(context.getString(R.string.profile_age, age))
         }
-        if (profile.personality.isNotEmpty()) parts.add("性格特点: ${profile.personality}")
-        if (profile.identity.isNotEmpty()) parts.add("身份认同: ${profile.identity}")
-        if (profile.occupation.isNotEmpty()) parts.add("职业: ${profile.occupation}")
-        if (profile.aiStyle.isNotEmpty()) parts.add("期待的AI风格: ${profile.aiStyle}")
+        if (profile.personality.isNotEmpty()) parts.add(context.getString(R.string.profile_personality_value, profile.personality))
+        if (profile.identity.isNotEmpty()) parts.add(context.getString(R.string.profile_identity_value, profile.identity))
+        if (profile.occupation.isNotEmpty()) parts.add(context.getString(R.string.profile_occupation_value, profile.occupation))
+        if (profile.aiStyle.isNotEmpty()) parts.add(context.getString(R.string.profile_ai_style_value, profile.aiStyle))
         return parts.joinToString("; ")
     }
 
-    private suspend fun updateUserPreferencesFromAnalysis(preferencesText: String) {
+    private suspend fun updateUserPreferencesFromAnalysis(context: Context, preferencesText: String) {
         if (preferencesText.isEmpty()) return
 
-        val birthDateMatch = """(出生日期|出生年月日)[:：\s]+([\d-]+)""".toRegex().find(preferencesText)
-        val birthYearMatch = """(出生年份|年龄)[:：\s]+(\d+)""".toRegex().find(preferencesText)
-        val genderMatch = """性别[:：\s]+([\u4e00-\u9fa5]+)""".toRegex().find(preferencesText)
-        val personalityMatch = """性格(特点)?[:：\s]+([\u4e00-\u9fa5、，,]+)""".toRegex().find(preferencesText)
-        val identityMatch = """身份(认同)?[:：\s]+([\u4e00-\u9fa5、，,]+)""".toRegex().find(preferencesText)
-        val occupationMatch = """职业[:：\s]+([\u4e00-\u9fa5、，,]+)""".toRegex().find(preferencesText)
-        val aiStyleMatch = """(AI风格|期待的AI风格|偏好的AI风格)[:：\s]+([\u4e00-\u9fa5、，,]+)""".toRegex().find(preferencesText)
+        fun extractValue(match: MatchResult?): String? {
+            if (match == null) return null
+            return if (match.groupValues.size > 1) match.groupValues.last().trim() else null
+        }
+
+        val birthDateMatch = "(出生日期|出生年月日|Birth Date|Date of Birth)[:：\\s]+([\\d-]+)".toRegex().find(preferencesText)
+        val birthYearMatch = "(出生年份|年龄|Birth year|Age)[:：\\s]+(\\d+)".toRegex().find(preferencesText)
+        val genderMatch = "(性别|Gender)[:：\\s]+([^;]+)".toRegex().find(preferencesText)
+        val personalityMatch = "(性格(特点)?|Personality( traits)?)[:：\\s]+([^;]+)".toRegex().find(preferencesText)
+        val identityMatch = "(身份(认同)?|Identity( recognition)?)[:：\\s]+([^;]+)".toRegex().find(preferencesText)
+        val occupationMatch = "(职业|Occupation)[:：\\s]+([^;]+)".toRegex().find(preferencesText)
+        val aiStyleMatch = "(AI风格|期待的AI风格|偏好的AI风格|AI Style|Expected AI Style|Preferred AI Style)[:：\\s]+([^;]+)".toRegex().find(preferencesText)
 
         var birthDateTimestamp: Long? = null
         if (birthDateMatch != null) {
             try {
                 val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-                val date = dateFormat.parse(birthDateMatch.groupValues[2])
+                val date = extractValue(birthDateMatch)?.let { dateFormat.parse(it) }
                 if (date != null) birthDateTimestamp = date.time
             } catch (e: Exception) {
                 AppLogger.e(TAG, "解析出生日期失败: ${e.message}")
             }
         } else if (birthYearMatch != null) {
             try {
-                val year = birthYearMatch.groupValues[2].toInt()
+                val year = extractValue(birthYearMatch)?.toInt()
+                if (year == null) return
                 val calendar = java.util.Calendar.getInstance()
                 calendar.set(year, java.util.Calendar.JANUARY, 1, 0, 0, 0)
                 calendar.set(java.util.Calendar.MILLISECOND, 0)
@@ -801,21 +786,21 @@ object ProblemLibrary {
 
         preferencesManager.updateProfileCategory(
                 birthDate = birthDateTimestamp,
-                gender = genderMatch?.groupValues?.getOrNull(1),
-                personality = personalityMatch?.groupValues?.getOrNull(2),
-                identity = identityMatch?.groupValues?.getOrNull(2),
-                occupation = occupationMatch?.groupValues?.getOrNull(1),
-                aiStyle = aiStyleMatch?.groupValues?.getOrNull(2)
+                gender = extractValue(genderMatch),
+                personality = extractValue(personalityMatch),
+                identity = extractValue(identityMatch),
+                occupation = extractValue(occupationMatch),
+                aiStyle = extractValue(aiStyleMatch)
         )
     }
 
     /**
      * Replaces the content of <tool_result> tags with a placeholder to reduce token count.
      */
-    private fun pruneToolResultContent(message: String): String {
+    private fun pruneToolResultContent(context: Context, message: String): String {
         return ChatMarkupRegex.pruneToolResultContentPattern.replace(message) { matchResult ->
             val attributes = matchResult.groupValues[1]
-            "<tool_result $attributes>[...工具结果已省略...]</tool_result>"
+            context.getString(R.string.problem_library_tool_result_pruned, attributes)
         }
     }
 

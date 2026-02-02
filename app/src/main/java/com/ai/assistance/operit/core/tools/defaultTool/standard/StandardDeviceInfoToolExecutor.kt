@@ -104,29 +104,29 @@ open class StandardDeviceInfoToolExecutor(private val context: Context) : ToolEx
 
             val networkType =
                     when {
-                        networkCapabilities == null -> "无连接"
+                        networkCapabilities == null -> "No connection"
                         networkCapabilities.hasTransport(
                                 android.net.NetworkCapabilities.TRANSPORT_WIFI
                         ) -> "WiFi"
                         networkCapabilities.hasTransport(
                                 android.net.NetworkCapabilities.TRANSPORT_CELLULAR
-                        ) -> "移动数据"
+                        ) -> "Mobile data"
                         networkCapabilities.hasTransport(
                                 android.net.NetworkCapabilities.TRANSPORT_BLUETOOTH
-                        ) -> "蓝牙"
+                        ) -> "Bluetooth"
                         networkCapabilities.hasTransport(
                                 android.net.NetworkCapabilities.TRANSPORT_ETHERNET
-                        ) -> "以太网"
-                        else -> "其他"
+                        ) -> "Ethernet"
+                        else -> "Other"
                     }
 
             // Collect additional system properties
             val additionalInfo = mutableMapOf<String, String>()
-            additionalInfo["设备名称"] = Build.DEVICE
-            additionalInfo["产品名称"] = Build.PRODUCT
-            additionalInfo["硬件名称"] = Build.HARDWARE
-            additionalInfo["构建指纹"] = Build.FINGERPRINT
-            additionalInfo["构建时间"] = java.util.Date(Build.TIME).toString()
+            additionalInfo["Device name"] = Build.DEVICE
+            additionalInfo["Product name"] = Build.PRODUCT
+            additionalInfo["Hardware name"] = Build.HARDWARE
+            additionalInfo["Build fingerprint"] = Build.FINGERPRINT
+            additionalInfo["Build time"] = java.util.Date(Build.TIME).toString()
 
             // Create result data object
             val deviceInfoResult =

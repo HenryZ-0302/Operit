@@ -31,6 +31,7 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import com.ai.assistance.operit.R
 
 class SkillMarketViewModel(
     private val context: Context,
@@ -196,7 +197,7 @@ class SkillMarketViewModel(
         } else {
             PublishDraft(
                 title = issue.title,
-                description = "无法解析Skill描述，请手动填写。",
+                description = "Unable to parse Skill description, please fill manually.",
                 repositoryUrl = ""
             )
         }
@@ -209,7 +210,7 @@ class SkillMarketViewModel(
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         } catch (e: Exception) {
-            _errorMessage.value = "启动登录失败: ${e.message}"
+            _errorMessage.value = context.getString(R.string.skillmarket_login_failed, e.message ?: "")
             AppLogger.e(TAG, "Failed to initiate GitHub login", e)
         }
     }
@@ -218,9 +219,9 @@ class SkillMarketViewModel(
         viewModelScope.launch {
             try {
                 githubAuth.logout()
-                Toast.makeText(context, "已退出登录", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, context.getString(R.string.skillmarket_logged_out), Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                _errorMessage.value = "退出登录失败: ${e.message}"
+                _errorMessage.value = context.getString(R.string.skillmarket_logout_failed, e.message ?: "")
                 AppLogger.e(TAG, "Failed to logout from GitHub", e)
             }
         }
@@ -257,8 +258,8 @@ class SkillMarketViewModel(
                         _hasMore.value = issues.size >= MARKET_PAGE_SIZE
                     },
                     onFailure = { error ->
-                        val msg = error.message ?: "未知错误"
-                        _errorMessage.value = "加载Skill市场失败: $msg"
+                        val msg = error.message ?: "Unknown error"
+                        _errorMessage.value = context.getString(R.string.skillmarket_load_failed, msg)
                         _skillIssues.value = emptyList()
                         _hasMore.value = false
 
@@ -270,7 +271,7 @@ class SkillMarketViewModel(
                     }
                 )
             } catch (e: Exception) {
-                _errorMessage.value = "网络错误: ${e.message}"
+                _errorMessage.value = context.getString(R.string.skillmarket_network_error, e.message ?: "")
                 _skillIssues.value = emptyList()
                 AppLogger.e(TAG, "Exception while loading skill market data", e)
             } finally {
@@ -317,8 +318,8 @@ class SkillMarketViewModel(
                         _hasMore.value = issues.size >= MARKET_PAGE_SIZE
                     },
                     onFailure = { error ->
-                        val msg = error.message ?: "未知错误"
-                        _errorMessage.value = "加载更多失败: $msg"
+                        val msg = error.message ?: "Unknown error"
+                        _errorMessage.value = context.getString(R.string.skillmarket_load_more_failed, msg)
 
                         if (msg.contains("403") || msg.contains("rate") || msg.contains("Rate")) {
                             _isRateLimitError.value = !isLoggedIn
@@ -328,7 +329,7 @@ class SkillMarketViewModel(
                     }
                 )
             } catch (e: Exception) {
-                _errorMessage.value = "网络错误: ${e.message}"
+                _errorMessage.value = context.getString(R.string.skillmarket_network_error, e.message ?: "")
                 AppLogger.e(TAG, "Exception while loading more skill market data", e)
             } finally {
                 _isLoadingMore.value = false
@@ -368,7 +369,7 @@ class SkillMarketViewModel(
     fun loadUserPublishedSkills() {
         viewModelScope.launch {
             if (!githubAuth.isLoggedIn()) {
-                _errorMessage.value = "请先登录GitHub"
+                _errorMessage.value = context.getString(R.string.skillmarket_github_login_required)
                 return@launch
             }
 
@@ -378,7 +379,7 @@ class SkillMarketViewModel(
             try {
                 val userInfo = githubAuth.getCurrentUserInfo()
                 if (userInfo == null) {
-                    _errorMessage.value = "无法获取用户信息"
+                    _errorMessage.value = context.getString(R.string.skillmarket_unable_get_user_info)
                     return@launch
                 }
 
@@ -414,12 +415,12 @@ class SkillMarketViewModel(
                         _userPublishedSkills.value = issues
                     },
                     onFailure = { error ->
-                        _errorMessage.value = "加载已发布 Skill 失败: ${error.message}"
+                        _errorMessage.value = context.getString(R.string.skillmarket_load_published_failed, error.message ?: "")
                         AppLogger.e(TAG, "Failed to load user published skills", error)
                     }
                 )
             } catch (e: Exception) {
-                _errorMessage.value = "网络错误: ${e.message}"
+                _errorMessage.value = context.getString(R.string.skillmarket_network_error, e.message ?: "")
                 AppLogger.e(TAG, "Network error while loading user published skills", e)
             } finally {
                 _isLoading.value = false
@@ -431,7 +432,7 @@ class SkillMarketViewModel(
         viewModelScope.launch {
             try {
                 if (!githubAuth.isLoggedIn()) {
-                    _errorMessage.value = "请先登录GitHub"
+                    _errorMessage.value = context.getString(R.string.skillmarket_github_login_required)
                     return@launch
                 }
 
@@ -445,17 +446,17 @@ class SkillMarketViewModel(
 
                 result.fold(
                     onSuccess = {
-                        Toast.makeText(context, "已从市场移除", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.skillmarket_removed_from_market), Toast.LENGTH_SHORT).show()
                         loadUserPublishedSkills()
                         loadSkillMarketData()
                     },
                     onFailure = { error ->
-                        _errorMessage.value = "移除失败: ${error.message}"
+                        _errorMessage.value = context.getString(R.string.skillmarket_remove_failed, error.message ?: "")
                         AppLogger.e(TAG, "Failed to remove skill from market", error)
                     }
                 )
             } catch (e: Exception) {
-                _errorMessage.value = "移除失败: ${e.message}"
+                _errorMessage.value = context.getString(R.string.skillmarket_remove_failed, e.message ?: "")
                 AppLogger.e(TAG, "Failed to remove skill from market", e)
             } finally {
                 _isLoading.value = false
@@ -479,12 +480,12 @@ class SkillMarketViewModel(
                         _issueComments.value = _issueComments.value + (issueNumber to comments)
                     },
                     onFailure = { error ->
-                        _errorMessage.value = "加载评论失败: ${error.message}"
+                        _errorMessage.value = context.getString(R.string.skillmarket_load_comments_failed, error.message ?: "")
                         AppLogger.e(TAG, "Failed to load issue comments", error)
                     }
                 )
             } catch (e: Exception) {
-                _errorMessage.value = "加载评论失败: ${e.message}"
+                _errorMessage.value = context.getString(R.string.skillmarket_load_comments_failed, e.message ?: "")
                 AppLogger.e(TAG, "Failed to load issue comments", e)
             } finally {
                 _isLoadingComments.value = _isLoadingComments.value - issueNumber
@@ -500,7 +501,7 @@ class SkillMarketViewModel(
             _isPostingComment.value = _isPostingComment.value + issueNumber
             try {
                 if (!githubAuth.isLoggedIn()) {
-                    _errorMessage.value = "请先登录GitHub"
+                    _errorMessage.value = context.getString(R.string.skillmarket_github_login_required)
                     return@launch
                 }
 
@@ -516,12 +517,12 @@ class SkillMarketViewModel(
                         loadIssueComments(issueNumber)
                     },
                     onFailure = { error ->
-                        _errorMessage.value = "发表评论失败: ${error.message}"
+                        _errorMessage.value = context.getString(R.string.skillmarket_post_comment_failed, error.message ?: "")
                         AppLogger.e(TAG, "Failed to post issue comment", error)
                     }
                 )
             } catch (e: Exception) {
-                _errorMessage.value = "发表评论失败: ${e.message}"
+                _errorMessage.value = context.getString(R.string.skillmarket_post_comment_failed, e.message ?: "")
                 AppLogger.e(TAG, "Failed to post issue comment", e)
             } finally {
                 _isPostingComment.value = _isPostingComment.value - issueNumber
@@ -626,36 +627,41 @@ class SkillMarketViewModel(
             appendLine("<!-- operit-parser-version: $version -->")
             appendLine()
 
-            appendLine("## 📋 Skill 信息")
+            appendLine(context.getString(R.string.skill_publish_body_section_skill_info))
             appendLine()
             appendLine(description)
             appendLine()
 
             if (repositoryUrl.isNotBlank()) {
-                appendLine("## 🔗 仓库信息")
+                appendLine(context.getString(R.string.skill_publish_body_section_repo_info))
                 appendLine()
-                appendLine("**仓库地址:** $repositoryUrl")
+                appendLine(context.getString(R.string.skill_publish_body_label_repo_url, repositoryUrl))
                 appendLine()
             }
 
             if (repositoryUrl.isNotBlank()) {
-                appendLine("## 📦 安装方式")
+                appendLine(context.getString(R.string.skill_publish_body_section_install_method))
                 appendLine()
-                appendLine("1. 打开 Operit → 包管理 → Skills")
-                appendLine("2. 点击「导入 Skill」→ 「从仓库导入」")
-                appendLine("3. 输入仓库地址：`$repositoryUrl`")
-                appendLine("4. 确认导入")
+                appendLine(context.getString(R.string.skill_publish_body_install_step1))
+                appendLine(context.getString(R.string.skill_publish_body_install_step2))
+                appendLine(context.getString(R.string.skill_publish_body_install_step3, repositoryUrl))
+                appendLine(context.getString(R.string.skill_publish_body_install_step4))
                 appendLine()
             }
 
-            appendLine("## 🛠️ 技术信息")
+            appendLine(context.getString(R.string.skill_publish_body_section_tech_info))
             appendLine()
-            appendLine("| 项目 | 值 |")
-            appendLine("|------|-----|")
-            appendLine("| 发布平台 | Operit Skill 市场 |")
-            appendLine("| 解析版本 | 1.0 |")
-            appendLine("| 发布时间 | ${LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))} |")
-            appendLine("| 状态 | ⏳ Pending Review |")
+            appendLine(context.getString(R.string.skill_publish_body_table_header))
+            appendLine(context.getString(R.string.skill_publish_body_table_separator))
+            appendLine(context.getString(R.string.skill_publish_body_table_row_platform))
+            appendLine(context.getString(R.string.skill_publish_body_table_row_parser_version))
+            appendLine(
+                context.getString(
+                    R.string.skill_publish_body_table_row_publish_time,
+                    LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                )
+            )
+            appendLine(context.getString(R.string.skill_publish_body_table_row_status_pending))
             appendLine()
         }
     }
@@ -682,7 +688,7 @@ class SkillMarketViewModel(
     fun installSkillFromRepoUrl(repoUrl: String) {
         val key = repoUrl.trim()
         if (key.isBlank()) {
-            _errorMessage.value = "无效的仓库地址"
+            _errorMessage.value = context.getString(R.string.skillmarket_invalid_repo_url)
             return
         }
 
@@ -694,7 +700,7 @@ class SkillMarketViewModel(
                 _installedSkillRepoUrls.value = _installedSkillRepoUrls.value + key
                 refreshInstalledSkills()
             } catch (e: Exception) {
-                _errorMessage.value = "安装失败: ${e.message}"
+                _errorMessage.value = context.getString(R.string.skillmarket_install_failed, e.message ?: "")
                 AppLogger.e(TAG, "Failed to install skill from repo", e)
             } finally {
                 _installingSkills.value = _installingSkills.value - key
@@ -822,17 +828,17 @@ class SkillMarketViewModel(
 
                         Toast.makeText(
                             context,
-                            "点赞成功！",
+                            "Liked successfully!",
                             Toast.LENGTH_SHORT
                         ).show()
                     },
                     onFailure = { error ->
-                        _errorMessage.value = "点赞失败: ${error.message}"
+                        _errorMessage.value = context.getString(R.string.skillmarket_like_failed, error.message ?: "")
                         AppLogger.e(TAG, "Failed to add reaction to issue #$issueNumber", error)
                     }
                 )
             } catch (e: Exception) {
-                _errorMessage.value = "点赞时发生错误: ${e.message}"
+                _errorMessage.value = context.getString(R.string.skillmarket_like_error, e.message ?: "")
                 AppLogger.e(TAG, "Exception while adding reaction to issue #$issueNumber", e)
             } finally {
                 _isReacting.value = _isReacting.value - issueNumber

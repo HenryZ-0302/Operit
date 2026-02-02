@@ -73,8 +73,8 @@ class FileBindingService(context: Context) {
     ): Pair<String, String> {
         if (originalContent.isNotEmpty() && !aiGeneratedCode.contains("[START-")) {
             val errorMsg =
-                "如果你想重写整个已存在文件：请先 delete_file 再 write_file（不要直接覆盖）。" +
-                "如果你想修改文件：请用 apply_file 的 type=replace/delete 并提供 old/new（或 old）。"
+                "If you want to rewrite an entire existing file: please delete_file first then write_file (do not overwrite directly)." +
+                "If you want to modify a file: please use apply_file with type=replace/delete and provide old/new (or old)."
             AppLogger.w(TAG, "Refusing full overwrite for existing content without structured edit blocks. $errorMsg")
             return Pair(originalContent, errorMsg)
         }

@@ -2,6 +2,7 @@ package com.ai.assistance.operit.data.repository
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.db.ObjectBoxManager
 import com.ai.assistance.operit.data.model.Memory
 import com.ai.assistance.operit.data.model.MemoryLink
@@ -34,6 +35,7 @@ import com.ai.assistance.operit.data.model.SerializableMemory
 import com.ai.assistance.operit.data.model.SerializableLink
 import com.ai.assistance.operit.data.model.ImportStrategy
 import com.ai.assistance.operit.data.model.MemoryImportResult
+import com.ai.assistance.operit.util.OperitPaths
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
@@ -56,7 +58,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
 
         fun normalizeFolderPath(folderPath: String?): String? {
             val raw = folderPath?.trim() ?: return null
-            if (raw.isBlank() || raw == "未分类") return null
+            if (raw.isBlank()) return null
 
             val parts = raw.replace('\\', '/')
                 .split('/')
@@ -75,7 +77,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
     
     // --- HNSW向量索引集成 ---
     private val vectorIndexManager: VectorIndexManager<IndexItem<Memory>, String> by lazy {
-        val indexFile = File(context.filesDir, "memory_hnsw_${profileId}.idx")
+        val indexFile = File(OperitPaths.vectorIndexDir(context), "memory_hnsw_${profileId}.idx")
         
         // 检查是否有旧的100维向量，如果有则删除旧索引
         val hasOldEmbeddings = memoryBox.all.any { it.embedding != null && it.embedding!!.vector.size == 100 }
@@ -113,7 +115,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         // 2. 创建一个初始的Memory对象并立即保存以获得ID
         val documentMemory = Memory(
             title = documentName,
-            content = "这是一个文档节点，包含了文件 '${documentName}' 的内容。",
+            content = context.getString(R.string.memory_repository_document_node_content, documentName),
             uuid = UUID.randomUUID().toString()
         ).apply {
             this.embedding = Embedding(documentEmbedding)
@@ -124,7 +126,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         memoryBox.put(documentMemory)
 
         // 3. 为文档块创建专用的HNSW索引，确保从干净的状态开始
-        val indexFile = context.getFileStreamPath("doc_index_${documentMemory.id}.hnsw")
+        val indexFile = File(OperitPaths.vectorIndexDir(context), "doc_index_${documentMemory.id}.hnsw")
         if (indexFile.exists()) {
             indexFile.delete()
         }
@@ -447,7 +449,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         val normalizedFolderPath = normalizeFolderPath(folderPath)
 
         val memoriesInScope = if (normalizedFolderPath == null) {
-            if (folderPath == "未分类") {
+            if (folderPath == context.getString(R.string.memory_uncategorized)) {
                 memoryBox.all.filter { normalizeFolderPath(it.folderPath) == null }
             } else {
                 memoryBox.all
@@ -872,7 +874,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
         val allMemories = memoryBox.all
         com.ai.assistance.operit.util.AppLogger.d("MemoryRepository", "getAllFolderPaths: Total memories: ${allMemories.size}")
         val folderPaths = allMemories
-            .map { normalizeFolderPath(it.folderPath) ?: "未分类" }
+            .map { normalizeFolderPath(it.folderPath) ?: context.getString(R.string.memory_uncategorized) }
             .distinct()
             .sorted()
         com.ai.assistance.operit.util.AppLogger.d("MemoryRepository", "getAllFolderPaths: Unique folders: $folderPaths")
@@ -886,7 +888,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
      */
     suspend fun getMemoriesByFolderPath(folderPath: String): List<Memory> = withContext(Dispatchers.IO) {
         val normalizedTarget = normalizeFolderPath(folderPath)
-        if (folderPath == "未分类" || normalizedTarget == null) {
+        if (folderPath == context.getString(R.string.memory_uncategorized) || normalizedTarget == null) {
             memoryBox.all.filter { normalizeFolderPath(it.folderPath) == null }
         } else {
             memoryBox.all.filter { memory ->
@@ -950,7 +952,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
      */
     suspend fun moveMemoriesToFolder(memoryIds: List<Long>, targetFolderPath: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val normalizedTarget = if (targetFolderPath == "未分类") {
+            val normalizedTarget = if (targetFolderPath == context.getString(R.string.memory_uncategorized)) {
                 null
             } else {
                 normalizeFolderPath(targetFolderPath)
@@ -979,8 +981,8 @@ class MemoryRepository(private val context: Context, profileId: String) {
             
             // 创建一个占位记忆
             val placeholder = Memory(
-                title = "文件夹说明",
-                content = "这是 $normalizedFolderPath 文件夹的说明。",
+                title = context.getString(R.string.memory_repository_folder_description_title),
+                content = context.getString(R.string.memory_repository_folder_description_content, normalizedFolderPath),
                 uuid = UUID.randomUUID().toString(),
                 folderPath = normalizedFolderPath
             )
@@ -1327,8 +1329,8 @@ class MemoryRepository(private val context: Context, profileId: String) {
                     // 检测是否为跨文件夹连接
                     // 始终检测跨文件夹连接，无论是否选择了特定文件夹
                     val isCrossFolder = if (sourceMemory != null && targetMemory != null) {
-                        val sourcePath = normalizeFolderPath(sourceMemory.folderPath) ?: "未分类"
-                        val targetPath = normalizeFolderPath(targetMemory.folderPath) ?: "未分类"
+                        val sourcePath = normalizeFolderPath(sourceMemory.folderPath) ?: context.getString(R.string.memory_uncategorized)
+                        val targetPath = normalizeFolderPath(targetMemory.folderPath) ?: context.getString(R.string.memory_uncategorized)
                         sourcePath != targetPath
                     } else {
                         false
@@ -1364,7 +1366,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
     suspend fun deleteFolder(folderPath: String) {
         withContext(Dispatchers.IO) {
             val normalizedTarget = normalizeFolderPath(folderPath)
-            val memories = if (normalizedTarget == null || folderPath == "未分类") {
+            val memories = if (normalizedTarget == null || folderPath == context.getString(R.string.memory_uncategorized)) {
                 memoryBox.all.filter { normalizeFolderPath(it.folderPath) == null }
             } else {
                 memoryBox.all.filter { normalizeFolderPath(it.folderPath) == normalizedTarget }
@@ -1373,7 +1375,7 @@ class MemoryRepository(private val context: Context, profileId: String) {
                 memory.folderPath = null
                 memoryBox.put(memory)
             }
-            com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Deleted folder '$folderPath', moved ${memories.size} memories to '未分类'")
+            com.ai.assistance.operit.util.AppLogger.d("MemoryRepo", "Deleted folder '$folderPath', moved ${memories.size} memories to uncategorized")
         }
     }
 

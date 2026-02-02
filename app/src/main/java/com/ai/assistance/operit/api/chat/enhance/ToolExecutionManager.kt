@@ -28,6 +28,10 @@ import kotlinx.coroutines.flow.flow
 object ToolExecutionManager {
     private const val TAG = "ToolExecutionManager"
 
+    private fun ensureEndsWithNewline(content: String): String {
+        return if (content.endsWith("\n")) content else "$content\n"
+    }
+
     /**
      * 从 AI 响应中提取工具调用。
      * @param response AI 的响应字符串。
@@ -118,20 +122,20 @@ object ToolExecutionManager {
                         toolName = invocation.tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "参数无效: ${validationResult.errorMessage}"
+                        error = "Invalid parameters: ${validationResult.errorMessage}"
                     )
                 )
             }
         }
 
         return executor.invokeAndStream(invocation.tool).catch { e ->
-            AppLogger.e(TAG, "工具执行错误: ${invocation.tool.name}", e)
+            AppLogger.e(TAG, "Tool execution error: ${invocation.tool.name}", e)
             emit(
                 ToolResult(
                     toolName = invocation.tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "工具执行错误: ${e.message}"
+                    error = "Tool execution error: ${e.message}"
                 )
             )
         }
@@ -207,7 +211,7 @@ object ToolExecutionManager {
                     permissionDeniedResults.add(it)
                     val toolResultStatusContent =
                         ConversationMarkupManager.formatToolResultForMessage(it)
-                    collector.emit(toolResultStatusContent)
+                    collector.emit(ensureEndsWithNewline(toolResultStatusContent))
                 }
             }
         }
@@ -267,7 +271,7 @@ object ToolExecutionManager {
                 buildToolNotAvailableErrorMessage(toolName, packageManager, toolHandler)
             val notAvailableContent =
                 ConversationMarkupManager.createToolNotAvailableError(toolName, errorMessage)
-            collector.emit(notAvailableContent)
+            collector.emit(ensureEndsWithNewline(notAvailableContent))
             return ToolResult(
                 toolName = toolName,
                 success = false,
@@ -282,7 +286,7 @@ object ToolExecutionManager {
             // 实时输出每个结果
             val toolResultStatusContent =
                 ConversationMarkupManager.formatToolResultForMessage(result)
-            collector.emit(toolResultStatusContent)
+            collector.emit(ensureEndsWithNewline(toolResultStatusContent))
         }
 
         // 为此调用聚合最终结果
@@ -291,13 +295,13 @@ object ToolExecutionManager {
                 toolName = invocation.tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "工具执行后未返回任何结果。"
+                error = "The tool execution returned no results."
             )
         }
 
         val lastResult = collectedResults.last()
         val combinedResultString = collectedResults.joinToString("\n") { res ->
-            (if (res.success) res.result.toString() else "步骤错误: ${res.error ?: "未知错误"}").trim()
+            (if (res.success) res.result.toString() else "Step error: ${res.error ?: "Unknown error"}").trim()
         }.trim()
 
         return ToolResult(
@@ -319,11 +323,7 @@ object ToolExecutionManager {
         return when {
             toolName.contains('.') && !toolName.contains(':') -> {
                 val parts = toolName.split('.', limit = 2)
-                "工具调用语法错误: 对于工具包中的工具，应使用 'packName:toolName' 格式，而不是 '${toolName}'。您可能想调用 '${
-                    parts.getOrNull(
-                        0
-                    )
-                }:${parts.getOrNull(1)}'。"
+                "Tool invocation syntax error: for tools inside a package, use the 'packName:toolName' format instead of '${toolName}'. You may want to call '${parts.getOrNull(0)}:${parts.getOrNull(1)}'."
             }
 
             toolName.contains(':') -> {
@@ -335,7 +335,7 @@ object ToolExecutionManager {
                 val isAvailable = isJsPackageAvailable || isMcpServerAvailable
 
                 if (!isAvailable) {
-                    "工具包或MCP服务器 '$packName' 不存在。"
+                    "The tool package or MCP server '$packName' does not exist."
                 } else {
                     // 包存在，检查是否已激活（通过检查该包的任何工具是否已注册）
                     val packageTools =
@@ -346,10 +346,10 @@ object ToolExecutionManager {
 
                     if (isPackageActivated) {
                         // 包已激活但工具不存在
-                        "工具 '$toolNamePart' 在工具包 '$packName' 中不存在。请使用 'use_package' 工具并指定包名 '$packName' 来查看该包的所有可用工具。"
+                        "Tool '$toolNamePart' does not exist in tool package '$packName'. Please use the 'use_package' tool and specify package name '$packName' to list all available tools in this package."
                     } else {
                         // 包未激活
-                        "工具包 '$packName' 未激活。已尝试自动激活但失败或工具 '$toolNamePart' 不存在。请使用 'use_package' 并指定包名 '$packName' 检查可用工具。"
+                        "Tool package '$packName' is not activated. Auto-activation was attempted but failed, or tool '$toolNamePart' does not exist. Please use 'use_package' with package name '$packName' to check available tools."
                     }
                 }
             }
@@ -358,9 +358,9 @@ object ToolExecutionManager {
                 // 检查是否直接把包名当作工具名调用了
                 val isPackageName = packageManager.getAvailablePackages().containsKey(toolName)
                 if (isPackageName) {
-                    "错误: '$toolName' 是一个工具包，不是工具。请先使用 'use_package' 工具并指定包名 '$toolName' 来激活这个工具包，然后才能使用其中的工具。"
+                    "Error: '$toolName' is a tool package, not a tool. Please use the 'use_package' tool with package name '$toolName' to activate this package before using its tools."
                 } else {
-                    "工具 '${toolName}' 不可用或不存在。如果这是一个工具包中的工具，请使用 'packName:toolName' 格式调用。"
+                    "Tool '${toolName}' is unavailable or does not exist. If this is a tool inside a package, call it using the 'packName:toolName' format."
                 }
             }
         }

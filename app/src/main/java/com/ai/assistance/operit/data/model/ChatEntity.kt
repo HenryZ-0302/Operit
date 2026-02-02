@@ -19,6 +19,7 @@ data class ChatEntity(
         val group: String? = null,
         val displayOrder: Long = -createdAt,
         val workspace: String? = null,
+        val workspaceEnv: String? = null,
         val parentChatId: String? = null,
         val characterCardName: String? = null,
         val locked: Boolean = false
@@ -45,6 +46,7 @@ data class ChatEntity(
                 group = group,
                 displayOrder = displayOrder,
                 workspace = workspace,
+                workspaceEnv = workspaceEnv,
                 parentChatId = parentChatId,
                 characterCardName = characterCardName,
                 locked = locked
@@ -76,6 +78,7 @@ data class ChatEntity(
                     group = chatHistory.group,
                     displayOrder = if (chatHistory.displayOrder != 0L) chatHistory.displayOrder else -now,
                     workspace = chatHistory.workspace,
+                    workspaceEnv = chatHistory.workspaceEnv,
                     parentChatId = chatHistory.parentChatId,
                     characterCardName = chatHistory.characterCardName,
                     locked = chatHistory.locked

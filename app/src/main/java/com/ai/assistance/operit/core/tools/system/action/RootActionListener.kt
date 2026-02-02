@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.core.tools.system.action
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import com.ai.assistance.operit.core.tools.system.shell.ShellExecutorFactory
@@ -57,11 +58,11 @@ class RootActionListener(private val context: Context) : ActionListener {
             return if (available) {
                 ActionListener.PermissionStatus.granted()
             } else {
-                ActionListener.PermissionStatus.denied("设备上没有Root权限")
+                ActionListener.PermissionStatus.denied(context.getString(R.string.root_no_root_permission))
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "检查Root权限状态时出错", e)
-            return ActionListener.PermissionStatus.denied("检查Root权限出错: ${e.message}")
+            return ActionListener.PermissionStatus.denied(context.getString(R.string.root_check_permission_error, e.message ?: ""))
         }
     }
 
@@ -95,7 +96,7 @@ class RootActionListener(private val context: Context) : ActionListener {
                 }
 
                 if (isListening.get()) {
-                    return@withContext ActionListener.ListeningResult.failure("已在监听中")
+                    return@withContext ActionListener.ListeningResult.failure(context.getString(R.string.admin_already_listening))
                 }
 
                 actionCallback = onAction
@@ -106,11 +107,11 @@ class RootActionListener(private val context: Context) : ActionListener {
                 // 启动底层系统事件监控
                 startRootLevelMonitoring()
 
-                return@withContext ActionListener.ListeningResult.success("Root UI操作监听已启动")
+                return@withContext ActionListener.ListeningResult.success(context.getString(R.string.root_ui_listener_started))
             } catch (e: Exception) {
                 AppLogger.e(TAG, "启动Root UI操作监听失败", e)
                 isListening.set(false)
-                return@withContext ActionListener.ListeningResult.failure("启动失败: ${e.message}")
+                return@withContext ActionListener.ListeningResult.failure(context.getString(R.string.admin_start_failed, e.message ?: ""))
             }
         }
 

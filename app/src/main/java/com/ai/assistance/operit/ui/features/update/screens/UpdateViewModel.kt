@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ai.assistance.operit.data.api.GitHubApiService
 import com.ai.assistance.operit.data.api.GitHubRelease
+import com.ai.assistance.operit.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,7 +50,7 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
                     _uiState.value = UpdateUiState.Success(updates)
                 }
                 .onFailure { error ->
-                    _uiState.value = UpdateUiState.Error(error.message ?: "未知错误")
+                    _uiState.value = UpdateUiState.Error(error.message ?: context.getString(R.string.update_unknown_error))
                 }
         }
     }
@@ -72,7 +73,7 @@ class UpdateViewModel(private val context: Context) : ViewModel() {
         val body = release.body ?: ""
         
         // 提取标题（使用release name或第一行）
-        val title = release.name?.takeIf { it.isNotBlank() } ?: "版本更新"
+        val title = release.name?.takeIf { it.isNotBlank() } ?: context.getString(R.string.update_version_title)
         
         // 获取下载链接
         val downloadUrl = release.html_url

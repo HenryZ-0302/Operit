@@ -282,12 +282,12 @@ private fun MCPBrowseTab(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
-            placeholder = { Text("搜索插件名称、描述、作者...") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
+            placeholder = { Text(stringResource(R.string.mcp_market_search_hint)) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = stringResource(R.string.mcp_market_search)) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
                     IconButton(onClick = { onSearchQueryChanged("") }) {
-                        Icon(Icons.Default.Clear, contentDescription = "清空搜索")
+                        Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.mcp_market_clear_search))
                     }
                 }
             },
@@ -321,7 +321,7 @@ private fun MCPBrowseTab(
                                     fontWeight = FontWeight.Bold
                                 )
                                 IconButton(onClick = onRefresh) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "刷新")
+                                    Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.mcp_market_refresh))
                                 }
                             }
                         }

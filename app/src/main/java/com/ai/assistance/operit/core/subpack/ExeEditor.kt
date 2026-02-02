@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.core.subpack
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import java.io.File
@@ -134,7 +135,7 @@ private constructor(
      */
     fun process(): File {
         if (newIconBitmap == null) {
-            throw IllegalStateException("请先调用changeIcon方法设置新图标")
+            throw IllegalStateException(context.getString(R.string.exe_editor_change_icon_first))
         }
 
         // 确定输出文件
@@ -147,7 +148,7 @@ private constructor(
 
         // 更换图标
         if (!exeIconChanger.changeIcon(exeFile, newIconBitmap!!, outputExeFile)) {
-            throw RuntimeException("更换EXE图标失败")
+            throw RuntimeException(context.getString(R.string.exe_editor_change_icon_failed))
         }
 
         return outputExeFile

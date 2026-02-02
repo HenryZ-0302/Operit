@@ -63,6 +63,18 @@ object FileUtils {
         return extension.lowercase() in TEXT_BASED_EXTENSIONS
     }
 
+    fun isTextBasedFileName(fileName: String): Boolean {
+        val name = fileName.trim()
+        if (name.isBlank()) return false
+
+        val ext = name.substringAfterLast('.', missingDelimiterValue = "")
+        return if (ext.isBlank() || ext == name) {
+            name.lowercase() in TEXT_BASED_FILENAMES
+        } else {
+            isTextBasedExtension(ext)
+        }
+    }
+
     /**
      * Checks if a file appears to be text-like by reading its first few bytes.
      * This is more reliable than extension checking as it analyzes actual content.

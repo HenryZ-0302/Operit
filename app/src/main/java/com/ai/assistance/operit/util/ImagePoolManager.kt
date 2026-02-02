@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.OperitPaths
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -40,7 +41,7 @@ object ImagePoolManager {
      * @param cacheDirPath 本地缓存目录路径
      */
     fun initialize(cacheDirPath: File, preloadNow: Boolean = true) {
-        cacheDir = File(cacheDirPath, "image_pool")
+        cacheDir = OperitPaths.imagePoolDir(cacheDirPath)
         if (!cacheDir!!.exists()) {
             cacheDir!!.mkdirs()
             AppLogger.d(TAG, "创建图片缓存目录: ${cacheDir!!.absolutePath}")

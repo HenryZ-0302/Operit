@@ -9,6 +9,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.ai.assistance.operit.R
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
@@ -63,7 +65,7 @@ private fun AutoGlmToolContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("本次使用虚拟屏幕")
+            Text(stringResource(R.string.autoglm_virtual_screen))
             Switch(
                 checked = useVirtualScreen,
                 onCheckedChange = { onUseVirtualScreenChange(it) },

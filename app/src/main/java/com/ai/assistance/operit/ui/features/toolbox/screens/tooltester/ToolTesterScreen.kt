@@ -256,7 +256,15 @@ fun ToolDetailsSheet(
         if (toolTest.parameters.isNotEmpty()) {
             Text(context.getString(R.string.parameters_label), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
             Column(modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)).padding(8.dp)) {
-                toolTest.parameters.forEach { Text(" • ${it.name}: ${it.value}", style = MaterialTheme.typography.bodyMedium) }
+                toolTest.parameters.forEach { param ->
+                    val rawValue = param.value
+                    val preview = if (rawValue.length > 200) {
+                        "${rawValue.take(200)}... (len=${rawValue.length})"
+                    } else {
+                        rawValue
+                    }
+                    Text(" • ${param.name}: $preview", style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
 
@@ -284,10 +292,12 @@ fun ToolDetailsSheet(
 private fun getFinalToolTestGroups(context: android.content.Context): List<ToolGroup> {
     val testBaseDir = OperitPaths.testPathSdcard()
     val testFile = "$testBaseDir/test_file.txt"
+    val testLargeWriteFile = "$testBaseDir/write_large.txt"
     val testFileCopy = "$testBaseDir/test_file_copy.txt"
     val testZip = "$testBaseDir/test.zip"
     val testUnzipDir = "$testBaseDir/unzipped"
     val testImage = "$testBaseDir/test_image.png"
+    val largeWriteContent = "Large write test content.".repeat(12000)
 
     return listOf(
         ToolGroup(context.getString(R.string.env_setup_group), true, false, listOf(
@@ -314,6 +324,15 @@ private fun getFinalToolTestGroups(context: android.content.Context): List<ToolG
             ToolTest("find_files", context.getString(R.string.find_files_test), context.getString(R.string.find_files_test_desc), listOf(ToolParameter("path", testBaseDir), ToolParameter("pattern", "*.txt")))
         )),
         ToolGroup(context.getString(R.string.file_write_group), true, false, listOf(
+            ToolTest(
+                "write_file",
+                context.getString(R.string.write_large_file_test),
+                context.getString(R.string.write_large_file_test_desc),
+                listOf(
+                    ToolParameter("path", testLargeWriteFile),
+                    ToolParameter("content", largeWriteContent)
+                )
+            ),
             ToolTest("copy_file", context.getString(R.string.copy_file_test), context.getString(R.string.copy_file_test_desc), listOf(ToolParameter("source", testFile), ToolParameter("destination", testFileCopy))),
             ToolTest("move_file", context.getString(R.string.move_file_test), context.getString(R.string.move_file_test_desc), listOf(ToolParameter("source", testFileCopy), ToolParameter("destination", "$testBaseDir/moved_file.txt"))),
             ToolTest("zip_files", context.getString(R.string.zip_files_test), context.getString(R.string.zip_files_test_desc), listOf(ToolParameter("source", testBaseDir), ToolParameter("destination", testZip))),

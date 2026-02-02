@@ -2,6 +2,7 @@ package com.ai.assistance.operit.data.repository
 
 import android.content.Context
 import android.net.Uri
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import android.webkit.MimeTypeMap
 import com.ai.assistance.operit.data.model.CustomEmoji
@@ -140,12 +141,12 @@ class CustomEmojiRepository private constructor(private val context: Context) {
         try {
             // 1. 获取文件扩展名
             val extension = getFileExtension(sourceUri) ?: return@withContext Result.failure(
-                IllegalArgumentException("无法确定文件扩展名")
+                IllegalArgumentException(context.getString(R.string.emoji_cannot_determine_extension))
             )
             
             if (extension.lowercase() !in SUPPORTED_EXTENSIONS) {
                 return@withContext Result.failure(
-                    IllegalArgumentException("不支持的图片格式: $extension")
+                    IllegalArgumentException(context.getString(R.string.emoji_unsupported_image_format, extension))
                 )
             }
 
@@ -165,7 +166,7 @@ class CustomEmojiRepository private constructor(private val context: Context) {
                     input.copyTo(output)
                 }
             } ?: return@withContext Result.failure(
-                IllegalStateException("无法读取源文件")
+                IllegalStateException(context.getString(R.string.emoji_cannot_read_source))
             )
 
             // 5. 创建表情对象
@@ -199,7 +200,7 @@ class CustomEmojiRepository private constructor(private val context: Context) {
             val emoji = preferences.getCustomEmojisFlow().first()
                 .find { it.id == emojiId }
                 ?: return@withContext Result.failure(
-                    IllegalArgumentException("表情不存在: $emojiId")
+                    IllegalArgumentException(context.getString(R.string.emoji_not_exist, emojiId))
                 )
 
             // 2. 删除文件

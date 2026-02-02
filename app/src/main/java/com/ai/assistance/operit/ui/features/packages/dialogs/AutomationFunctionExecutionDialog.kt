@@ -13,9 +13,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.ai.assistance.operit.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -24,8 +27,11 @@ import kotlinx.coroutines.withContext
 @Composable
 fun AutomationFunctionExecutionDialog(
     onDismiss: () -> Unit,
-    message: String = "Kotlin UI 自动化功能执行（route/config）已移除。"
+    message: String? = null
 ) {
+    val context = LocalContext.current
+    val displayMessage = message ?: stringResource(R.string.pkg_automation_func_removed)
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier
@@ -52,14 +58,14 @@ fun AutomationFunctionExecutionDialog(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "自动化功能",
+                        text = stringResource(R.string.pkg_automation_feature),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 Text(
-                    text = message,
+                    text = displayMessage,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -69,7 +75,7 @@ fun AutomationFunctionExecutionDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("关闭")
+                        Text(stringResource(R.string.pkg_close))
                     }
                 }
             }

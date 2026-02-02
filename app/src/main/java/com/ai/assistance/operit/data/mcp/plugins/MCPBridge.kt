@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.data.mcp.plugins
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.OperitPaths
 import com.ai.assistance.operit.core.tools.system.Terminal
@@ -429,7 +430,12 @@ class MCPBridge private constructor(private val context: Context) {
                 withContext(Dispatchers.IO) {
                     try {
                         AppLogger.d(TAG, "重置桥接器 - 关闭所有服务并清空注册表...")
-                        val response = sendCommand(MCPBridgeClient.buildResetCommand())
+                        val ctx = context ?: appContext
+                        if (ctx == null) {
+                            AppLogger.e(TAG, "Cannot reset bridge: context is null")
+                            return@withContext null
+                        }
+                        val response = sendCommand(ctx, MCPBridgeClient.buildResetCommand())
                         if (response?.optBoolean("success", false) == true) {
                             AppLogger.i(TAG, "桥接器重置成功")
                         } else {
@@ -442,8 +448,22 @@ class MCPBridge private constructor(private val context: Context) {
                     }
                 }
 
+        suspend fun sendCommand(
+            command: JSONObject,
+            host: String = DEFAULT_HOST,
+            port: Int? = null
+        ): JSONObject? {
+            val ctx = appContext
+            if (ctx == null) {
+                AppLogger.e(TAG, "Cannot send command: appContext is null")
+                return null
+            }
+            return sendCommand(ctx, command, host, port)
+        }
+
         // 发送命令到桥接器
         suspend fun sendCommand(
+                context: Context,
                 command: JSONObject,
                 host: String = DEFAULT_HOST,
                 port: Int? = null
@@ -463,9 +483,9 @@ class MCPBridge private constructor(private val context: Context) {
                         val serviceName = params?.optString("name")
                         val logMessage =
                                 if (serviceName != null && serviceName.isNotEmpty()) {
-                                    "发送桥接器命令[$cmdId]: $cmdType 服务: $serviceName 其他参数: ${params.toString()}"
+                                    "${context.getString(R.string.mcp_send_command)}[$cmdId]: $cmdType ${context.getString(R.string.mcp_service_label)}: $serviceName ${context.getString(R.string.mcp_other_params)}: ${params.toString()}"
                                 } else {
-                                    "发送桥接器命令[$cmdId]: $cmdType ${if (params != null) "参数: $params" else ""}"
+                                    "${context.getString(R.string.mcp_send_command)}[$cmdId]: $cmdType ${if (params != null) "参数: $params" else ""}"
                                 }
 
                         AppLogger.d(TAG, logMessage)
@@ -515,35 +535,35 @@ class MCPBridge private constructor(private val context: Context) {
                                         AppLogger.d(TAG, "命令[$cmdId: $cmdType]原始JSON响应: $response")
 
                                         val responseLog = StringBuilder()
-                                        responseLog.append("命令[$cmdId: $cmdType")
-                                        if (serviceName != null) responseLog.append(" 服务: $serviceName")
-                                        responseLog.append("]响应: ${if (success) "成功" else "失败"} ")
+                                        responseLog.append("${context.getString(R.string.mcp_send_command)}[$cmdId: $cmdType")
+                                        if (serviceName != null) responseLog.append(" ${context.getString(R.string.mcp_service_label)}: $serviceName")
+                                        responseLog.append("]${context.getString(R.string.mcp_command_response)}: ${if (success) context.getString(R.string.mcp_success) else context.getString(R.string.mcp_failed)} ")
 
                                         if (result != null) {
                                             if (cmdType == "listtools" && result.has("tools")) {
                                                 val tools = result.optJSONArray("tools")
                                                 val toolCount = tools?.length() ?: 0
-                                                responseLog.append("获取到 $toolCount 个工具")
+                                                responseLog.append(context.getString(R.string.mcp_tools_count, toolCount))
                                                 if (toolCount > 0) {
                                                     responseLog.append(" [")
                                                     for (i in 0 until toolCount) {
                                                         val tool = tools?.optJSONObject(i)
-                                                        val toolName = tool?.optString("name", "未命名工具")
+                                                        val toolName = tool?.optString("name", context.getString(R.string.mcp_unnamed_tool))
                                                         if (i > 0) responseLog.append(", ")
                                                         responseLog.append(toolName)
                                                         if (i >= 2 && toolCount > 3) {
-                                                            responseLog.append("... (共 $toolCount 个)")
+                                                            responseLog.append("... (${context.getString(R.string.mcp_tools_total, toolCount)})")
                                                             break
                                                         }
                                                     }
                                                     responseLog.append("]")
                                                 }
                                             } else {
-                                                responseLog.append("结果: $result")
+                                                responseLog.append("${context.getString(R.string.mcp_result)}: $result")
                                             }
                                         }
 
-                                        if (error != null) responseLog.append(" 错误: $error")
+                                        if (error != null) responseLog.append(" ${context.getString(R.string.mcp_error)}: $error")
 
                                         AppLogger.d(TAG, responseLog.toString())
 

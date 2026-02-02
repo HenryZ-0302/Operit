@@ -42,21 +42,15 @@ class PromptPreferencesManager(private val context: Context) {
     }
 
     // Default prompt values for standard usage
-    val defaultIntroPrompt = "你是Operit，一个全能AI助手，旨在解决用户提出的任何任务。你有各种工具可以调用，以高效完成复杂的请求。"
-    val defaultTonePrompt = "保持有帮助的语气，并清楚地传达限制。使用问题库根据用户的风格、偏好和过去的信息个性化响应。"
-    
-    // Default prompt values for chat function
-    val defaultChatIntroPrompt = "你是Operit，一个全能AI助手，旨在解决用户提出的任何任务。你有各种工具可以调用，以高效完成复杂的请求。"
-    val defaultChatTonePrompt = "保持有帮助的语气，并清楚地传达限制。使用问题库根据用户的风格、偏好和过去的信息个性化响应。"
-    
-    // Default prompt values for voice function
-    val defaultVoiceIntroPrompt = "你是Operit语音助手。你的所有回答都将通过语音播出，所以你必须只说那些听起来自然的话。你的核心任务是进行流畅、自然的口语对话。"
-    val defaultVoiceTonePrompt = "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。你的回答就是纯文本的、可以直接朗读的对话。总是直接回答问题，不要有多余的客套话和引导语。"
-    
-    // Default prompt values for desktop pet function
-    val defaultDesktopPetIntroPrompt = "你是Operit桌宠，一个可爱、活泼、充满活力的桌面伙伴。你的主要任务是陪伴用户，提供温暖和快乐，同时也可以帮助用户完成简单任务。"
-    val defaultDesktopPetTonePrompt = "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。使用可爱、亲切、活泼的语气，经常使用表情符号增加互动感。表现得像一个真正的朋友，而不仅仅是工具。可以适当撒娇、卖萌，让用户感受到温暖和陪伴。"
+    private fun defaultIntroPrompt(profileId: String): String =
+        PromptBilingualData.getDefaultIntro(context, profileId)
 
+    private fun defaultTonePrompt(profileId: String): String =
+        PromptBilingualData.getDefaultTone(context, profileId)
+
+    private fun defaultProfileName(profileId: String): String =
+        PromptBilingualData.getDefaultProfileName(context, profileId)
+    
     // Flow of prompt profile list
     val profileListFlow: Flow<List<String>> = dataStore.data.map { preferences ->
         preferences[PROMPT_PROFILE_LIST]?.toList() ?: listOf("default")
@@ -69,9 +63,9 @@ class PromptPreferencesManager(private val context: Context) {
 
     // Get prompt profile by ID
     fun getPromptProfileFlow(profileId: String): Flow<PromptProfile> = dataStore.data.map { preferences ->
-        val name = preferences[profileNameKey(profileId)] ?: "默认提示词"
-        val introPrompt = preferences[profileIntroPromptKey(profileId)] ?: defaultIntroPrompt
-        val tonePrompt = preferences[profileTonePromptKey(profileId)] ?: defaultTonePrompt
+        val name = preferences[profileNameKey(profileId)] ?: defaultProfileName(profileId)
+        val introPrompt = preferences[profileIntroPromptKey(profileId)] ?: defaultIntroPrompt(profileId)
+        val tonePrompt = preferences[profileTonePromptKey(profileId)] ?: defaultTonePrompt(profileId)
         val isDefault = preferences[profileIsDefaultKey(profileId)] ?: (profileId == "default")
         val isActive = preferences[ACTIVE_PROFILE_ID] == profileId
 
@@ -104,8 +98,8 @@ class PromptPreferencesManager(private val context: Context) {
 
             // Set profile data
             preferences[profileNameKey(id)] = name
-            preferences[profileIntroPromptKey(id)] = introPrompt ?: defaultIntroPrompt
-            preferences[profileTonePromptKey(id)] = tonePrompt ?: defaultTonePrompt
+            preferences[profileIntroPromptKey(id)] = introPrompt ?: defaultIntroPrompt(id)
+            preferences[profileTonePromptKey(id)] = tonePrompt ?: defaultTonePrompt(id)
             preferences[profileIsDefaultKey(id)] = isDefault
 
             // If this is the first profile or is default, make it active
@@ -180,32 +174,109 @@ class PromptPreferencesManager(private val context: Context) {
                 preferences[ACTIVE_PROFILE_ID] = "default"
 
                 // Set up all default profiles
-                setupDefaultProfile(preferences, "default", "默认提示词", defaultIntroPrompt, defaultTonePrompt, true)
-                setupDefaultProfile(preferences, DEFAULT_CHAT_PROFILE_ID, "默认聊天提示词", defaultChatIntroPrompt, defaultChatTonePrompt)
-                setupDefaultProfile(preferences, DEFAULT_VOICE_PROFILE_ID, "默认语音提示词", defaultVoiceIntroPrompt, defaultVoiceTonePrompt)
-                setupDefaultProfile(preferences, DEFAULT_DESKTOP_PET_PROFILE_ID, "默认桌宠提示词", defaultDesktopPetIntroPrompt, defaultDesktopPetTonePrompt)
+                setupDefaultProfile(
+                    preferences,
+                    "default",
+                    defaultProfileName("default"),
+                    defaultIntroPrompt("default"),
+                    defaultTonePrompt("default"),
+                    true
+                )
+                setupDefaultProfile(
+                    preferences,
+                    DEFAULT_CHAT_PROFILE_ID,
+                    defaultProfileName(DEFAULT_CHAT_PROFILE_ID),
+                    defaultIntroPrompt(DEFAULT_CHAT_PROFILE_ID),
+                    defaultTonePrompt(DEFAULT_CHAT_PROFILE_ID)
+                )
+                setupDefaultProfile(
+                    preferences,
+                    DEFAULT_VOICE_PROFILE_ID,
+                    defaultProfileName(DEFAULT_VOICE_PROFILE_ID),
+                    defaultIntroPrompt(DEFAULT_VOICE_PROFILE_ID),
+                    defaultTonePrompt(DEFAULT_VOICE_PROFILE_ID)
+                )
+                setupDefaultProfile(
+                    preferences,
+                    DEFAULT_DESKTOP_PET_PROFILE_ID,
+                    defaultProfileName(DEFAULT_DESKTOP_PET_PROFILE_ID),
+                    defaultIntroPrompt(DEFAULT_DESKTOP_PET_PROFILE_ID),
+                    defaultTonePrompt(DEFAULT_DESKTOP_PET_PROFILE_ID)
+                )
 
             } else {
                 // --- Migration for existing users ---
                 var listModified = false
-                val profilesToAdd = mapOf(
-                    DEFAULT_CHAT_PROFILE_ID to Triple("默认聊天提示词", defaultChatIntroPrompt, defaultChatTonePrompt),
-                    DEFAULT_VOICE_PROFILE_ID to Triple("默认语音提示词", defaultVoiceIntroPrompt, defaultVoiceTonePrompt),
-                    DEFAULT_DESKTOP_PET_PROFILE_ID to Triple("默认桌宠提示词", defaultDesktopPetIntroPrompt, defaultDesktopPetTonePrompt)
+                val profilesToAdd = listOf(
+                    DEFAULT_CHAT_PROFILE_ID,
+                    DEFAULT_VOICE_PROFILE_ID,
+                    DEFAULT_DESKTOP_PET_PROFILE_ID
                 )
 
-                profilesToAdd.forEach { (id, details) ->
+                profilesToAdd.forEach { id ->
                     if (!currentList.contains(id)) {
                         currentList.add(id)
-                        setupDefaultProfile(preferences, id, details.first, details.second, details.third)
+                        setupDefaultProfile(
+                            preferences,
+                            id,
+                            defaultProfileName(id),
+                            defaultIntroPrompt(id),
+                            defaultTonePrompt(id)
+                        )
                         listModified = true
                     }
                 }
+
+                migrateDefaultProfilesIfUnmodified(preferences)
 
                 if (listModified) {
                     preferences[profileListKey] = currentList
                 }
             }
+        }
+    }
+
+    private fun migrateDefaultProfilesIfUnmodified(preferences: MutablePreferences) {
+        val defaultIds = listOf(
+            "default",
+            DEFAULT_CHAT_PROFILE_ID,
+            DEFAULT_VOICE_PROFILE_ID,
+            DEFAULT_DESKTOP_PET_PROFILE_ID
+        )
+
+        defaultIds.forEach { id ->
+            val nameKey = profileNameKey(id)
+            val introKey = profileIntroPromptKey(id)
+            val toneKey = profileTonePromptKey(id)
+
+            maybeUpdateBilingualValue(preferences, nameKey, PromptBilingualData.getDefaultProfileNameBilingual(id))
+            maybeUpdateBilingualValue(preferences, introKey, PromptBilingualData.getDefaultIntroBilingual(id))
+            maybeUpdateBilingualValue(preferences, toneKey, PromptBilingualData.getDefaultToneBilingual(id))
+
+            if (id == "default") {
+                val isDefaultKey = profileIsDefaultKey(id)
+                if (preferences[isDefaultKey] == null) {
+                    preferences[isDefaultKey] = true
+                }
+            }
+        }
+    }
+
+    private fun maybeUpdateBilingualValue(
+        preferences: MutablePreferences,
+        key: Preferences.Key<String>,
+        bilingual: PromptBilingualData.BilingualText
+    ) {
+        val desired = bilingual.forContext(context)
+        val current = preferences[key]
+
+        if (current == null) {
+            preferences[key] = desired
+            return
+        }
+
+        if (current == bilingual.zh || current == bilingual.en) {
+            preferences[key] = desired
         }
     }
     
@@ -223,4 +294,4 @@ class PromptPreferencesManager(private val context: Context) {
         preferences[profileTonePromptKey(id)] = tonePrompt
         preferences[profileIsDefaultKey(id)] = isDefault
     }
-} 
+}

@@ -20,9 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.width
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.common.rememberLocal
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.serializer
@@ -157,7 +159,7 @@ fun FolderNavigator(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "文件夹",
+                        text = stringResource(R.string.folder_navigator_folder),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -170,7 +172,7 @@ fun FolderNavigator(
                     ) {
                         Icon(
                             imageVector = Icons.Default.ChevronLeft,
-                            contentDescription = "关闭侧边栏",
+                            contentDescription = stringResource(R.string.foldernav_close_sidebar),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -200,12 +202,12 @@ fun FolderNavigator(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
-                                contentDescription = "刷新文件夹列表",
+                                contentDescription = stringResource(R.string.foldernav_refresh_folders),
                                 tint = MaterialTheme.colorScheme.secondary
                             )
                         }
                     }
-                    
+
                     // 新建文件夹按钮
                     IconButton(
                         onClick = { showCreateDialog = true },
@@ -213,7 +215,7 @@ fun FolderNavigator(
                     ) {
                         Icon(
                             imageVector = Icons.Default.CreateNewFolder,
-                            contentDescription = "新建文件夹",
+                            contentDescription = stringResource(R.string.foldernav_new_folder),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -221,7 +223,7 @@ fun FolderNavigator(
 
                 // "全部"选项
                 FolderItem(
-                    name = "全部",
+                    name = stringResource(R.string.folder_navigator_all),
                     fullPath = "",
                     level = 0,
                     isSelected = selectedFolderPath.isEmpty(),
@@ -428,7 +430,7 @@ private fun FolderItem(
             ) {
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
-                    contentDescription = if (isExpanded) "折叠" else "展开",
+                    contentDescription = if (isExpanded) stringResource(R.string.memory_collapse) else stringResource(R.string.memory_expand),
                     tint = textColor.copy(alpha = 0.7f),
                     modifier = Modifier
                         .size(16.dp)
@@ -443,7 +445,7 @@ private fun FolderItem(
         // 文件夹图标
         Icon(
             imageVector = if (hasChildren && isExpanded) Icons.Default.FolderOpen else Icons.Default.Folder,
-            contentDescription = "文件夹",
+            contentDescription = stringResource(R.string.foldernav_folder),
             tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp)
         )
@@ -508,10 +510,10 @@ private fun FolderContextMenu(
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("文件夹操作") },
+        title = { Text(stringResource(R.string.memory_folder_operations)) },
         text = {
             Column {
-                Text("文件夹: $folderPath", style = MaterialTheme.typography.bodySmall)
+                Text("${stringResource(R.string.memory_folder_label)}: $folderPath", style = MaterialTheme.typography.bodySmall)
             }
         },
         confirmButton = {
@@ -520,19 +522,19 @@ private fun FolderContextMenu(
                     onRename()
                     // 不调用 onDismiss()，让菜单自动隐藏
                 }) {
-                    Text("重命名")
+                    Text(stringResource(R.string.memory_rename_folder))
                 }
                 TextButton(onClick = {
                     onDelete()
                     // 不调用 onDismiss()，让菜单自动隐藏
                 }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.memory_delete), color = MaterialTheme.colorScheme.error)
                 }
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.memory_cancel))
             }
         }
     )
@@ -550,16 +552,16 @@ private fun FolderCreateDialog(
     
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("创建文件夹") },
+        title = { Text(stringResource(R.string.memory_create_folder)) },
         text = {
             Column {
-                Text("请输入文件夹路径（可用 / 分隔层级）", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.memory_folder_path_hint), style = MaterialTheme.typography.bodySmall)
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.OutlinedTextField(
                     value = folderName,
                     onValueChange = { folderName = it },
-                    label = { Text("文件夹路径") },
-                    placeholder = { Text("例如: 工作/项目A") },
+                    label = { Text(stringResource(R.string.memory_folder_path_label)) },
+                    placeholder = { Text(stringResource(R.string.memory_folder_path_example)) },
                     singleLine = true
                 )
             }
@@ -569,12 +571,12 @@ private fun FolderCreateDialog(
                 onClick = { if (folderName.isNotBlank()) onCreate(folderName.trim()) },
                 enabled = folderName.isNotBlank()
             ) {
-                Text("创建")
+                Text(stringResource(R.string.memory_create))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.memory_cancel))
             }
         }
     )
@@ -593,15 +595,15 @@ private fun FolderRenameDialog(
     
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("重命名文件夹") },
+        title = { Text(stringResource(R.string.memory_rename_folder)) },
         text = {
             Column {
-                Text("当前路径: $currentPath", style = MaterialTheme.typography.bodySmall)
+                Text("${stringResource(R.string.memory_current_path)}: $currentPath", style = MaterialTheme.typography.bodySmall)
                 Spacer(modifier = Modifier.height(8.dp))
                 androidx.compose.material3.OutlinedTextField(
                     value = newName,
                     onValueChange = { newName = it },
-                    label = { Text("新路径") },
+                    label = { Text(stringResource(R.string.memory_new_path)) },
                     singleLine = true
                 )
             }
@@ -611,12 +613,12 @@ private fun FolderRenameDialog(
                 onClick = { if (newName.isNotBlank() && newName != currentPath) onRename(newName.trim()) },
                 enabled = newName.isNotBlank() && newName != currentPath
             ) {
-                Text("重命名")
+                Text(stringResource(R.string.memory_rename_folder))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.memory_cancel))
             }
         }
     )
@@ -633,15 +635,15 @@ private fun FolderDeleteDialog(
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("删除文件夹") },
+        title = { Text(stringResource(R.string.memory_confirm_delete_folder)) },
         text = {
             Column {
-                Text("确定要删除文件夹吗？", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.memory_confirm_delete_folder_message), style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("文件夹: $folderPath", style = MaterialTheme.typography.bodySmall)
+                Text("${stringResource(R.string.memory_folder_label)}: $folderPath", style = MaterialTheme.typography.bodySmall)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "注意：该文件夹下的所有记忆将被移至\"未分类\"文件夹。",
+                    stringResource(R.string.memory_delete_folder_warning),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
                 )
@@ -649,12 +651,12 @@ private fun FolderDeleteDialog(
         },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text("确认删除", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.memory_confirm_delete_action), color = MaterialTheme.colorScheme.error)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.memory_cancel))
             }
         }
     )

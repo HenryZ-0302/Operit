@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.ui.features.chat.components
 
+import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import com.ai.assistance.operit.util.AppLogger
@@ -13,11 +14,12 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -25,11 +27,13 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.ai.assistance.operit.data.model.ChatHistory
@@ -47,6 +51,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
@@ -56,8 +62,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.InputChip
@@ -68,18 +72,9 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.ui.res.stringResource
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.chat.components.MessageEditor
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
-import androidx.compose.material3.SmallFloatingActionButton
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material3.Icon
+import kotlin.math.roundToInt
 
-
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreenContent(
@@ -401,7 +396,7 @@ fun ChatScreenContent(
                             modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Close,
+                                imageVector = Icons.Filled.Close,
                                 contentDescription = stringResource(R.string.exit_multi_select),
                                 tint = MaterialTheme.colorScheme.onSurface,
                                 modifier = Modifier.size(18.dp)
@@ -552,30 +547,69 @@ fun ChatScreenContent(
         }
 
         // 停止朗读按钮
-        AnimatedVisibility(
-            visible = isPlaying || isAutoReadEnabled,
-            enter = fadeIn() + slideInHorizontally(initialOffsetX = { it }),
-            exit = fadeOut() + slideOutHorizontally(targetOffsetX = { it }),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = 80.dp)
-        ) {
-            SmallFloatingActionButton(
-                onClick = {
-                    if (isAutoReadEnabled) {
-                        actualViewModel.disableAutoRead()
-                    } else {
-                        actualViewModel.stopSpeaking()
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val density = LocalDensity.current
+            val endPadding = 16.dp
+            val bottomPadding = 80.dp
+            val fabSize = 40.dp
+
+            val containerWidthPx = with(density) { maxWidth.toPx() }
+            val containerHeightPx = with(density) { maxHeight.toPx() }
+            val fabSizePx = with(density) { fabSize.toPx() }
+
+            val initialOffsetXPx =
+                (containerWidthPx - with(density) { (endPadding + fabSize).toPx() }).coerceAtLeast(0f)
+            val initialOffsetYPx =
+                (containerHeightPx - with(density) { (bottomPadding + fabSize).toPx() }).coerceAtLeast(0f)
+
+            var stopButtonOffsetXPx by rememberSaveable { mutableFloatStateOf(initialOffsetXPx) }
+            var stopButtonOffsetYPx by rememberSaveable { mutableFloatStateOf(initialOffsetYPx) }
+
+            val maxX = (containerWidthPx - fabSizePx).coerceAtLeast(0f)
+            val maxY = (containerHeightPx - fabSizePx).coerceAtLeast(0f)
+
+            // 屏幕尺寸变化（旋转/分屏）时，确保按钮仍然在可见区域内
+            LaunchedEffect(maxX, maxY) {
+                stopButtonOffsetXPx = stopButtonOffsetXPx.coerceIn(0f, maxX)
+                stopButtonOffsetYPx = stopButtonOffsetYPx.coerceIn(0f, maxY)
+            }
+
+            AnimatedVisibility(
+                visible = isPlaying || isAutoReadEnabled,
+                enter = fadeIn() + slideInHorizontally(initialOffsetX = { it }),
+                exit = fadeOut() + slideOutHorizontally(targetOffsetX = { it }),
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            stopButtonOffsetXPx.roundToInt(),
+                            stopButtonOffsetYPx.roundToInt()
+                        )
                     }
-                },
-                containerColor = MaterialTheme.colorScheme.secondary,
-                contentColor = MaterialTheme.colorScheme.onSecondary
+                    .pointerInput(maxX, maxY) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            stopButtonOffsetXPx = (stopButtonOffsetXPx + dragAmount.x).coerceIn(0f, maxX)
+                            stopButtonOffsetYPx = (stopButtonOffsetYPx + dragAmount.y).coerceIn(0f, maxY)
+                        }
+                    }
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Stop,
-                    contentDescription = stringResource(R.string.stop_reading),
-                    modifier = Modifier.size(24.dp)
-                )
+                SmallFloatingActionButton(
+                    onClick = {
+                        if (isAutoReadEnabled) {
+                            actualViewModel.disableAutoRead()
+                        } else {
+                            actualViewModel.stopSpeaking()
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                    contentColor = MaterialTheme.colorScheme.onSecondary
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Stop,
+                        contentDescription = stringResource(R.string.stop_reading),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
 
@@ -659,7 +693,7 @@ fun ChatScreenContent(
                         showAndroidExportDialog = false
                         showExportProgressDialog = true
                         exportProgress = 0f
-                        exportStatus = "开始导出..."
+                        exportStatus = context.getString(R.string.chat_starting_export)
 
                         // 启动导出过程
                         coroutineScope.launch {
@@ -697,7 +731,7 @@ fun ChatScreenContent(
                         showWindowsExportDialog = false
                         showExportProgressDialog = true
                         exportProgress = 0f
-                        exportStatus = "开始导出..."
+                        exportStatus = context.getString(R.string.chat_starting_export)
 
                         // 启动导出过程
                         coroutineScope.launch {

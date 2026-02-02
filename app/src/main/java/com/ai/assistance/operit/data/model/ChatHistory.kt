@@ -20,6 +20,7 @@ data class ChatHistory(
     val group: String? = null,
     val displayOrder: Long = 0L,
     val workspace: String? = null,
+    val workspaceEnv: String? = null,
     val parentChatId: String? = null,
     val characterCardName: String? = null,
     val locked: Boolean = false

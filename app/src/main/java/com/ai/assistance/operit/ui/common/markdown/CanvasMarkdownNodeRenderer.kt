@@ -12,6 +12,8 @@ import android.text.style.UnderlineSpan
 import com.ai.assistance.operit.util.AppLogger
 import android.util.LruCache
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -53,6 +55,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.common.displays.LatexCache
 import com.ai.assistance.operit.util.markdown.MarkdownNode
 import com.ai.assistance.operit.util.markdown.MarkdownNodeStable
@@ -549,41 +552,49 @@ private fun renderNodeContent(
                 ) {
                     // 提取LaTeX内容，移除各种分隔符
                     val latexContent = extractLatexContent(content.trimAll())
+                    val horizontalScrollState = rememberScrollState()
                     
-                    // 使用AndroidView和JLatexMath渲染LaTeX公式
-                    AndroidView(
-                        factory = { context ->
-                            TextView(context).apply {
-                                // 设置初始空白状态
-                                text = ""
-                            }
-                        },
-                        update = { textView ->
-                            // 在update回调中渲染LaTeX公式
-                            try {
-                                val drawable = LatexCache.getDrawable(
-                                    latexContent.trim(),
-                                    JLatexMathDrawable.builder(latexContent)
-                                        .textSize(14f * textView.resources.displayMetrics.density)
-                                        .padding(2)
-                                        .background(0x00000000)
-                                        .align(JLatexMathDrawable.ALIGN_CENTER)
-                                        .color(textColor.toArgb())
-                                )
-                                
-                                // 设置边界并添加到TextView
-                                drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
-                                textView.setCompoundDrawables(null, drawable, null, null)
-                            } catch (e: Exception) {
-                                // 渲染失败时回退到纯文本显示
-                                textView.text = e.message ?: "渲染失败"
-                                textView.setTextColor(textColor.toArgb())
-                                textView.textSize = 16f
-                                textView.typeface = android.graphics.Typeface.MONOSPACE
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(horizontalScrollState),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        // 使用AndroidView和JLatexMath渲染LaTeX公式
+                        AndroidView(
+                            factory = { context ->
+                                TextView(context).apply {
+                                    // 设置初始空白状态
+                                    text = ""
+                                }
+                            },
+                            update = { textView ->
+                                // 在update回调中渲染LaTeX公式
+                                try {
+                                    val drawable = LatexCache.getDrawable(
+                                        latexContent.trim(),
+                                        JLatexMathDrawable.builder(latexContent)
+                                            .textSize(14f * textView.resources.displayMetrics.density)
+                                            .padding(2)
+                                            .background(0x00000000)
+                                            .align(JLatexMathDrawable.ALIGN_CENTER)
+                                            .color(textColor.toArgb())
+                                    )
+                                    
+                                    // 设置边界并添加到TextView
+                                    drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
+                                    textView.setCompoundDrawables(null, drawable, null, null)
+                                } catch (e: Exception) {
+                                    // 渲染失败时回退到纯文本显示
+                                    textView.text = e.message ?: textView.context.getString(R.string.common_render_failed)
+                                    textView.setTextColor(textColor.toArgb())
+                                    textView.textSize = 16f
+                                    textView.typeface = android.graphics.Typeface.MONOSPACE
+                                }
+                            },
+                            modifier = Modifier.wrapContentWidth(unbounded = true)
+                        )
+                    }
                 }
             }
         }

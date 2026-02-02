@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.ui.features.packages.screens
 
+import android.annotation.SuppressLint
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -70,6 +71,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @Composable
 fun SkillManagerScreen(
     skillRepository: SkillRepository,
@@ -164,7 +166,7 @@ fun SkillManagerScreen(
                             onClick = {
                                 scope.launch {
                                     refreshSkills()
-                                    snackbarHostState.showSnackbar("已刷新")
+                                    snackbarHostState.showSnackbar(context.getString(R.string.skillmgr_refreshed))
                                 }
                             }
                         ) {
@@ -191,7 +193,7 @@ fun SkillManagerScreen(
 
             if (skills.isEmpty()) {
                 Text(
-                    text = "未找到任何Skill。请将Skill文件夹放入: ${skillRepository.getSkillsDirectoryPath()}，并确保其中包含 SKILL.md。",
+                    text = stringResource(R.string.skillmgr_no_skills_found, skillRepository.getSkillsDirectoryPath()),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -413,7 +415,7 @@ fun SkillManagerScreen(
                                     try {
                                         val nameToUse = zipFileName.ifBlank { "skill.zip" }
                                         if (!nameToUse.endsWith(".zip", ignoreCase = true)) {
-                                            snackbarHostState.showSnackbar("仅支持 .zip 文件")
+                                            snackbarHostState.showSnackbar(context.getString(R.string.skillmgr_only_zip_files))
                                             return@launch
                                         }
 
@@ -424,7 +426,7 @@ fun SkillManagerScreen(
                                                     tempFile.outputStream().use { output ->
                                                         input.copyTo(output)
                                                     }
-                                                } ?: throw IllegalStateException("无法读取文件")
+                                                } ?: throw IllegalStateException(context.getString(R.string.skillmgr_cannot_read_file))
 
                                                 skillRepository.importSkillFromZip(tempFile)
                                             } finally {
@@ -439,7 +441,7 @@ fun SkillManagerScreen(
                                         snackbarHostState.showSnackbar(result)
                                         showImportDialog = false
                                     } catch (e: Exception) {
-                                        snackbarHostState.showSnackbar("导入失败: ${e.message}")
+                                        snackbarHostState.showSnackbar(context.getString(R.string.skillmgr_import_failed, e.message ?: ""))
                                     } finally {
                                         isImporting = false
                                     }
@@ -490,16 +492,16 @@ fun SkillManagerScreen(
                             val ok = skillRepository.deleteSkill(skillName)
                             if (ok) {
                                 refreshSkills()
-                                snackbarHostState.showSnackbar("已删除: $skillName")
+                                snackbarHostState.showSnackbar(context.getString(R.string.skillmgr_deleted, skillName))
                             } else {
-                                snackbarHostState.showSnackbar("删除失败: $skillName")
+                                snackbarHostState.showSnackbar(context.getString(R.string.skillmgr_delete_failed, skillName))
                             }
                         }
                         selectedSkillName = null
                         selectedSkillContent = null
                     }
                 ) {
-                    Text(text = "删除")
+                    Text(text = stringResource(R.string.skillmgr_delete))
                 }
             },
             dismissButton = {
@@ -509,7 +511,7 @@ fun SkillManagerScreen(
                         selectedSkillContent = null
                     }
                 ) {
-                    Text(text = "关闭")
+                    Text(text = stringResource(R.string.skillmgr_close))
                 }
             }
         )

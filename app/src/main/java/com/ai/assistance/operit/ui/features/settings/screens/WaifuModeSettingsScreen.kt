@@ -39,7 +39,7 @@ fun WaifuModeSettingsScreen(
     val activeCharacterCard = characterCardManager.activeCharacterCardFlow.collectAsState(
         initial = CharacterCard(
             id = "default_character",
-            name = "默认角色卡",
+            name = stringResource(R.string.theme_default_character_card),
             description = "",
             characterSetting = "",
             otherContent = "",
@@ -148,7 +148,7 @@ fun WaifuModeSettingsScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "配置已绑定到角色卡",
+                            text = stringResource(R.string.waifu_config_bound_to_card),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                         )

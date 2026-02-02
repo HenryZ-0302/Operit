@@ -26,7 +26,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 
 /**
  * Tabs component for the MCP server details diaAppLogger.
@@ -81,7 +83,7 @@ fun MCPServerDetailsTabs(selectedTabIndex: Int, onTabSelected: (Int) -> Unit) {
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                                "插件详情",
+                                stringResource(R.string.mcp_plugin_details),
                                 style = MaterialTheme.typography.labelSmall,
                                 color =
                                         if (selectedTabIndex == 0) MaterialTheme.colorScheme.primary
@@ -127,7 +129,7 @@ fun MCPServerDetailsTabs(selectedTabIndex: Int, onTabSelected: (Int) -> Unit) {
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                                "配置设置",
+                                stringResource(R.string.mcp_config_settings),
                                 style = MaterialTheme.typography.labelSmall,
                                 color =
                                         if (selectedTabIndex == 1) MaterialTheme.colorScheme.primary

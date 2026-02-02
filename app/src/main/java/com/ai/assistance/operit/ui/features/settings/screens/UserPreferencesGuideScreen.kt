@@ -164,7 +164,7 @@ fun UserPreferencesGuideScreen(
 
     // 日期选择器状态
     var showDatePicker by remember { mutableStateOf(false) }
-    val dateFormatter = SimpleDateFormat("yyyy年MM月dd日", Locale.getDefault())
+    val dateFormatter = SimpleDateFormat(stringResource(R.string.date_format_pattern), Locale.getDefault())
 
     // 初始化日期选择器状态
     val initialSelectedDateMillis =

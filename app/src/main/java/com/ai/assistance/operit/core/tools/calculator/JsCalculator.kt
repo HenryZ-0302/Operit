@@ -138,14 +138,14 @@ class JsCalculator {
         /** 获取支持的JavaScript风格特性 */
         fun getSupportedJsFeatures(): List<String> {
             return listOf(
-                    "条件 ? 值1 : 值2 - 三元运算符",
-                    "Math.sin(), Math.cos() - 数学函数",
-                    "\${a + b} - 模板字符串",
-                    "true, false, null, NaN - JavaScript关键字",
-                    "a = 5; a += 2 - 赋值运算符",
-                    "2 ** 3 or 2 ^ 3 - 指数运算",
-                    "\"string\"[0] - 字符串索引",
-                    "array.length - 长度属性"
+                    "condition ? value1 : value2 - Ternary operator",
+                    "Math.sin(), Math.cos() - Math functions",
+                    "\${a + b} - Template string",
+                    "true, false, null, NaN - JavaScript keywords",
+                    "a = 5; a += 2 - Assignment operators",
+                    "2 ** 3 or 2 ^ 3 - Exponentiation",
+                    "\"string\"[0] - String index",
+                    "array.length - Length property"
             )
         }
     }

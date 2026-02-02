@@ -28,18 +28,21 @@ fun WorkspaceScreen(
     onExportClick: (workDir: File) -> Unit
 ) {
     if (currentChat?.workspace != null) {
+        val workspacePath = currentChat.workspace
         WorkspaceManager(
-            actualViewModel = actualViewModel,
-            currentChat = currentChat,
-            workspacePath = currentChat.workspace,
-            isVisible = isVisible,
-            onExportClick = onExportClick
-        )
+                actualViewModel = actualViewModel,
+                currentChat = currentChat,
+                workspacePath = workspacePath,
+                workspaceEnv = currentChat.workspaceEnv,
+                isVisible = isVisible,
+                onExportClick = onExportClick
+            )
+        
     } else if (currentChat != null) {
         WorkspaceSetup(
             chatId = currentChat.id,
-            onBindWorkspace = { workspacePath ->
-                actualViewModel.bindChatToWorkspace(currentChat.id, workspacePath)
+            onBindWorkspace = { workspacePath, workspaceEnv ->
+                actualViewModel.bindChatToWorkspace(currentChat.id, workspacePath, workspaceEnv)
             }
         )
     } else {

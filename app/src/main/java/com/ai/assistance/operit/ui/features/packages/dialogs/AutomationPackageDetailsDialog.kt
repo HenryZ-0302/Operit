@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -22,14 +23,16 @@ import com.ai.assistance.operit.R
 @Composable
 fun AutomationPackageDetailsDialog(
     onDismiss: () -> Unit,
-    message: String = "Kotlin UI 自动化配置功能已移除。"
+    message: String? = null
 ) {
+    val context = LocalContext.current
+    val displayMessage = message ?: stringResource(R.string.pkg_automation_removed)
     AlertDialog(
         onDismissRequest = onDismiss,
-                title = { Text("提示") },
+                title = { Text(stringResource(R.string.pkg_tip)) },
         text = {
             Text(
-                text = message,
+                text = displayMessage,
                 style = MaterialTheme.typography.bodyMedium
             )
         },

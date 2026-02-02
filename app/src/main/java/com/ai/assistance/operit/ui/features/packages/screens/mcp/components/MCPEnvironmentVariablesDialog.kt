@@ -12,7 +12,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
+import com.ai.assistance.operit.R
 
 /**
  * 环境变量管理对话框
@@ -52,7 +54,7 @@ fun MCPEnvironmentVariablesDialog(
                 modifier = Modifier.fillMaxWidth().padding(16.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp).fillMaxWidth()) {
-                Text(text = "管理环境变量", style = MaterialTheme.typography.headlineSmall)
+                Text(text = stringResource(R.string.mcp_manage_env_variables), style = MaterialTheme.typography.headlineSmall)
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -75,7 +77,7 @@ fun MCPEnvironmentVariablesDialog(
                                 IconButton(onClick = { envVarsList.remove(Pair(key, value)) }) {
                                     Icon(
                                             imageVector = Icons.Default.Delete,
-                                            contentDescription = "删除"
+                                            contentDescription = stringResource(R.string.delete)
                                     )
                                 }
                             }
@@ -92,7 +94,7 @@ fun MCPEnvironmentVariablesDialog(
                 OutlinedTextField(
                         value = newKey,
                         onValueChange = { newKey = it },
-                        label = { Text("变量名") },
+                        label = { Text(stringResource(R.string.mcp_var_name)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                 )
@@ -102,7 +104,7 @@ fun MCPEnvironmentVariablesDialog(
                 OutlinedTextField(
                         value = newValue,
                         onValueChange = { newValue = it },
-                        label = { Text("变量值") },
+                        label = { Text(stringResource(R.string.mcp_var_value)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                 )
@@ -119,22 +121,22 @@ fun MCPEnvironmentVariablesDialog(
                         },
                         modifier = Modifier.align(Alignment.End)
                 ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "添加")
+                    Icon(imageVector = Icons.Default.Add, contentDescription = stringResource(R.string.add))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("添加变量")
+                    Text(stringResource(R.string.mcp_add_var))
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // 按钮行
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onDismiss) { Text("取消") }
+                    TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) }
 
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Button(
                             onClick = { onConfirm(envVarsList.associate { it.first to it.second }) }
-                    ) { Text("确认") }
+                    ) { Text(stringResource(R.string.mcp_confirm)) }
                 }
             }
         }

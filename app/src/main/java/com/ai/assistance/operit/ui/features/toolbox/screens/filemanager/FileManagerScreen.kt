@@ -6,7 +6,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Terminal
@@ -14,10 +19,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
@@ -25,7 +33,16 @@ import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.componen
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.components.DisplayMode
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.models.FileItem
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.viewmodel.FileManagerViewModel
+import com.ai.assistance.operit.data.preferences.ApiPreferences
 import java.io.File
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.DocumentsContract
+import kotlinx.coroutines.launch
+import com.ai.assistance.operit.util.AppLogger
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** 文件管理器屏幕 */
 @Composable
@@ -33,6 +50,140 @@ fun FileManagerScreen(navController: NavController) {
     val context = LocalContext.current
     val viewModel = remember { FileManagerViewModel(context) }
     val toolHandler = AIToolHandler.getInstance(context)
+
+    val scope = rememberCoroutineScope()
+
+    var pendingRepoBookmarkUri by remember { mutableStateOf<Uri?>(null) }
+    var repoBookmarkNameInput by remember { mutableStateOf("") }
+    var showRepoBookmarkNameDialog by remember { mutableStateOf(false) }
+    var repoBookmarkNameError by remember { mutableStateOf<String?>(null) }
+
+    val apiPreferences = remember { ApiPreferences.getInstance(context) }
+    val safBookmarks by apiPreferences.safBookmarksFlow.collectAsState(initial = emptyList())
+
+    fun querySafBookmarkDisplayName(uri: Uri): String {
+        return try {
+            val treeDocId = DocumentsContract.getTreeDocumentId(uri)
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(uri, treeDocId)
+            context.contentResolver.query(
+                docUri,
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                if (cursor.moveToFirst() && idx >= 0 && !cursor.isNull(idx)) {
+                    cursor.getString(idx)
+                } else {
+                    null
+                }
+            } ?: uri.toString()
+        } catch (_: Exception) {
+            uri.toString()
+        }
+    }
+
+    fun queryRepoBookmarkName(uri: Uri): String {
+        fun normalizeName(raw: String): String {
+            return raw.trim()
+                .lowercase(java.util.Locale.ROOT)
+                .replace(Regex("\\s+"), "_")
+                .ifBlank { "repo" }
+        }
+
+        val providerLabel =
+            runCatching {
+                val authority = uri.authority ?: return@runCatching null
+                val provider = context.packageManager.resolveContentProvider(authority, 0)
+                provider?.applicationInfo?.loadLabel(context.packageManager)?.toString()?.trim()
+            }.getOrNull()
+
+        val raw = providerLabel?.takeIf { it.isNotBlank() } ?: uri.authority ?: "repo"
+        return normalizeName(raw)
+    }
+
+    val addSafLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+            pendingRepoBookmarkUri = uri
+            repoBookmarkNameInput = queryRepoBookmarkName(uri)
+            showRepoBookmarkNameDialog = true
+        }
+    }
+
+    if (showRepoBookmarkNameDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showRepoBookmarkNameDialog = false
+                pendingRepoBookmarkUri = null
+                repoBookmarkNameError = null
+            },
+            title = { Text(stringResource(R.string.repo_bookmark_name)) },
+            text = {
+                TextField(
+                    value = repoBookmarkNameInput,
+                    onValueChange = {
+                        repoBookmarkNameInput = it
+                        repoBookmarkNameError = null
+                    },
+                    label = { Text(stringResource(R.string.repo_bookmark_name_label)) },
+                    singleLine = true,
+                    isError = repoBookmarkNameError != null,
+                    supportingText = {
+                        repoBookmarkNameError?.let { Text(it) }
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val uri = pendingRepoBookmarkUri
+                        val name = repoBookmarkNameInput.trim()
+                        if (uri == null) {
+                            showRepoBookmarkNameDialog = false
+                            pendingRepoBookmarkUri = null
+                            repoBookmarkNameError = null
+                            return@TextButton
+                        }
+
+                        if (name.isEmpty()) {
+                            repoBookmarkNameError = context.getString(R.string.repo_bookmark_name_empty)
+                            return@TextButton
+                        }
+
+                        val nameExists = safBookmarks.any {
+                            it.uri != uri.toString() && it.name.equals(name, ignoreCase = true)
+                        }
+                        if (nameExists) {
+                            repoBookmarkNameError = context.getString(R.string.repo_bookmark_name_exists)
+                            return@TextButton
+                        }
+
+                        scope.launch {
+                            apiPreferences.addSafBookmark(uri.toString(), name)
+                        }
+
+                        showRepoBookmarkNameDialog = false
+                        pendingRepoBookmarkUri = null
+                        repoBookmarkNameError = null
+                    }
+                ) { Text(context.getString(android.R.string.ok)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRepoBookmarkNameDialog = false
+                        pendingRepoBookmarkUri = null
+                        repoBookmarkNameError = null
+                    }
+                ) { Text(context.getString(android.R.string.cancel)) }
+            }
+        )
+    }
 
     // 为当前目录创建LazyListState
     val listState = rememberLazyListState()
@@ -166,14 +317,11 @@ fun FileManagerScreen(navController: NavController) {
             ) {
                 item {
                     QuickAccessChip(
-                        name = "Ubuntu",
+                        name = "Linux",
                         icon = Icons.Default.Terminal,
-                        isActive = viewModel.currentPath.startsWith(File(context.filesDir, "usr/var/lib/proot-distro/installed-rootfs/ubuntu").absolutePath),
+                        isActive = viewModel.currentEnvironment == "linux" && viewModel.currentPath.startsWith("/"),
                         onClick = {
-                            val ubuntuPath = File(context.filesDir, "usr/var/lib/proot-distro/installed-rootfs/ubuntu").absolutePath
-                            if (File(ubuntuPath).exists()) {
-                                viewModel.navigateToPath(ubuntuPath)
-                            }
+                            viewModel.navigateToPath("/", "linux")
                         }
                     )
                 }
@@ -181,11 +329,11 @@ fun FileManagerScreen(navController: NavController) {
                     QuickAccessChip(
                         name = "SDCard",
                         icon = Icons.Default.SdCard,
-                        isActive = viewModel.currentPath.startsWith(Environment.getExternalStorageDirectory().absolutePath),
+                        isActive = viewModel.currentEnvironment == null && viewModel.currentPath.startsWith(Environment.getExternalStorageDirectory().absolutePath),
                         onClick = {
                             val sdcardPath = Environment.getExternalStorageDirectory().absolutePath
                             if (File(sdcardPath).exists()) {
-                                viewModel.navigateToPath(sdcardPath)
+                                viewModel.navigateToPath(sdcardPath, null)
                             }
                         }
                     )
@@ -194,13 +342,62 @@ fun FileManagerScreen(navController: NavController) {
                     QuickAccessChip(
                         name = "Workspace",
                         icon = Icons.Default.Folder,
-                        isActive = viewModel.currentPath.startsWith(File(context.filesDir, "workspace").absolutePath),
+                        isActive = viewModel.currentEnvironment == null && viewModel.currentPath.startsWith(File(context.filesDir, "workspace").absolutePath),
                         onClick = {
                             val workspacePath = File(context.filesDir, "workspace").absolutePath
                             if (File(workspacePath).exists()) {
-                                viewModel.navigateToPath(workspacePath)
+                                viewModel.navigateToPath(workspacePath, null)
                             }
                         }
+                    )
+                }
+
+                items(safBookmarks) { bookmark ->
+                    var menuExpanded by remember(bookmark.uri) { mutableStateOf(false) }
+                    val repoEnv = remember(bookmark.name) { "repo:${bookmark.name}" }
+                    Box {
+                        QuickAccessChipWithLongPress(
+                            name = bookmark.name,
+                            icon = Icons.Default.Folder,
+                            isActive = viewModel.currentEnvironment == repoEnv,
+                            onClick = {
+                                AppLogger.d("ToolboxFileManager", "switch to repository name=${bookmark.name} env=$repoEnv")
+                                viewModel.navigateToPath("/", repoEnv)
+                            },
+                            onLongPress = { menuExpanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.repo_bookmark_delete)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    val uri = runCatching { Uri.parse(bookmark.uri) }.getOrNull()
+                                    if (uri != null) {
+                                        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                        runCatching { context.contentResolver.releasePersistableUriPermission(uri, flags) }
+                                    }
+                                    scope.launch {
+                                        apiPreferences.removeSafBookmark(bookmark.uri)
+                                        if (viewModel.currentEnvironment == repoEnv) {
+                                            val fallbackPath = File(context.filesDir, "workspace").absolutePath
+                                            viewModel.navigateToPath(fallbackPath, null)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    QuickAccessChip(
+                        name = "+",
+                        icon = Icons.Default.Add,
+                        isActive = false,
+                        onClick = { addSafLauncher.launch(null) }
                     )
                 }
             }
@@ -295,6 +492,7 @@ fun FileManagerScreen(navController: NavController) {
             isMultiSelectMode = viewModel.isMultiSelectMode,
             selectedFiles = viewModel.selectedFiles,
             currentPath = viewModel.currentPath,
+            currentEnvironment = viewModel.currentEnvironment,
             onFilesUpdated = { viewModel.loadCurrentDirectory() },
             toolHandler = toolHandler,
             onPaste = { viewModel.pasteFiles() },
@@ -305,7 +503,9 @@ fun FileManagerScreen(navController: NavController) {
                 val openTool =
                         AITool(
                                 name = "open_file",
-                                parameters = listOf(ToolParameter("path", fullPath))
+                                parameters = listOf(ToolParameter("path", fullPath)) +
+                                        (viewModel.currentEnvironment?.let { listOf(ToolParameter("environment", it)) }
+                                                ?: emptyList())
                         )
                 toolHandler.executeTool(openTool)
             },
@@ -314,11 +514,54 @@ fun FileManagerScreen(navController: NavController) {
                 val shareTool =
                         AITool(
                                 name = "share_file",
-                                parameters = listOf(ToolParameter("path", fullPath))
+                                parameters = listOf(ToolParameter("path", fullPath)) +
+                                        (viewModel.currentEnvironment?.let { listOf(ToolParameter("environment", it)) }
+                                                ?: emptyList())
                         )
                 toolHandler.executeTool(shareTool)
             }
     )
+}
+
+@Composable
+private fun QuickAccessChipWithLongPress(
+    name: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit
+) {
+    var suppressClickOnce by remember(name) { mutableStateOf(false) }
+    Box(
+        modifier = Modifier.pointerInput(onLongPress) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                val longPressed = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis.toLong()) {
+                    waitForUpOrCancellation()
+                    false
+                } ?: true
+
+                if (longPressed) {
+                    suppressClickOnce = true
+                    onLongPress()
+                    waitForUpOrCancellation()
+                }
+            }
+        }
+    ) {
+        QuickAccessChip(
+            name = name,
+            icon = icon,
+            isActive = isActive,
+            onClick = {
+                if (suppressClickOnce) {
+                    suppressClickOnce = false
+                    return@QuickAccessChip
+                }
+                onClick()
+            }
+        )
+    }
 }
 
 /**
@@ -344,11 +587,13 @@ private fun QuickAccessChip(
                     contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
-                )
+                if (name.isNotBlank() && name != "+") {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal
+                    )
+                }
             }
         },
         colors = FilterChipDefaults.filterChipColors(

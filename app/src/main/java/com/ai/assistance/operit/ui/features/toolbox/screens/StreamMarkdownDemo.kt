@@ -38,9 +38,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.chat.components.part.CustomXmlRenderer
 import com.ai.assistance.operit.ui.common.markdown.StreamMarkdownRenderer
 import com.ai.assistance.operit.util.stream.asStream
@@ -49,7 +52,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.consumeAsFlow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.platform.LocalContext
 import android.content.Intent
 import android.net.Uri
 
@@ -94,12 +96,7 @@ fun StreamMarkdownDemoScreen(onBackClick: () -> Unit = {}) {
     }
 
     // 模拟的Markdown内容
-    val fullMarkdownContent = remember {
-        """好的，如果您有任何问题或需要帮助时，随时可以联系我。
-
-
-<status type="complete"></status>""".trimIndent()
-    }
+    val fullMarkdownContent = stringResource(R.string.demo_complete_message)
 
     // 设置总字符数
     LaunchedEffect(fullMarkdownContent) { totalChars = fullMarkdownContent.length }
@@ -164,7 +161,7 @@ fun StreamMarkdownDemoScreen(onBackClick: () -> Unit = {}) {
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                            text = "流式渲染 (Streaming)",
+                            text = stringResource(R.string.stream_markdown_rendering),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                     )
@@ -200,17 +197,17 @@ private fun ControlPanel(
                         contentDescription = if (isStreaming) "Pause" else "Play"
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(if (isStreaming) "暂停" else if (hasStarted) "继续" else "开始")
+                Text(if (isStreaming) stringResource(R.string.stream_markdown_pause) else if (hasStarted) stringResource(R.string.stream_markdown_resume) else stringResource(R.string.stream_markdown_start))
             }
             Spacer(modifier = Modifier.width(16.dp))
             Button(onClick = onReset) {
                 Icon(Icons.Default.Refresh, contentDescription = "Reset")
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("重置")
+                Text(stringResource(R.string.stream_markdown_reset))
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Text("速度 (x${String.format("%.1f", speedFactor)})", fontSize = 14.sp)
+        Text(stringResource(R.string.stream_markdown_speed, String.format("%.1f", speedFactor)), fontSize = 14.sp)
         Slider(
                 value = speedFactor,
                 onValueChange = onSpeedChange,
@@ -239,15 +236,15 @@ fun StreamMarkdownDemoScreenPreview() {
         }
         ```
     """.trimIndent()
-    
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("流式Markdown渲染演示", style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.stream_markdown_demo_title), style = MaterialTheme.typography.headlineSmall)
         Spacer(modifier = Modifier.height(16.dp))
 
         HorizontalDivider()
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text("静态渲染", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.stream_markdown_static_render), style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(8.dp))
         val context = LocalContext.current
         StreamMarkdownRenderer(

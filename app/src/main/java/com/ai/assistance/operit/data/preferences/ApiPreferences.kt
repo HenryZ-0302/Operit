@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -79,6 +80,7 @@ class ApiPreferences private constructor(private val context: Context) {
         // Keys for Thinking Mode and Thinking Guidance
         val ENABLE_THINKING_MODE = booleanPreferencesKey("enable_thinking_mode")
         val ENABLE_THINKING_GUIDANCE = booleanPreferencesKey("enable_thinking_guidance")
+        val THINKING_QUALITY_LEVEL = intPreferencesKey("thinking_quality_level")
 
         // Key for Memory Attachment
         val ENABLE_MEMORY_QUERY = booleanPreferencesKey("enable_memory_query")
@@ -92,9 +94,6 @@ class ApiPreferences private constructor(private val context: Context) {
         // Key for Disable Stream Output
         val DISABLE_STREAM_OUTPUT = booleanPreferencesKey("disable_stream_output")
 
-        // Custom Prompt Settings
-        val CUSTOM_INTRO_PROMPT = stringPreferencesKey("custom_intro_prompt")
-        
         // Custom System Prompt Template (Advanced Configuration)
         val CUSTOM_SYSTEM_PROMPT_TEMPLATE = stringPreferencesKey("custom_system_prompt_template")
 
@@ -108,6 +107,7 @@ class ApiPreferences private constructor(private val context: Context) {
         // Default values for Thinking Mode and Thinking Guidance
         const val DEFAULT_ENABLE_THINKING_MODE = false
         const val DEFAULT_ENABLE_THINKING_GUIDANCE = false
+        const val DEFAULT_THINKING_QUALITY_LEVEL = 2
 
         // Default value for Memory Attachment
         const val DEFAULT_ENABLE_MEMORY_QUERY = true
@@ -121,9 +121,6 @@ class ApiPreferences private constructor(private val context: Context) {
         // Default value for Disable Stream Output (default false, meaning stream is enabled by default)
         const val DEFAULT_DISABLE_STREAM_OUTPUT = false
 
-        // Default values for custom prompts
-        const val DEFAULT_INTRO_PROMPT = "你是Operit，一个全能AI助手，旨在解决用户提出的任何任务。你有各种工具可以调用，以高效完成复杂的请求。"
-        
         // Default system prompt template (empty means use built-in template)
         const val DEFAULT_SYSTEM_PROMPT_TEMPLATE = ""
 
@@ -139,6 +136,8 @@ class ApiPreferences private constructor(private val context: Context) {
 
         // 自定义请求头存储键
         val CUSTOM_HEADERS = stringPreferencesKey("custom_headers")
+
+        private val SAF_BOOKMARKS_JSON = stringPreferencesKey("saf_bookmarks_json")
 
         // 默认空的自定义参数列表
         const val DEFAULT_CUSTOM_PARAMETERS = "[]"
@@ -160,6 +159,45 @@ class ApiPreferences private constructor(private val context: Context) {
             }
         }
     }
+
+    @Serializable
+    data class SafBookmark(
+        val uri: String,
+        val name: String
+    )
+
+    val safBookmarksFlow: Flow<List<SafBookmark>> =
+        context.apiDataStore.data.map { preferences ->
+            val json = preferences[SAF_BOOKMARKS_JSON] ?: "[]"
+            runCatching { Json.decodeFromString<List<SafBookmark>>(json) }.getOrElse { emptyList() }
+        }
+
+    suspend fun addSafBookmark(uri: String, name: String) {
+        context.apiDataStore.edit { preferences ->
+            val existing =
+                runCatching {
+                    val json = preferences[SAF_BOOKMARKS_JSON] ?: "[]"
+                    Json.decodeFromString<List<SafBookmark>>(json)
+                }.getOrElse { emptyList() }
+
+            val updated = (existing.filterNot { it.uri == uri } + SafBookmark(uri = uri, name = name))
+                .sortedBy { it.name.lowercase() }
+            preferences[SAF_BOOKMARKS_JSON] = Json.encodeToString(updated)
+        }
+    }
+
+    suspend fun removeSafBookmark(uri: String) {
+        context.apiDataStore.edit { preferences ->
+            val existing =
+                runCatching {
+                    val json = preferences[SAF_BOOKMARKS_JSON] ?: "[]"
+                    Json.decodeFromString<List<SafBookmark>>(json)
+                }.getOrElse { emptyList() }
+            val updated = existing.filterNot { it.uri == uri }
+            preferences[SAF_BOOKMARKS_JSON] = Json.encodeToString(updated)
+        }
+    }
+
     // Get AI Planning setting as Flow
     val enableAiPlanningFlow: Flow<Boolean> =
             context.apiDataStore.data.map { preferences ->
@@ -184,6 +222,11 @@ class ApiPreferences private constructor(private val context: Context) {
             preferences[ENABLE_THINKING_GUIDANCE] ?: DEFAULT_ENABLE_THINKING_GUIDANCE
             }
 
+    val thinkingQualityLevelFlow: Flow<Int> =
+        context.apiDataStore.data.map { preferences ->
+            preferences[THINKING_QUALITY_LEVEL] ?: DEFAULT_THINKING_QUALITY_LEVEL
+        }
+
     // Flow for Memory Attachment
     val enableMemoryQueryFlow: Flow<Boolean> =
         context.apiDataStore.data.map { preferences ->
@@ -207,14 +250,6 @@ class ApiPreferences private constructor(private val context: Context) {
         context.apiDataStore.data.map { preferences ->
             preferences[DISABLE_STREAM_OUTPUT] ?: DEFAULT_DISABLE_STREAM_OUTPUT
         }
-
-    // Custom Prompt Flows
-    val customIntroPromptFlow: Flow<String> =
-            context.apiDataStore.data.map { preferences ->
-                preferences[CUSTOM_INTRO_PROMPT] ?: DEFAULT_INTRO_PROMPT
-            }
-
-
 
     // Custom System Prompt Template Flow
     val customSystemPromptTemplateFlow: Flow<String> =
@@ -272,6 +307,40 @@ class ApiPreferences private constructor(private val context: Context) {
     // Save Thinking Guidance setting
     suspend fun saveEnableThinkingGuidance(isEnabled: Boolean) {
         context.apiDataStore.edit { preferences -> preferences[ENABLE_THINKING_GUIDANCE] = isEnabled }
+    }
+
+    suspend fun saveThinkingQualityLevel(level: Int) {
+        context.apiDataStore.edit { preferences ->
+            preferences[THINKING_QUALITY_LEVEL] = level
+        }
+    }
+
+    suspend fun updateThinkingSettings(
+        enableThinkingMode: Boolean? = null,
+        enableThinkingGuidance: Boolean? = null,
+        thinkingQualityLevel: Int? = null
+    ) {
+        context.apiDataStore.edit { preferences ->
+            val prevMode = preferences[ENABLE_THINKING_MODE] ?: DEFAULT_ENABLE_THINKING_MODE
+            val prevGuidance = preferences[ENABLE_THINKING_GUIDANCE] ?: DEFAULT_ENABLE_THINKING_GUIDANCE
+
+            var newMode = enableThinkingMode ?: prevMode
+            var newGuidance = enableThinkingGuidance ?: prevGuidance
+
+            // Enforce mutual exclusivity.
+            if (enableThinkingMode == true) {
+                newGuidance = false
+            } else if (enableThinkingGuidance == true) {
+                newMode = false
+            } else if (newMode && newGuidance) {
+                newGuidance = false
+            }
+
+            preferences[ENABLE_THINKING_MODE] = newMode
+            preferences[ENABLE_THINKING_GUIDANCE] = newGuidance
+
+            thinkingQualityLevel?.let { preferences[THINKING_QUALITY_LEVEL] = it.coerceIn(1, 3) }
+        }
     }
 
     // Save Memory Attachment setting
@@ -409,24 +478,10 @@ class ApiPreferences private constructor(private val context: Context) {
             result
         }
 
-    // Save custom prompts
-    suspend fun saveCustomPrompts(introPrompt: String) {
-        context.apiDataStore.edit { preferences ->
-            preferences[CUSTOM_INTRO_PROMPT] = introPrompt
-        }
-    }
-
     // Save custom system prompt template
     suspend fun saveCustomSystemPromptTemplate(template: String) {
         context.apiDataStore.edit { preferences ->
             preferences[CUSTOM_SYSTEM_PROMPT_TEMPLATE] = template
-        }
-    }
-
-    // Reset custom prompts to default values
-    suspend fun resetCustomPrompts() {
-        context.apiDataStore.edit { preferences ->
-            preferences[CUSTOM_INTRO_PROMPT] = DEFAULT_INTRO_PROMPT
         }
     }
 

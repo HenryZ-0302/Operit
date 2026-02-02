@@ -134,7 +134,7 @@ object MediaPoolManager {
     )
 
     fun initialize(cacheDirPath: File, preloadNow: Boolean = true) {
-        cacheDir = File(cacheDirPath, "media_pool")
+        cacheDir = OperitPaths.mediaPoolDir(cacheDirPath)
         if (!cacheDir!!.exists()) {
             cacheDir!!.mkdirs()
             AppLogger.d(TAG, "创建媒体缓存目录: ${cacheDir!!.absolutePath}")

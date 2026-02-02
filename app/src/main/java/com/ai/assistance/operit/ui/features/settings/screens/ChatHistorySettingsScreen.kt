@@ -127,7 +127,7 @@ fun ChatHistorySettingsScreen() {
                                 UnboundWorkspaceInfo(
                                     name = dir.name,
                                     fullPath = fullPath,
-                                    location = "内部存储"
+                                    location = context.getString(R.string.chathistory_internal_storage)
                                 )
                             )
                         }
@@ -145,7 +145,7 @@ fun ChatHistorySettingsScreen() {
                                 UnboundWorkspaceInfo(
                                     name = dir.name,
                                     fullPath = fullPath,
-                                    location = "外部存储"
+                                    location = context.getString(R.string.chathistory_external_storage)
                                 )
                             )
                         }
@@ -1195,7 +1195,7 @@ private fun UnboundWorkspaceRow(
             }
         }
         Icon(
-            imageVector = if (workspaceInfo.location == "内部存储") Icons.Default.Folder else Icons.Default.FolderOpen,
+            imageVector = if (workspaceInfo.location == context.getString(R.string.chathistory_internal_storage)) Icons.Default.Folder else Icons.Default.FolderOpen,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp)

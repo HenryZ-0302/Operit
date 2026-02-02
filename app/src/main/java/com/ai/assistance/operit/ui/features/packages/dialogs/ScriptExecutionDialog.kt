@@ -16,10 +16,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.PackageTool
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.javascript.JsToolManager
@@ -78,7 +80,7 @@ fun ScriptExecutionDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "脚本执行",
+                            text = stringResource(R.string.script_execution),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -95,7 +97,7 @@ fun ScriptExecutionDialog(
                 Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                     // 脚本编辑器
                     Text(
-                        text = "脚本代码",
+                        text = stringResource(R.string.script_code),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -124,11 +126,11 @@ fun ScriptExecutionDialog(
                                 focusedIndicatorColor = Color.Transparent,
                                 unfocusedIndicatorColor = Color.Transparent
                             ),
-                            placeholder = { 
+                            placeholder = {
                                 Text(
-                                    "编写JavaScript代码...",
+                                    stringResource(R.string.script_code_placeholder),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                ) 
+                                )
                             }
                         )
                     }
@@ -137,7 +139,7 @@ fun ScriptExecutionDialog(
                     if (tool.parameters.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "参数配置",
+                            text = stringResource(R.string.script_params_config),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -167,7 +169,7 @@ fun ScriptExecutionDialog(
                     if (executionResults.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "执行结果",
+                            text = stringResource(R.string.execution_result),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
@@ -200,7 +202,7 @@ fun ScriptExecutionDialog(
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
-                                            text = if (result.success) result.result.toString() else "错误: ${result.error}",
+                                            text = if (result.success) result.result.toString() else stringResource(R.string.script_error, result.error ?: ""),
                                             style = MaterialTheme.typography.bodyMedium,
                                             modifier = Modifier.weight(1f)
                                         )
@@ -219,7 +221,7 @@ fun ScriptExecutionDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
                 ) {
                     OutlinedButton(onClick = onDismiss) {
-                        Text("取消")
+                        Text(stringResource(R.string.common_cancel))
                     }
 
                     FilledTonalButton(
@@ -238,7 +240,7 @@ fun ScriptExecutionDialog(
                                             toolName = "${packageName}:${tool.name}",
                                             success = false,
                                             result = StringResultData(""),
-                                            error = "缺少参数: ${missingParams.joinToString(", ")}"
+                                            error = context.getString(R.string.script_missing_params, missingParams.joinToString(", "))
                                         )
                                         withContext(Dispatchers.Main) {
                                             executionResults = listOf(missingResult)
@@ -264,7 +266,7 @@ fun ScriptExecutionDialog(
                                                     toolName = "${packageName}:${tool.name}",
                                                     success = false,
                                                     result = StringResultData(""),
-                                                    error = "执行流错误: ${e.message}"
+                                                    error = context.getString(R.string.script_flow_error, e.message ?: "")
                                                 )
                                                 withContext(Dispatchers.Main) {
                                                     executionResults = executionResults + errorResult
@@ -290,7 +292,7 @@ fun ScriptExecutionDialog(
                                             toolName = "${packageName}:${tool.name}",
                                             success = false,
                                             result = StringResultData(""),
-                                            error = "执行错误: ${e.message}"
+                                            error = context.getString(R.string.script_execution_error, e.message ?: "")
                                         )
                                         executionResults = executionResults + finalError
                                         onExecuted(finalError)
@@ -308,7 +310,7 @@ fun ScriptExecutionDialog(
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("执行中")
+                            Text(stringResource(R.string.script_executing))
                         } else {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
@@ -316,7 +318,7 @@ fun ScriptExecutionDialog(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("执行")
+                            Text(stringResource(R.string.script_execute))
                         }
                     }
                 }

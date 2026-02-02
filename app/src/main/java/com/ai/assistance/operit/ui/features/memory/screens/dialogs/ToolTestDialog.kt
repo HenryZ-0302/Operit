@@ -24,7 +24,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 
 @Composable
 fun ToolTestDialog(
@@ -37,23 +39,23 @@ fun ToolTestDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("模拟AI附着记忆") },
+        title = { Text(stringResource(R.string.memory_test_ai_tool)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("输入查询内容，模拟AI从知识库中检索并附着相关记忆：")
+                Text(stringResource(R.string.memory_test_tool_hint))
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("查询") },
+                    label = { Text(stringResource(R.string.memory_source)) },
                     modifier = Modifier.fillMaxWidth()
                 )
-                
+
                 if (isLoading) {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 } else if (result.isNotEmpty()) {
-                    Text("结果:", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(R.string.memory_test_results) + ":", style = MaterialTheme.typography.titleSmall)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -68,12 +70,12 @@ fun ToolTestDialog(
         },
         confirmButton = {
             Button(onClick = { onExecute(query) }, enabled = !isLoading) {
-                Text("执行")
+                Text(stringResource(R.string.memory_create_link))
             }
         },
         dismissButton = {
             OutlinedButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(stringResource(R.string.memory_close))
             }
         }
     )

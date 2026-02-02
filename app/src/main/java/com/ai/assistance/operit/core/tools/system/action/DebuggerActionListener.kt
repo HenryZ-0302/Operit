@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.core.tools.system.action
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import com.ai.assistance.operit.core.tools.system.ShizukuAuthorizer
@@ -32,8 +33,8 @@ class DebuggerActionListener(private val context: Context) : ActionListener {
         }
 
         /** 获取Shizuku启动说明 */
-        fun getShizukuStartupInstructions(): String {
-            return ShizukuAuthorizer.getShizukuStartupInstructions()
+        fun getShizukuStartupInstructions(context: Context): String {
+            return ShizukuAuthorizer.getShizukuStartupInstructions(context)
         }
     }
 
@@ -83,7 +84,7 @@ class DebuggerActionListener(private val context: Context) : ActionListener {
                 }
 
                 if (isListening.get()) {
-                    return@withContext ActionListener.ListeningResult.failure("已在监听中")
+                    return@withContext ActionListener.ListeningResult.failure(context.getString(R.string.admin_already_listening))
                 }
 
                 actionCallback = onAction
@@ -94,11 +95,11 @@ class DebuggerActionListener(private val context: Context) : ActionListener {
                 // 启动系统级事件监控
                 startSystemEventMonitoring()
 
-                return@withContext ActionListener.ListeningResult.success("调试器UI操作监听已启动")
+                return@withContext ActionListener.ListeningResult.success(context.getString(R.string.debugger_ui_listener_started))
             } catch (e: Exception) {
                 AppLogger.e(TAG, "启动调试器UI操作监听失败", e)
                 isListening.set(false)
-                return@withContext ActionListener.ListeningResult.failure("启动失败: ${e.message}")
+                return@withContext ActionListener.ListeningResult.failure(context.getString(R.string.admin_start_failed, e.message ?: "Unknown error"))
             }
         }
 

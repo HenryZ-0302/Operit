@@ -46,7 +46,7 @@ fun PermissionStatusItem(
         )
 
         Text(
-                text = if (isGranted) "已授权" else "未授权",
+                text = if (isGranted) "Authorized" else "Unauthorized",
                 color = if (isGranted) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium

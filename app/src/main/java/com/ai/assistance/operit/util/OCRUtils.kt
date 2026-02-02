@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import androidx.annotation.WorkerThread
 import com.google.mlkit.vision.common.InputImage
@@ -186,7 +187,7 @@ object OCRUtils {
                 OCRResult.Success(result)
             } catch (e: IOException) {
                 AppLogger.e(TAG, "Error reading image: ${e.message}", e)
-                OCRResult.Error("无法读取图像文件: ${e.message}")
+                OCRResult.Error(context.getString(R.string.ocr_cannot_read_image, e.message))
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Error recognizing text from uri: ${e.message}", e)
                 OCRResult.Error(e.message ?: "Unknown error")
@@ -203,10 +204,10 @@ object OCRUtils {
                         originalBitmap.recycle() // 回收从输入流创建的Bitmap
                         result
                     } else {
-                        OCRResult.Error("无法从URI解码Bitmap")
+                        OCRResult.Error(context.getString(R.string.ocr_cannot_decode_bitmap_from_uri))
                     }
                 }
-                        ?: OCRResult.Error("无法打开URI的输入流")
+                        ?: OCRResult.Error(context.getString(R.string.ocr_cannot_open_uri_stream))
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Error recognizing text from uri (high quality): ${e.message}", e)
                 OCRResult.Error(e.message ?: "Unknown error on high quality path")

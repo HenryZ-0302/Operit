@@ -2,6 +2,7 @@ package com.ai.assistance.operit.data.mcp.plugins
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.R
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
@@ -10,7 +11,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** MCPBridgeClient - Client for communicating with MCP services through a bridge */
-class MCPBridgeClient(context: Context, private val serviceName: String) {
+class MCPBridgeClient(private val context: Context, private val serviceName: String) {
     companion object {
         private const val TAG = "MCPBridgeClient"
         private const val DEFAULT_SPAWN_TIMEOUT_MS = 180000L
@@ -322,6 +323,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                 try {
                     val response =
                         MCPBridge.sendCommand(
+                            context,
                             buildSpawnCommand(name = serviceName, timeoutMs = timeoutMs)
                         )
                     if (response != null && !response.optBoolean("success", false)) {
@@ -355,7 +357,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
             withContext(Dispatchers.IO) {
                 try {
                     AppLogger.d(TAG, "Attempting to unspawn service: $serviceName")
-                    val unspawnResult = MCPBridge.sendCommand(buildUnspawnCommand(serviceName))
+                    val unspawnResult = MCPBridge.sendCommand(context, buildUnspawnCommand(serviceName))
                     if (unspawnResult?.optBoolean("success", false) == true) {
                         AppLogger.i(TAG, "Service $serviceName unspawned successfully.")
                         disconnect() // Set local state to disconnected
@@ -393,7 +395,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                                 put("success", false)
                                 put("error", JSONObject().apply {
                                     put("code", -1)
-                                    put("message", "无法连接到 $serviceName 服务")
+                                    put("message", context.getString(R.string.mcp_bridge_cannot_connect_service, serviceName))
                                 })
                             }
                         }
@@ -412,7 +414,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                     val command = buildToolCallCommand(name = serviceName, method = method, params = params)
 
                     // Send command
-                    val response = MCPBridge.sendCommand(command)
+                    val response = MCPBridge.sendCommand(context, command)
 
                     if (response == null) {
                         // 如果响应为空，返回一个包含错误信息的对象
@@ -420,7 +422,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                             put("success", false)
                             put("error", JSONObject().apply {
                                 put("code", -1)
-                                put("message", "无法连接到桥接器或未收到响应")
+                                put("message", context.getString(R.string.mcp_bridge_cannot_connect_or_no_response))
                             })
                         }
                     }
@@ -448,7 +450,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                                 // If reconnect succeeds, try the call again (one retry)
                                 AppLogger.d(TAG, "重新连接成功，重试工具调用")
                                 val retryCommand = JSONObject(command.toString())
-                                val retryResponse = MCPBridge.sendCommand(retryCommand)
+                                val retryResponse = MCPBridge.sendCommand(context, retryCommand)
 
                                 if (retryResponse != null) {
                                     return@withContext retryResponse
@@ -468,7 +470,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                         put("success", false)
                         put("error", JSONObject().apply {
                             put("code", -1)
-                            put("message", "调用工具时发生异常: ${e.message}")
+                            put("message", context.getString(R.string.mcp_bridge_tool_call_exception, e.message))
                         })
                     }
                 }
@@ -533,7 +535,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
                         }
                     }
 
-                    val response = MCPBridge.sendCommand(buildListToolsCommand(serviceName))
+                    val response = MCPBridge.sendCommand(context, buildListToolsCommand(serviceName))
 
                     if (response?.optBoolean("success", false) == true) {
                         val toolsArray =
@@ -585,7 +587,7 @@ class MCPBridgeClient(context: Context, private val serviceName: String) {
     suspend fun getServiceInfo(): ServiceInfo? =
             withContext(Dispatchers.IO) {
                 try {
-                    val listResponse = MCPBridge.sendCommand(buildListServicesCommand()) ?: return@withContext null
+                    val listResponse = MCPBridge.sendCommand(context, buildListServicesCommand()) ?: return@withContext null
                     
                     if (listResponse.optBoolean("success", false)) {
                         val services = listResponse.optJSONObject("result")?.optJSONArray("services")

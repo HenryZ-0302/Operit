@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Environment
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.BinaryFileContentData
 import com.ai.assistance.operit.core.tools.DirectoryListingData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.data.model.AITool
@@ -11,7 +12,6 @@ import com.ai.assistance.operit.data.model.ToolParameter
 import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import android.util.Base64
 
 @Serializable
 data class FileApiEntry(val name: String, val isDirectory: Boolean)
@@ -34,6 +35,8 @@ private constructor(
     private var rootPath: String,
     private val type: ServerType
 ) : NanoHTTPD(port) {
+
+    private var workspaceEnv: String? = null
 
     enum class ServerType {
         WORKSPACE,
@@ -160,13 +163,14 @@ private constructor(
         AppLogger.d(TAG, "Local server stopped at port: $port")
     }
 
-    fun updateChatWorkspace(newWorkspacePath: String) {
+    fun updateChatWorkspace(newWorkspacePath: String, newWorkspaceEnv: String?) {
         // This is now specific to the workspace server.
         // A better approach would be to create a new instance if the path changes fundamentally,
         // but for now, we'll just update the path for the WORKSPACE instance.
         this.rootPath = newWorkspacePath
+        this.workspaceEnv = newWorkspaceEnv
         ensureWorkspaceDirExists(newWorkspacePath)
-        AppLogger.d(TAG, "Workspace path updated to: $rootPath")
+        AppLogger.d(TAG, "Workspace path updated to: $rootPath env=$workspaceEnv")
     }
 
     fun isRunning(): Boolean {
@@ -181,8 +185,85 @@ private constructor(
             return handleApiRequest(session)
         }
 
-        // Serve static files from rootPath
+        // Serve static files
         val uri = if (session.uri == "/") "/index.html" else session.uri
+        val mimeType = getCustomMimeType(uri)
+
+        return if (type == ServerType.WORKSPACE && !workspaceEnv.isNullOrBlank()) {
+            serveWorkspaceFileViaTool(uri, mimeType)
+        } else {
+            serveFileFromDisk(uri, mimeType)
+        }
+    }
+
+    private fun normalizeWebPath(path: String): String {
+        var p = path.trim()
+        if (!p.startsWith("/")) p = "/$p"
+        while (p.contains("//")) p = p.replace("//", "/")
+        return p
+    }
+
+    private fun isSafeRelativeWebPath(path: String): Boolean {
+        val normalized = normalizeWebPath(path)
+        if (normalized.contains("\\")) return false
+        return !normalized.split('/').any { it == ".." }
+    }
+
+    private fun joinVirtualRoot(root: String, uri: String): String {
+        val base = normalizeWebPath(root)
+        val rel = normalizeWebPath(uri)
+        return if (base == "/") rel else normalizeWebPath(base.trimEnd('/') + rel)
+    }
+
+    private fun serveWorkspaceFileViaTool(uri: String, mimeType: String): Response {
+        if (!isSafeRelativeWebPath(uri)) {
+            return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Access denied").addCorsHeaders()
+        }
+
+        return try {
+            val toolHandler = AIToolHandler.getInstance(context)
+            val fullPath = joinVirtualRoot(rootPath, uri)
+            val tool = AITool(
+                name = "read_file_binary",
+                parameters = listOf(
+                    ToolParameter("path", fullPath),
+                    ToolParameter("environment", workspaceEnv ?: "")
+                )
+            )
+
+            AppLogger.d(TAG, "execute read_file_binary path=$fullPath env=$workspaceEnv")
+            val result = toolHandler.executeTool(tool)
+            AppLogger.d(TAG, "result read_file_binary success=${result.success} error=${result.error}")
+
+            if (!result.success || result.result !is BinaryFileContentData) {
+                return newFixedLengthResponse(
+                    Response.Status.NOT_FOUND,
+                    MIME_PLAINTEXT,
+                    result.error ?: "File not found"
+                ).addCorsHeaders()
+            }
+
+            val data = result.result as BinaryFileContentData
+            val base64Content = data.contentBase64
+            val bytes = Base64.decode(base64Content, Base64.DEFAULT)
+
+            if (mimeType == "text/html") {
+                val htmlContent = String(bytes, Charsets.UTF_8)
+                val injectedHtml = injectErudaIntoHtml(htmlContent)
+                return newFixedLengthResponse(Response.Status.OK, mimeType, injectedHtml).addCorsHeaders()
+            }
+
+            val inputStream = ByteArrayInputStream(bytes)
+            val response = newFixedLengthResponse(Response.Status.OK, mimeType, inputStream, bytes.size.toLong())
+            response.addCorsHeaders()
+            response
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error serving workspace file via tool", e)
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Could not read file.").addCorsHeaders()
+        }
+    }
+
+    private fun serveFileFromDisk(uri: String, mimeType: String): Response {
         val file = File(rootPath, uri)
 
         if (!file.exists() || !isInRoot(file)) {
@@ -194,13 +275,10 @@ private constructor(
             ).addCorsHeaders()
         }
 
-        val mimeType = getCustomMimeType(uri)
         return try {
-            val fstream = FileInputStream(file)
             // Read the file into a byte array to serve it directly.
             // This avoids the GZIP streaming issue with WebView that causes "Broken pipe".
-            val bytes = fstream.readBytes()
-            fstream.close()
+            val bytes = file.readBytes()
 
             if (mimeType == "text/html") {
                 val htmlContent = String(bytes, Charsets.UTF_8)
@@ -276,16 +354,29 @@ private constructor(
     private fun listDirectory(relativePath: String): Response {
         try {
             val toolHandler = AIToolHandler.getInstance(context)
-            
-            // Security check: ensure the path is within our root directory
-            val requestedDir = File(rootPath, relativePath).canonicalFile
-            if (!requestedDir.path.startsWith(File(rootPath).canonicalPath)) {
-                 return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Access denied").addCorsHeaders()
+
+            val requestedPath = if (type == ServerType.WORKSPACE && !workspaceEnv.isNullOrBlank()) {
+                if (!isSafeRelativeWebPath(relativePath)) {
+                    return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Access denied").addCorsHeaders()
+                }
+                joinVirtualRoot(rootPath, relativePath)
+            } else {
+                // Security check: ensure the path is within our root directory
+                val requestedDir = File(rootPath, relativePath).canonicalFile
+                if (!requestedDir.path.startsWith(File(rootPath).canonicalPath)) {
+                    return newFixedLengthResponse(Response.Status.FORBIDDEN, MIME_PLAINTEXT, "Access denied").addCorsHeaders()
+                }
+                requestedDir.absolutePath
+            }
+
+            val params = mutableListOf(ToolParameter("path", requestedPath))
+            if (type == ServerType.WORKSPACE && !workspaceEnv.isNullOrBlank()) {
+                params.add(ToolParameter("environment", workspaceEnv ?: ""))
             }
 
             val tool = AITool(
                 name = "list_files",
-                parameters = listOf(ToolParameter("path", requestedDir.absolutePath))
+                parameters = params
             )
 
             val result = toolHandler.executeTool(tool)
@@ -318,6 +409,7 @@ private constructor(
      * 确保工作区目录存在
      */
     private fun ensureWorkspaceDirExists(path: String) {
+        if (!workspaceEnv.isNullOrBlank()) return
         val dir = File(path)
         if (!dir.exists()) {
             dir.mkdirs()

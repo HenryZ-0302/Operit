@@ -4,6 +4,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import kotlinx.coroutines.Dispatchers
@@ -38,13 +39,13 @@ class AdminActionListener(private val context: Context) : ActionListener {
 
     override suspend fun hasPermission(): ActionListener.PermissionStatus {
         if (adminComponentName == null) {
-            return ActionListener.PermissionStatus.denied("设备管理员组件名称未设置")
+            return ActionListener.PermissionStatus.denied(context.getString(R.string.admin_device_admin_component_name_not_set))
         }
 
         return if (isDeviceAdminActive()) {
             ActionListener.PermissionStatus.granted()
         } else {
-            ActionListener.PermissionStatus.denied("应用的设备管理员权限未激活")
+            ActionListener.PermissionStatus.denied(context.getString(R.string.admin_device_admin_permission_not_activated))
         }
     }
 
@@ -68,7 +69,7 @@ class AdminActionListener(private val context: Context) : ActionListener {
         try {
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponentName)
-            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "需要设备管理员权限以监听系统UI操作")
+            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, context.getString(R.string.admin_need_device_admin_permission))
             intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
             context.startActivity(intent)
 
@@ -90,7 +91,7 @@ class AdminActionListener(private val context: Context) : ActionListener {
                 }
 
                 if (isListening.get()) {
-                    return@withContext ActionListener.ListeningResult.failure("已在监听中")
+                    return@withContext ActionListener.ListeningResult.failure(context.getString(R.string.admin_already_listening))
                 }
 
                 actionCallback = onAction
@@ -101,11 +102,11 @@ class AdminActionListener(private val context: Context) : ActionListener {
                 // 启动管理员级别的事件监控
                 startAdminEventMonitoring()
 
-                return@withContext ActionListener.ListeningResult.success("设备管理员UI操作监听已启动")
+                return@withContext ActionListener.ListeningResult.success(context.getString(R.string.admin_ui_listener_started))
             } catch (e: Exception) {
                 AppLogger.e(TAG, "启动设备管理员UI操作监听失败", e)
                 isListening.set(false)
-                return@withContext ActionListener.ListeningResult.failure("启动失败: ${e.message}")
+                return@withContext ActionListener.ListeningResult.failure(context.getString(R.string.admin_start_failed, e.message ?: "Unknown error"))
             }
         }
 

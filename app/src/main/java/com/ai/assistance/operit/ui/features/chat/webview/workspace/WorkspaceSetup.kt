@@ -24,21 +24,164 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.ai.assistance.operit.data.preferences.ApiPreferences
+import kotlinx.coroutines.*
 
 /**
  * VSCode风格的工作区设置组件
  * 用于初始绑定工作区
  */
 @Composable
-fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
+fun WorkspaceSetup(chatId: String, onBindWorkspace: (String, String?) -> Unit) {
     val context = LocalContext.current
     var showFileBrowser by remember { mutableStateOf(false) }
     var showProjectTypeDialog by remember { mutableStateOf(false) }
 
+    var pendingRepoBookmarkUri by remember { mutableStateOf<Uri?>(null) }
+    var repoBookmarkNameInput by remember { mutableStateOf("") }
+    var showRepoBookmarkNameDialog by remember { mutableStateOf(false) }
+    var repoBookmarkNameError by remember { mutableStateOf<String?>(null) }
+
+    val scope = rememberCoroutineScope()
+
+    val apiPreferences = remember { ApiPreferences.getInstance(context) }
+    val safBookmarks by apiPreferences.safBookmarksFlow.collectAsState(initial = emptyList())
+
+    fun querySafBookmarkDisplayName(uri: Uri): String {
+        return try {
+            val treeDocId = DocumentsContract.getTreeDocumentId(uri)
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(uri, treeDocId)
+
+            context.contentResolver.query(
+                docUri,
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                if (cursor.moveToFirst() && idx >= 0 && !cursor.isNull(idx)) {
+                    cursor.getString(idx)
+                } else {
+                    null
+                }
+            } ?: uri.toString()
+        } catch (_: Exception) {
+            uri.toString()
+        }
+    }
+
+    fun queryRepoBookmarkName(uri: Uri): String {
+        fun normalizeName(raw: String): String {
+            return raw.trim()
+                .lowercase(java.util.Locale.ROOT)
+                .replace(Regex("\\s+"), "_")
+                .ifBlank { "repo" }
+        }
+
+        val providerLabel =
+            runCatching {
+                val authority = uri.authority ?: return@runCatching null
+                val provider = context.packageManager.resolveContentProvider(authority, 0)
+                provider?.applicationInfo?.loadLabel(context.packageManager)?.toString()?.trim()
+            }.getOrNull()
+
+        val raw = providerLabel?.takeIf { it.isNotBlank() } ?: uri.authority ?: "repo"
+        return normalizeName(raw)
+    }
+
+    val bindSafLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+            pendingRepoBookmarkUri = uri
+            repoBookmarkNameInput = queryRepoBookmarkName(uri)
+            showRepoBookmarkNameDialog = true
+        }
+    }
+
+    if (showRepoBookmarkNameDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showRepoBookmarkNameDialog = false
+                pendingRepoBookmarkUri = null
+                repoBookmarkNameError = null
+            },
+            title = { Text(context.getString(R.string.repo_bookmark_name)) },
+            text = {
+                TextField(
+                    value = repoBookmarkNameInput,
+                    onValueChange = {
+                        repoBookmarkNameInput = it
+                        repoBookmarkNameError = null
+                    },
+                    label = { Text(context.getString(R.string.repo_bookmark_name_label)) },
+                    singleLine = true,
+                    isError = repoBookmarkNameError != null,
+                    supportingText = {
+                        repoBookmarkNameError?.let { Text(it) }
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val uri = pendingRepoBookmarkUri
+                        val name = repoBookmarkNameInput.trim()
+                        if (uri == null) {
+                            showRepoBookmarkNameDialog = false
+                            pendingRepoBookmarkUri = null
+                            repoBookmarkNameError = null
+                            return@TextButton
+                        }
+
+                        if (name.isEmpty()) {
+                            repoBookmarkNameError = context.getString(R.string.repo_bookmark_name_empty)
+                            return@TextButton
+                        }
+
+                        val nameExists = safBookmarks.any {
+                            it.uri != uri.toString() && it.name.equals(name, ignoreCase = true)
+                        }
+                        if (nameExists) {
+                            repoBookmarkNameError = context.getString(R.string.repo_bookmark_name_exists)
+                            return@TextButton
+                        }
+
+                        scope.launch {
+                            apiPreferences.addSafBookmark(uri.toString(), name)
+                            onBindWorkspace("/", "repo:$name")
+                        }
+
+                        showRepoBookmarkNameDialog = false
+                        pendingRepoBookmarkUri = null
+                        repoBookmarkNameError = null
+                    }
+                ) { Text(context.getString(android.R.string.ok)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRepoBookmarkNameDialog = false
+                        pendingRepoBookmarkUri = null
+                        repoBookmarkNameError = null
+                    }
+                ) { Text(context.getString(android.R.string.cancel)) }
+            }
+        )
+    }
+
     if (showFileBrowser) {
         FileBrowser(
             initialPath = context.filesDir.absolutePath, // 默认应用内部目录
-            onBindWorkspace = onBindWorkspace,
+            onBindWorkspace = { path, env -> onBindWorkspace(path, env) },
             onCancel = { showFileBrowser = false }
         )
     } else {
@@ -86,7 +229,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                                 description = context.getString(R.string.workspace_project_type_blank_description),
                                 onClick = {
                                     val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "blank")
-                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    onBindWorkspace(workspaceDir.absolutePath, null)
                                     showProjectTypeDialog = false
                                 }
                             )
@@ -98,7 +241,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                                 description = context.getString(R.string.workspace_project_type_office_description),
                                 onClick = {
                                     val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "office")
-                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    onBindWorkspace(workspaceDir.absolutePath, null)
                                     showProjectTypeDialog = false
                                 }
                             )
@@ -110,7 +253,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                                 description = context.getString(R.string.workspace_project_type_web_description),
                                 onClick = {
                                     val workspaceDir = createAndGetDefaultWorkspace(context, chatId)
-                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    onBindWorkspace(workspaceDir.absolutePath, null)
                                     showProjectTypeDialog = false
                                 }
                             )
@@ -122,7 +265,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                                 description = context.getString(R.string.workspace_project_type_node_description),
                                 onClick = {
                                     val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "node")
-                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    onBindWorkspace(workspaceDir.absolutePath, null)
                                     showProjectTypeDialog = false
                                 }
                             )
@@ -134,7 +277,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                                 description = context.getString(R.string.workspace_project_type_typescript_description),
                                 onClick = {
                                     val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "typescript")
-                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    onBindWorkspace(workspaceDir.absolutePath, null)
                                     showProjectTypeDialog = false
                                 }
                             )
@@ -146,7 +289,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                                 description = context.getString(R.string.workspace_project_type_python_description),
                                 onClick = {
                                     val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "python")
-                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    onBindWorkspace(workspaceDir.absolutePath, null)
                                     showProjectTypeDialog = false
                                 }
                             )
@@ -158,7 +301,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                                 description = context.getString(R.string.workspace_project_type_java_description),
                                 onClick = {
                                     val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "java")
-                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    onBindWorkspace(workspaceDir.absolutePath, null)
                                     showProjectTypeDialog = false
                                 }
                             )
@@ -170,7 +313,7 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                                 description = context.getString(R.string.workspace_project_type_go_description),
                                 onClick = {
                                     val workspaceDir = createAndGetDefaultWorkspace(context, chatId, "go")
-                                    onBindWorkspace(workspaceDir.absolutePath)
+                                    onBindWorkspace(workspaceDir.absolutePath, null)
                                     showProjectTypeDialog = false
                                 }
                             )
@@ -233,6 +376,13 @@ fun WorkspaceSetup(chatId: String, onBindWorkspace: (String) -> Unit) {
                     title = context.getString(R.string.select_existing_workspace),
                     description = context.getString(R.string.select_folder_from_device),
                     onClick = { showFileBrowser = true }
+                )
+
+                WorkspaceOption(
+                    icon = Icons.Default.Folder,
+                    title = context.getString(R.string.attach_local_storage_repo),
+                    description = context.getString(R.string.select_folder_from_device),
+                    onClick = { bindSafLauncher.launch(null) }
                 )
             }
         }

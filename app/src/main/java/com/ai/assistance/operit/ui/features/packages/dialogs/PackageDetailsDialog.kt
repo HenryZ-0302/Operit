@@ -79,8 +79,8 @@ fun PackageDetailsDialog(
     if (showDeleteConfirmDialog) {
         AlertDialog(
                 onDismissRequest = { showDeleteConfirmDialog = false },
-                title = { Text("确认删除") },
-                text = { Text("确定要删除包 \"${packageName}\" 吗？此操作无法撤销。") },
+                title = { Text(stringResource(R.string.pkg_confirm_delete)) },
+                text = { Text(stringResource(R.string.pkg_delete_warning, packageName)) },
                 confirmButton = {
                     Button(
                             onClick = {
@@ -98,12 +98,12 @@ fun PackageDetailsDialog(
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Text("删除")
+                        Text(stringResource(R.string.pkg_delete))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                        Text("取消")
+                        Text(stringResource(R.string.pkg_cancel))
                     }
                 }
         )
@@ -170,7 +170,7 @@ fun PackageDetailsDialog(
 
                 // 工具列表
                 Text(
-                    text = "工具列表",
+                    text = stringResource(R.string.pkg_tool_list),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -182,7 +182,7 @@ fun PackageDetailsDialog(
                     if (!hasStates) {
                         val tools = resolvedPackage?.tools.orEmpty()
                         if (tools.isEmpty()) {
-                            EmptyToolsCard(message = "暂无可用工具")
+                            EmptyToolsCard(message = stringResource(R.string.pkg_no_tools))
                         } else {
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
@@ -210,7 +210,7 @@ fun PackageDetailsDialog(
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(text = "默认")
+                                        Text(text = stringResource(R.string.default_option))
                                         if (activeStateId.isNullOrBlank()) {
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Icon(
@@ -269,7 +269,7 @@ fun PackageDetailsDialog(
                             }
 
                             if (toolsForTab.isEmpty()) {
-                                EmptyToolsCard(message = "暂无可用工具")
+                                EmptyToolsCard(message = stringResource(R.string.mcp_no_available_tools))
                             } else {
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
@@ -307,12 +307,12 @@ fun PackageDetailsDialog(
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("删除")
+                            Text(stringResource(R.string.pkg_delete))
                         }
                     }
                     
                     FilledTonalButton(onClick = onDismiss) {
-                        Text("关闭")
+                        Text(stringResource(R.string.pkg_close))
                     }
                 }
             }
@@ -396,7 +396,7 @@ private fun ToolCard(
                     contentPadding = PaddingValues(horizontal = 8.dp)
                 ) {
                     Text(
-                        text = "运行",
+                        text = stringResource(R.string.run),
                         style = MaterialTheme.typography.labelMedium
                     )
                 }

@@ -121,6 +121,7 @@ class ChatHistoryManager private constructor(private val context: Context) {
             group = this.group, // 映射group字段
             displayOrder = this.displayOrder,
             workspace = this.workspace, // 映射workspace字段
+            workspaceEnv = this.workspaceEnv, // 映射workspaceEnv字段
             parentChatId = this.parentChatId, // 映射parentChatId字段
             characterCardName = this.characterCardName, // 映射characterCardName字段
             locked = this.locked
@@ -146,6 +147,25 @@ class ChatHistoryManager private constructor(private val context: Context) {
             SharingStarted.Lazily,
             emptyList()
         )
+
+    suspend fun getTotalChatCount(): Int {
+        return withContext(Dispatchers.IO) { chatDao.getTotalChatCount() }
+    }
+
+    suspend fun getTotalMessageCount(): Int {
+        return withContext(Dispatchers.IO) { messageDao.getTotalMessageCount() }
+    }
+
+    suspend fun getMessageCountsByChatId(): Map<String, Int> {
+        return withContext(Dispatchers.IO) {
+            try {
+                messageDao.getMessageCountsByChatId().associate { it.chatId to it.count }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to get message counts by chatId", e)
+                emptyMap()
+            }
+        }
+    }
 
     // 角色卡聊天统计
     val characterCardStatsFlow: Flow<List<CharacterCardChatStats>> =
@@ -650,10 +670,10 @@ class ChatHistoryManager private constructor(private val context: Context) {
     }
 
     /** 更新聊天工作区 */
-    suspend fun updateChatWorkspace(chatId: String, workspace: String?) {
+    suspend fun updateChatWorkspace(chatId: String, workspace: String?, workspaceEnv: String?) {
         mutex.withLock {
             try {
-                chatDao.updateChatWorkspace(chatId, workspace)
+                chatDao.updateChatWorkspace(chatId, workspace, workspaceEnv)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to update chat workspace for chat $chatId", e)
                 throw e
@@ -673,6 +693,17 @@ class ChatHistoryManager private constructor(private val context: Context) {
         }
     }
 
+    suspend fun getChatTitle(chatId: String): String? {
+        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+            try {
+                chatDao.getChatById(chatId)?.title
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to get chat title for chat $chatId", e)
+                null
+            }
+        }
+    }
+
     // 直接加载聊天消息
     suspend fun loadChatMessages(chatId: String): List<ChatMessage> {
         return kotlinx.coroutines.withContext(Dispatchers.IO) {
@@ -688,6 +719,42 @@ class ChatHistoryManager private constructor(private val context: Context) {
         }
     }
 
+    suspend fun loadChatMessages(
+        chatId: String,
+        order: String? = null,
+        limit: Int? = null
+    ): List<ChatMessage> {
+        return kotlinx.coroutines.withContext(Dispatchers.IO) {
+            try {
+                val normalizedOrder = order?.trim()?.lowercase()
+                val effectiveLimit = limit?.coerceAtLeast(1)
+
+                val messages = when (normalizedOrder) {
+                    "desc" -> {
+                        if (effectiveLimit != null) {
+                            messageDao.getMessagesForChatDesc(chatId, effectiveLimit)
+                        } else {
+                            messageDao.getMessagesForChat(chatId).asReversed()
+                        }
+                    }
+
+                    else -> {
+                        if (effectiveLimit != null) {
+                            messageDao.getMessagesForChatAsc(chatId, effectiveLimit)
+                        } else {
+                            messageDao.getMessagesForChat(chatId)
+                        }
+                    }
+                }
+
+                messages.map { it.toChatMessage() }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "加载聊天消息失败", e)
+                emptyList()
+            }
+        }
+    }
+
     /** 搜索包含特定关键词的聊天ID列表 */
     suspend fun searchChatIdsByContent(query: String): Set<String> {
         return kotlinx.coroutines.withContext(Dispatchers.IO) {
@@ -695,7 +762,14 @@ class ChatHistoryManager private constructor(private val context: Context) {
                 if (query.isBlank()) {
                     return@withContext emptySet()
                 }
-                val chatIds = messageDao.searchChatIdsByContent(query)
+                val escapedQuery =
+                    query
+                        .trim()
+                        .replace("\\", "\\\\")
+                        .replace("%", "\\%")
+                        .replace("_", "\\_")
+
+                val chatIds = messageDao.searchChatIdsByContent(escapedQuery)
                 chatIds.toSet()
             } catch (e: Exception) {
                 AppLogger.e(TAG, "搜索聊天内容失败: $query", e)
@@ -718,7 +792,7 @@ class ChatHistoryManager private constructor(private val context: Context) {
             try {
                 // 获取父对话
                 val parentChat = chatDao.getChatById(parentChatId)
-                    ?: throw IllegalArgumentException("父对话不存在: $parentChatId")
+                    ?: throw IllegalArgumentException(context.getString(R.string.chat_history_parent_not_exist, parentChatId))
 
                 // 获取父对话的消息
                 val parentMessages = messageDao.getMessagesForChat(parentChatId)
@@ -882,7 +956,7 @@ class ChatHistoryManager private constructor(private val context: Context) {
                         val usedNames = HashSet<String>()
                         ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zos ->
                             for (history in completeHistories) {
-                                val content = MarkdownExporter.exportSingle(history)
+                                val content = MarkdownExporter.exportSingle(context, history)
                                 // 处理文件名中的非法字符
                                 var safeTitle = history.title.replace(Regex("[\\\\/:*?\"<>|]"), "_")
                                 // 避免文件名过长
@@ -920,13 +994,13 @@ class ChatHistoryManager private constructor(private val context: Context) {
 
                     ExportFormat.HTML -> {
                         val file = File(exportDir, "chat_backup_$timestamp.html")
-                        file.writeText(HtmlExporter.exportMultiple(completeHistories))
+                        file.writeText(HtmlExporter.exportMultiple(context, completeHistories))
                         file
                     }
 
                     ExportFormat.TXT -> {
                         val file = File(exportDir, "chat_backup_$timestamp.txt")
-                        file.writeText(TextExporter.exportMultiple(completeHistories))
+                        file.writeText(TextExporter.exportMultiple(context, completeHistories))
                         file
                     }
 
@@ -1000,7 +1074,7 @@ class ChatHistoryManager private constructor(private val context: Context) {
                     val content = inputStream.bufferedReader().use { it.readText() }
 
                     if (content.isBlank()) {
-                        throw Exception("导入的文件为空")
+                        throw Exception(context.getString(R.string.chat_history_imported_file_empty))
                     }
 
                     AppLogger.d(TAG, "使用指定格式导入: $format")
@@ -1075,12 +1149,12 @@ class ChatHistoryManager private constructor(private val context: Context) {
                 
                 ChatFormat.CHATBOX -> {
                     AppLogger.d(TAG, "使用 ChatBox 转换器")
-                    ChatBoxConverter().convert(content)
+                    ChatBoxConverter(context).convert(content)
                 }
                 
                 ChatFormat.MARKDOWN -> {
                     AppLogger.d(TAG, "使用 Markdown 转换器")
-                    MarkdownConverter().convert(content)
+                    MarkdownConverter(context).convert(content)
                 }
                 
                 ChatFormat.GENERIC_JSON -> {
@@ -1095,13 +1169,13 @@ class ChatHistoryManager private constructor(private val context: Context) {
                 }
                 
                 else -> {
-                    throw ConversionException("不支持的格式: $format")
+                    throw ConversionException(context.getString(R.string.chat_history_unsupported_format, format))
                 }
             }
         } catch (e: ConversionException) {
-            throw Exception("格式转换失败: ${e.message}", e)
+            throw Exception(context.getString(R.string.chat_history_convert_format_failed, e.message ?: ""), e)
         } catch (e: Exception) {
-            throw Exception("无法解析备份文件：${e.message}\n请确保文件格式正确", e)
+            throw Exception(context.getString(R.string.chat_history_parse_backup_failed, e.message ?: ""), e)
         }
     }
 

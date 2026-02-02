@@ -109,6 +109,13 @@ class SSHRemoteConnectionTools(private val context: Context) {
                         |Connected to: $username@$host:$port
                         |
                         |All file tools with environment="linux" will now use this SSH connection.
+                        |
+                        |Note: This tool ONLY logs in for the file system tools (remote file operations).
+                        |If you want the terminal to connect to SSH, please use the terminal tool to run SSH again.
+                        |
+                        |Example (skip host key / fingerprint confirmation, and pass password via sshpass):
+                        |sshpass -p '<password>' ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p $port $username@$host
+                        |
                         |Use ssh_exit to logout when done.
                         """.trimMargin()
                     )

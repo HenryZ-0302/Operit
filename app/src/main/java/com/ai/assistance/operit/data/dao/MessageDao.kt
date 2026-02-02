@@ -9,9 +9,22 @@ import com.ai.assistance.operit.data.model.MessageEntity
 /** 消息DAO接口，定义对消息表的数据访问方法 */
 @Dao
 interface MessageDao {
+    /** 获取消息总数 */
+    @Query("SELECT COUNT(*) FROM messages")
+    suspend fun getTotalMessageCount(): Int
+
     /** 获取指定聊天的所有消息，按时间戳排序 */
     @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp ASC")
     suspend fun getMessagesForChat(chatId: String): List<MessageEntity>
+
+    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp ASC LIMIT :limit")
+    suspend fun getMessagesForChatAsc(chatId: String, limit: Int): List<MessageEntity>
+
+    @Query("SELECT * FROM messages WHERE chatId = :chatId ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getMessagesForChatDesc(chatId: String, limit: Int): List<MessageEntity>
+
+    @Query("SELECT chatId AS chatId, COUNT(*) AS count FROM messages GROUP BY chatId")
+    suspend fun getMessageCountsByChatId(): List<ChatMessageCount>
 
     /** 插入单条消息并返回消息ID */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -45,7 +58,7 @@ interface MessageDao {
     suspend fun deleteMessageByTimestamp(chatId: String, timestamp: Long)
 
     /** 查找包含特定关键词的聊天ID列表（不重复） */
-    @Query("SELECT DISTINCT chatId FROM messages WHERE content LIKE '%' || :query || '%' COLLATE NOCASE")
+    @Query("SELECT DISTINCT chatId FROM messages WHERE content LIKE '%' || :query || '%' ESCAPE '\\' COLLATE NOCASE")
     suspend fun searchChatIdsByContent(query: String): List<String>
 
     /** 批量重命名消息中的角色名 */

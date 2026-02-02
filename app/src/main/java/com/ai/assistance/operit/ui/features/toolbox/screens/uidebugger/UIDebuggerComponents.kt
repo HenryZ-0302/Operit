@@ -56,12 +56,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.ViewModelStoreOwner
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.toolbox.screens.uidebugger.components.ActivityMonitorPanel
 
 
@@ -173,7 +175,7 @@ fun UIDebuggerOverlay(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "当前分析界面",
+                            text = stringResource(R.string.uidebugger_current_interface),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onTertiaryContainer,
@@ -189,7 +191,7 @@ fun UIDebuggerOverlay(
                             ) {
                                 Icon(
                                     Icons.Default.ContentCopy,
-                                    contentDescription = "复制Activity名称",
+                                    contentDescription = stringResource(R.string.uidebugger_copy_activity_name),
                                     modifier = Modifier.size(14.dp),
                                     tint = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
@@ -202,7 +204,7 @@ fun UIDebuggerOverlay(
                         ) {
                             Icon(
                                 Icons.Default.Close,
-                                contentDescription = "关闭面板",
+                                contentDescription = stringResource(R.string.uidebugger_close_panel),
                                 modifier = Modifier.size(14.dp),
                                 tint = MaterialTheme.colorScheme.onTertiaryContainer
                             )
@@ -222,7 +224,7 @@ fun UIDebuggerOverlay(
                     if (currentPackageName != null) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "包名: $currentPackageName",
+                            text = stringResource(R.string.uidebugger_package_name, currentPackageName),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
@@ -272,10 +274,10 @@ fun UIDebuggerOverlay(
                 ) {
                     Icon(
                         Icons.Default.Build,
-                        contentDescription = if (isUIAnalysisActive) "关闭UI分析" else "UI分析",
-                        tint = if (isUIAnalysisActive) 
-                            MaterialTheme.colorScheme.onPrimary 
-                        else 
+                        contentDescription = if (isUIAnalysisActive) stringResource(R.string.uidebugger_close_ui_analysis) else stringResource(R.string.uidebugger_ui_analysis),
+                        tint = if (isUIAnalysisActive)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
                             MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.size(20.dp)
                     )
@@ -308,7 +310,7 @@ fun UIDebuggerOverlay(
                             uiState.isActivityListening -> Icons.Default.VisibilityOff
                             else -> Icons.Default.Visibility
                         },
-                        contentDescription = if (uiState.showActivityMonitor) "折叠面板" else "Activity监听",
+                        contentDescription = if (uiState.showActivityMonitor) stringResource(R.string.uidebugger_collapse_panel) else stringResource(R.string.uidebugger_activity_monitor),
                         tint = when {
                             uiState.showActivityMonitor -> MaterialTheme.colorScheme.onPrimary
                             uiState.isActivityListening -> MaterialTheme.colorScheme.onErrorContainer
@@ -327,7 +329,7 @@ fun UIDebuggerOverlay(
                     ) {
                         Icon(
                             Icons.Default.Remove,
-                            contentDescription = "最小化",
+                            contentDescription = stringResource(R.string.uidebugger_minimize),
                             tint = MaterialTheme.colorScheme.onTertiaryContainer,
                             modifier = Modifier.size(20.dp)
                         )
@@ -342,7 +344,7 @@ fun UIDebuggerOverlay(
                 ) {
                     Icon(
                         Icons.Default.Close,
-                        contentDescription = "关闭",
+                        contentDescription = stringResource(R.string.pkg_close),
                         tint = MaterialTheme.colorScheme.onErrorContainer,
                         modifier = Modifier.size(20.dp)
                     )
@@ -483,6 +485,7 @@ fun ElementInfoPanel(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     
     Surface(
@@ -506,7 +509,7 @@ fun ElementInfoPanel(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "控件信息",
+                    text = stringResource(R.string.uidebugger_element_info_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
@@ -514,7 +517,7 @@ fun ElementInfoPanel(
                 IconButton(onClick = onDismiss) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "关闭"
+                        contentDescription = stringResource(R.string.pkg_close)
                     )
                 }
             }
@@ -528,7 +531,7 @@ fun ElementInfoPanel(
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
-                    text = element.typeDescription,
+                    text = element.getTypeDescription(context),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
@@ -553,7 +556,7 @@ fun ElementInfoPanel(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "当前Activity",
+                                text = stringResource(R.string.uidebugger_element_info_current_activity),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -567,7 +570,7 @@ fun ElementInfoPanel(
                             ) {
                                 Icon(
                                     Icons.Default.ContentCopy,
-                                    contentDescription = "复制Activity名称",
+                                    contentDescription = stringResource(R.string.uidebugger_copy_activity_name),
                                     modifier = Modifier.size(16.dp),
                                     tint = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
@@ -582,7 +585,7 @@ fun ElementInfoPanel(
                         if (element.packageName != null) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "包名: ${element.packageName}",
+                                text = stringResource(R.string.uidebugger_element_info_package_name, element.packageName),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
@@ -599,7 +602,7 @@ fun ElementInfoPanel(
                     .weight(1f, fill = false)
             ) {
                 Text(
-                    text = element.getFullDetails(),
+                    text = element.getFullDetails(context),
                     style = MaterialTheme.typography.bodySmall,
                     fontSize = 12.sp,
                     modifier = Modifier.fillMaxWidth()
@@ -608,7 +611,7 @@ fun ElementInfoPanel(
                 if (element.bounds != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "尺寸: ${element.bounds.width()}×${element.bounds.height()}px",
+                        text = stringResource(R.string.uidebugger_element_info_size_px, element.bounds.width(), element.bounds.height()),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -635,7 +638,7 @@ fun CreatePackageDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text("创建新配置包")
+            Text(stringResource(R.string.uidebugger_create_new_package))
         },
         text = {
             Column(
@@ -644,19 +647,19 @@ fun CreatePackageDialog(
                 OutlinedTextField(
                     value = appName,
                     onValueChange = { appName = it },
-                    label = { Text("应用名称") },
+                    label = { Text(stringResource(R.string.uidebugger_app_name)) },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = packageName,
                     onValueChange = { packageName = it },
-                    label = { Text("包名") },
+                    label = { Text(stringResource(R.string.uidebugger_package_name)) },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("描述（可选）") },
+                    label = { Text(stringResource(R.string.uidebugger_description_optional)) },
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 3
                 )
@@ -664,7 +667,7 @@ fun CreatePackageDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { 
+                onClick = {
                     if (appName.isNotBlank() && packageName.isNotBlank()) {
                         onCreatePackage(appName, packageName, description)
                         onDismiss()
@@ -672,12 +675,12 @@ fun CreatePackageDialog(
                 },
                 enabled = appName.isNotBlank() && packageName.isNotBlank()
             ) {
-                Text("创建")
+                Text(stringResource(R.string.uidebugger_create))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.uidebugger_cancel2))
             }
         }
     )

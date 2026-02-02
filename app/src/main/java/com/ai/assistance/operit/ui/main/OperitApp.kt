@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.ui.main
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,14 +41,14 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.CompositionLocalProvider
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.update.screens.UpdateScreen
-import java.time.LocalDateTime
 
 // 为TopAppBar的actions提供CompositionLocal
 // 它允许子组件（如AIChatScreen）向上提供它们的action Composable
 val LocalTopBarActions = compositionLocalOf<(@Composable (RowScope.() -> Unit)) -> Unit> { {} }
 
-data class NavGroup(val title: String, val items: List<NavItem>)
+data class NavGroup(@StringRes val titleResId: Int, val items: List<NavItem>)
 
 @Composable
 fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandler? = null) {
@@ -164,12 +165,10 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
         showChatBindingAnnouncement = false
     }
 
-    val isEventCampaignActive = remember { isEventCampaignActive() }
-
     // Navigation items grouped by category
     val navGroups = listOf(
         NavGroup(
-            "AI功能",
+            R.string.nav_group_ai_features,
             listOf(
                 NavItem.AiChat,
                 NavItem.AssistantConfig,
@@ -179,19 +178,17 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
             )
         ),
         NavGroup(
-            "工具",
+            R.string.nav_group_tools,
             listOf(
                 NavItem.Toolbox,
                 NavItem.ShizukuCommands,
-                // NavItem.Workflow,
                 NavItem.Workflow,
             )
         ),
         NavGroup(
-            "系统",
+            R.string.nav_group_system,
             listOfNotNull(
                 NavItem.Settings,
-                if (isEventCampaignActive) NavItem.EventCampaign else null,
                 NavItem.Help,
                 NavItem.About,
                 NavItem.UpdateHistory
@@ -306,15 +303,5 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                 onAcknowledge = { dismissChatBindingAnnouncement() }
             )
         }
-    }
-}
-
-fun isEventCampaignActive(): Boolean {
-    return try {
-        val now = LocalDateTime.now()
-        val end = LocalDateTime.of(2025, 12, 24, 23, 59)
-        now.isBefore(end)
-    } catch (e: Exception) {
-        false
     }
 }

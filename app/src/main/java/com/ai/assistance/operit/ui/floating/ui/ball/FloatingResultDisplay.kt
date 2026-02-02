@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.floating.FloatContext
 import com.ai.assistance.operit.ui.floating.FloatingMode
 
@@ -26,7 +28,7 @@ fun FloatingResultDisplay(floatContext: FloatContext) {
     val displayText = if (lastMessage != null && lastMessage.sender == "ai") {
         lastMessage.content
     } else {
-        "你好"
+        stringResource(R.string.floating_hello)
     }
 
     Box(

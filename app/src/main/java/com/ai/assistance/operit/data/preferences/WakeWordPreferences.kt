@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.ai.assistance.operit.R
+import com.ai.assistance.operit.core.application.OperitApplication
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -59,46 +61,57 @@ class WakeWordPreferences(private val context: Context) {
         private val KEY_VOICE_AUTO_ATTACH_ITEMS_MIGRATION_VERSION =
             intPreferencesKey("voice_auto_attach_items_migration_version")
 
-        const val DEFAULT_WAKE_PHRASE = "小欧"
         const val DEFAULT_WAKE_PHRASE_REGEX_ENABLED = false
         const val DEFAULT_ALWAYS_LISTENING_ENABLED = false
         const val DEFAULT_WAKE_RECOGNITION_MODE = "stt"
-        const val DEFAULT_VOICE_CALL_INACTIVITY_TIMEOUT_SECONDS = 15
+        const val DEFAULT_VOICE_CALL_INACTIVITY_TIMEOUT_SECONDS = 5
         const val DEFAULT_WAKE_GREETING_ENABLED = true
-        const val DEFAULT_WAKE_GREETING_TEXT = "我在"
 
         const val DEFAULT_WAKE_CREATE_NEW_CHAT_ON_WAKE_ENABLED = false
-        const val DEFAULT_AUTO_NEW_CHAT_GROUP = "全局助手"
+
+        // Default string values using R.string references
+        val DEFAULT_WAKE_PHRASE: String by lazy {
+            runCatching { OperitApplication.instance.getString(R.string.wake_word_default) }
+                .getOrDefault("")
+        }
+        val DEFAULT_WAKE_GREETING_TEXT: String by lazy {
+            runCatching { OperitApplication.instance.getString(R.string.wake_word_response) }
+                .getOrDefault("")
+        }
+        val DEFAULT_AUTO_NEW_CHAT_GROUP: String by lazy {
+            runCatching { OperitApplication.instance.getString(R.string.wake_word_global_assistant) }
+                .getOrDefault("")
+        }
 
         const val DEFAULT_VOICE_AUTO_ATTACH_ENABLED = true
 
         private const val LATEST_VOICE_AUTO_ATTACH_ITEMS_MIGRATION_VERSION = 1
 
-        val DEFAULT_VOICE_AUTO_ATTACH_ITEMS: List<VoiceAutoAttachItem> =
+        fun getDefaultVoiceAutoAttachItems(context: Context): List<VoiceAutoAttachItem> =
             listOf(
                 VoiceAutoAttachItem(
                     id = "screen_ocr",
                     type = VoiceAutoAttachType.SCREEN_OCR,
                     enabled = true,
-                    keywords = "屏幕"
+                    keywords = context.getString(R.string.wake_word_screen)
                 ),
                 VoiceAutoAttachItem(
                     id = "notifications",
                     type = VoiceAutoAttachType.NOTIFICATIONS,
                     enabled = true,
-                    keywords = "通知"
+                    keywords = context.getString(R.string.wake_word_notification)
                 ),
                 VoiceAutoAttachItem(
                     id = "location",
                     type = VoiceAutoAttachType.LOCATION,
                     enabled = true,
-                    keywords = "哪个地方"
+                    keywords = context.getString(R.string.wake_word_which_location)
                 ),
                 VoiceAutoAttachItem(
                     id = "time",
                     type = VoiceAutoAttachType.TIME,
                     enabled = true,
-                    keywords = "时间|几点"
+                    keywords = context.getString(R.string.wake_word_time_query)
                 )
             )
     }
@@ -191,11 +204,12 @@ class WakeWordPreferences(private val context: Context) {
     val voiceAutoAttachItemsFlow: Flow<List<VoiceAutoAttachItem>> =
         dataStore.data.map { prefs ->
             val raw = prefs[KEY_VOICE_AUTO_ATTACH_ITEMS_JSON]
+            val defaultItems = getDefaultVoiceAutoAttachItems(context)
             if (raw.isNullOrBlank()) {
-                DEFAULT_VOICE_AUTO_ATTACH_ITEMS
+                defaultItems
             } else {
                 runCatching { json.decodeFromString<List<VoiceAutoAttachItem>>(raw) }
-                    .getOrDefault(DEFAULT_VOICE_AUTO_ATTACH_ITEMS)
+                    .getOrDefault(defaultItems)
             }
         }
 
@@ -221,7 +235,7 @@ class WakeWordPreferences(private val context: Context) {
             }
 
             val usedTypes = existingItems.map { it.type }.toSet()
-            val missingDefaults = DEFAULT_VOICE_AUTO_ATTACH_ITEMS.filterNot { usedTypes.contains(it.type) }
+            val missingDefaults = getDefaultVoiceAutoAttachItems(context).filterNot { usedTypes.contains(it.type) }
 
             if (missingDefaults.isNotEmpty()) {
                 prefs[KEY_VOICE_AUTO_ATTACH_ITEMS_JSON] =

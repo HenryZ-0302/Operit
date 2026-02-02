@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.data.skill
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.skill.SkillManager
 import com.ai.assistance.operit.core.tools.skill.SkillPackage
 import com.ai.assistance.operit.data.preferences.SkillVisibilityPreferences
@@ -71,7 +72,7 @@ class SkillRepository private constructor(private val context: Context) {
     suspend fun importSkillFromGitHubRepo(repoUrl: String): String {
         return withContext(Dispatchers.IO) {
             val target = parseGitHubSkillTarget(repoUrl)
-                ?: return@withContext "无效的 GitHub 仓库 URL"
+                ?: return@withContext context.getString(R.string.skill_invalid_github_url)
 
             val owner = target.owner
             val repoName = target.repo
@@ -79,7 +80,7 @@ class SkillRepository private constructor(private val context: Context) {
             val ref = target.ref
                 ?: defaultBranchCache[repoKey]
                 ?: getGithubDefaultBranch(owner, repoName)?.also { defaultBranchCache[repoKey] = it }
-                ?: return@withContext "无法确定 $owner/$repoName 的默认分支"
+                ?: return@withContext context.getString(R.string.skill_cannot_determine_default_branch, "$owner/$repoName")
 
             val encodedRef = encodePathSegment(ref)
             val zipUrl = "https://codeload.github.com/$owner/$repoName/zip/$encodedRef"
@@ -106,7 +107,7 @@ class SkillRepository private constructor(private val context: Context) {
                     val downloaded = downloadFromUrl(zipUrl, fallbackTempFile)
                     if (!downloaded || !fallbackTempFile.exists() || fallbackTempFile.length() <= 0L) {
                         if (fallbackTempFile.exists()) fallbackTempFile.delete()
-                        return@withContext "下载仓库 ZIP 文件失败"
+                        return@withContext context.getString(R.string.skill_download_zip_failed)
                     }
                     fallbackTempFile
                 }
@@ -118,7 +119,7 @@ class SkillRepository private constructor(private val context: Context) {
                 }
 
                 // Write repoUrl marker for reliable installed-state detection.
-                if (result.startsWith("已导入 Skill:")) {
+                if (result.startsWith(context.getString(R.string.skill_imported))) {
                     val afterDirs = skillsRootDir.listFiles()?.filter { it.isDirectory }?.map { it.name }?.toSet() ?: emptySet()
                     val newDirs = afterDirs - beforeDirs
                     val newDirName = newDirs.singleOrNull()
@@ -137,7 +138,7 @@ class SkillRepository private constructor(private val context: Context) {
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Failed to import skill from GitHub repo", e)
                 if (pooledZip == null && fallbackTempFile.exists()) fallbackTempFile.delete()
-                "导入失败: ${e.message}"
+                context.getString(R.string.skill_import_failed, e.message ?: "Unknown error")
             }
         }
     }

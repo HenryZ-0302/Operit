@@ -1,9 +1,17 @@
 package com.ai.assistance.operit.ui.features.chat.webview.workspace
 
+import android.content.Intent
+import android.net.Uri
 import android.annotation.SuppressLint
 import android.os.Environment
+import android.provider.DocumentsContract
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -29,15 +37,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.DirectoryListingData
 import com.ai.assistance.operit.core.tools.FileContentData
+import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
+import com.ai.assistance.operit.util.AppLogger
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 
 // 目录条目数据类
@@ -70,19 +83,27 @@ data class QuickPathEntry(
 @Composable
 fun FileBrowser(
         initialPath: String,
-        onBindWorkspace: ((String) -> Unit)? = null,
+        environment: String? = null,
+        onBindWorkspace: ((String, String?) -> Unit)? = null,
         onCancel: () -> Unit,
         isManageMode: Boolean = false,
         onFileOpen: ((OpenFileInfo) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val toolHandler = remember { AIToolHandler.getInstance(context) }
+    val apiPreferences = remember { ApiPreferences.getInstance(context) }
+    val safBookmarks by apiPreferences.safBookmarksFlow.collectAsState(initial = emptyList())
     var currentPath by remember { mutableStateOf(initialPath) }
+    var currentEnvironment by remember { mutableStateOf(environment) }
     var fileList by remember { mutableStateOf<List<DirectoryEntry>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     var showCreateFileDialog by remember { mutableStateOf(false) }
     var newFileName by remember { mutableStateOf("") }
+    var pendingRepoBookmarkUri by remember { mutableStateOf<Uri?>(null) }
+    var repoBookmarkNameInput by remember { mutableStateOf("") }
+    var showRepoBookmarkNameDialog by remember { mutableStateOf(false) }
+    var repoBookmarkNameError by remember { mutableStateOf<String?>(null) }
     // 用于控制长按上下文菜单的状态
     var contextMenuExpandedFor by remember { mutableStateOf<DirectoryEntry?>(null) }
     // 排序方式：0=名称, 1=大小, 2=修改时间
@@ -90,13 +111,76 @@ fun FileBrowser(
     var showSortMenu by remember { mutableStateOf(false) }
     // 是否显示隐藏文件（以.开头）
     var showHiddenFiles by remember { mutableStateOf(false) }
-    
+
+    LaunchedEffect(environment) { currentEnvironment = environment }
+
+    fun querySafBookmarkDisplayName(uri: Uri): String {
+        return try {
+            val treeDocId = DocumentsContract.getTreeDocumentId(uri)
+            val docUri = DocumentsContract.buildDocumentUriUsingTree(uri, treeDocId)
+            context.contentResolver.query(
+                docUri,
+                arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                val idx = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
+                if (cursor.moveToFirst() && idx >= 0 && !cursor.isNull(idx)) {
+                    cursor.getString(idx)
+                } else {
+                    null
+                }
+            } ?: uri.toString()
+        } catch (_: Exception) {
+            uri.toString()
+        }
+    }
+
+    fun queryRepoBookmarkName(uri: Uri): String {
+        fun normalizeName(raw: String): String {
+            return raw.trim()
+                .lowercase(Locale.ROOT)
+                .replace(Regex("\\s+"), "_")
+                .ifBlank { "repo" }
+        }
+
+        val providerLabel =
+            runCatching {
+                val authority = uri.authority ?: return@runCatching null
+                val provider = context.packageManager.resolveContentProvider(authority, 0)
+                provider?.applicationInfo?.loadLabel(context.packageManager)?.toString()?.trim()
+            }.getOrNull()
+
+        val raw = providerLabel?.takeIf { it.isNotBlank() } ?: uri.authority ?: "repo"
+        return normalizeName(raw)
+    }
+
+    val isSafEnv = remember(currentEnvironment) { currentEnvironment?.startsWith("repo:", ignoreCase = true) == true }
+
+    fun joinPath(parent: String, child: String): String {
+        val p = if (parent.isBlank()) "/" else parent
+        return if (p.endsWith("/")) "$p$child" else "$p/$child"
+    }
+
+    fun parentPath(path: String): String? {
+        val normalized = path.trimEnd('/').ifBlank { "/" }
+        if (normalized == "/") return null
+        val parent = normalized.substringBeforeLast('/', missingDelimiterValue = "")
+        return if (parent.isBlank()) "/" else parent
+    }
+
+    fun withEnvParams(base: List<ToolParameter>): List<ToolParameter> {
+        if (currentEnvironment.isNullOrBlank()) return base
+        return base + ToolParameter("environment", currentEnvironment!!)
+    }
+
     // 快速路径定义
     val quickPaths = remember {
         listOf(
             QuickPathEntry(
-                name = "Ubuntu",
-                path = File(context.filesDir, "usr/var/lib/proot-distro/installed-rootfs/ubuntu").absolutePath,
+                name = "Linux",
+                path = "/",
                 icon = Icons.Default.Terminal
             ),
             QuickPathEntry(
@@ -117,8 +201,10 @@ fun FileBrowser(
         coroutineScope.launch {
             isLoading = true
             try {
-                val tool = AITool("list_files", listOf(ToolParameter("path", path)))
+                val tool = AITool("list_files", withEnvParams(listOf(ToolParameter("path", path))))
+                AppLogger.d("WorkspaceFileBrowser", "execute list_files path=$path env=$currentEnvironment")
                 val result = toolHandler.executeTool(tool)
+                AppLogger.d("WorkspaceFileBrowser", "result list_files success=${result.success} error=${result.error}")
                 if (result.success && result.result is DirectoryListingData) {
                     val entries = (result.result as DirectoryListingData).entries
                     fileList =
@@ -143,23 +229,115 @@ fun FileBrowser(
         }
     }
 
+    val addSafLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+            pendingRepoBookmarkUri = uri
+            repoBookmarkNameInput = queryRepoBookmarkName(uri)
+            showRepoBookmarkNameDialog = true
+        }
+    }
+
+    if (showRepoBookmarkNameDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showRepoBookmarkNameDialog = false
+                pendingRepoBookmarkUri = null
+                repoBookmarkNameError = null
+            },
+            title = { Text(stringResource(R.string.repo_bookmark_name)) },
+            text = {
+                TextField(
+                    value = repoBookmarkNameInput,
+                    onValueChange = {
+                        repoBookmarkNameInput = it
+                        repoBookmarkNameError = null
+                    },
+                    label = { Text(stringResource(R.string.repo_bookmark_name_label)) },
+                    singleLine = true,
+                    isError = repoBookmarkNameError != null,
+                    supportingText = {
+                        repoBookmarkNameError?.let { Text(it) }
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val uri = pendingRepoBookmarkUri
+                        val name = repoBookmarkNameInput.trim()
+                        if (uri == null) {
+                            showRepoBookmarkNameDialog = false
+                            pendingRepoBookmarkUri = null
+                            repoBookmarkNameError = null
+                            return@TextButton
+                        }
+
+                        if (name.isEmpty()) {
+                            repoBookmarkNameError = context.getString(R.string.repo_bookmark_name_empty)
+                            return@TextButton
+                        }
+
+                        val nameExists = safBookmarks.any {
+                            it.uri != uri.toString() && it.name.equals(name, ignoreCase = true)
+                        }
+                        if (nameExists) {
+                            repoBookmarkNameError = context.getString(R.string.repo_bookmark_name_exists)
+                            return@TextButton
+                        }
+
+                        coroutineScope.launch {
+                            apiPreferences.addSafBookmark(uri.toString(), name)
+                            currentEnvironment = "repo:$name"
+                            loadDirectory("/")
+                        }
+
+                        showRepoBookmarkNameDialog = false
+                        pendingRepoBookmarkUri = null
+                        repoBookmarkNameError = null
+                    }
+                ) { Text(stringResource(android.R.string.ok)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRepoBookmarkNameDialog = false
+                        pendingRepoBookmarkUri = null
+                        repoBookmarkNameError = null
+                    }
+                ) { Text(stringResource(android.R.string.cancel)) }
+            }
+        )
+    }
+
     fun createNewFile(fileName: String, isDirectory: Boolean) {
         coroutineScope.launch {
             isLoading = true
             try {
-                val filePath = File(currentPath, fileName).path
+                val filePath =
+                    if (isSafEnv) {
+                        joinPath(currentPath, fileName)
+                    } else {
+                        File(currentPath, fileName).path
+                    }
                 val tool =
                         if (isDirectory) {
-                            AITool("create_directory", listOf(ToolParameter("path", filePath)))
+                            AITool("make_directory", withEnvParams(listOf(ToolParameter("path", filePath))))
                         } else {
                             AITool(
                                     "write_file",
-                                    listOf(
+                                    withEnvParams(
+                                        listOf(
                                             ToolParameter("path", filePath),
                                             ToolParameter("content", "")
+                                        )
                                     )
                             )
                         }
+                AppLogger.d("WorkspaceFileBrowser", "execute ${tool.name} path=$filePath env=$currentEnvironment")
                 toolHandler.executeTool(tool)
                 loadDirectory(currentPath) // 刷新目录
             } catch (e: Exception) {
@@ -174,7 +352,11 @@ fun FileBrowser(
         coroutineScope.launch {
             isLoading = true
             try {
-                val tool = AITool("delete_file", listOf(ToolParameter("path", filePath)))
+                val tool = AITool(
+                    "delete_file",
+                    withEnvParams(listOf(ToolParameter("path", filePath), ToolParameter("recursive", "true")))
+                )
+                AppLogger.d("WorkspaceFileBrowser", "execute delete_file path=$filePath env=$currentEnvironment")
                 toolHandler.executeTool(tool)
                 loadDirectory(currentPath) // 刷新目录
             } catch (e: Exception) {
@@ -189,12 +371,14 @@ fun FileBrowser(
         coroutineScope.launch {
             isLoading = true
             try {
-                val tool = AITool("read_file_full", listOf(ToolParameter("path", filePath)))
+                val tool = AITool("read_file_full", withEnvParams(listOf(ToolParameter("path", filePath))))
+                AppLogger.d("WorkspaceFileBrowser", "execute read_file_full path=$filePath env=$currentEnvironment")
                 val result = toolHandler.executeTool(tool)
+                AppLogger.d("WorkspaceFileBrowser", "result read_file_full success=${result.success} error=${result.error}")
                 if (result.success && result.result is FileContentData) {
                     val fileContentData = result.result as FileContentData
                     val content = fileContentData.content
-                    val lastModified = File(filePath).lastModified()
+                    val lastModified = if (isSafEnv) 0L else File(filePath).lastModified()
                     val openFileInfo = OpenFileInfo(path = filePath, content = content, lastModified = lastModified)
                     onFileOpen?.invoke(openFileInfo)
                 }
@@ -211,13 +395,13 @@ fun FileBrowser(
     if (showCreateFileDialog) {
         AlertDialog(
                 onDismissRequest = { showCreateFileDialog = false },
-                title = { Text("创建新文件") },
+                title = { Text(stringResource(R.string.file_manager_create_new_file)) },
                 text = {
                     Column {
                         TextField(
                                 value = newFileName,
                                 onValueChange = { newFileName = it },
-                                label = { Text("文件名") },
+                                label = { Text(stringResource(R.string.file_manager_file_name)) },
                                 singleLine = true,
                                 colors =
                                         TextFieldDefaults.colors(
@@ -239,7 +423,7 @@ fun FileBrowser(
                                         newFileName = ""
                                     }
                                 }
-                        ) { Text("创建文件") }
+                        ) { Text(stringResource(R.string.file_manager_create_file)) }
                         TextButton(
                                 onClick = {
                                     if (newFileName.isNotEmpty()) {
@@ -248,11 +432,11 @@ fun FileBrowser(
                                         newFileName = ""
                                     }
                                 }
-                        ) { Text("创建文件夹") }
+                        ) { Text(stringResource(R.string.file_manager_create_folder)) }
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showCreateFileDialog = false }) { Text("取消") }
+                    TextButton(onClick = { showCreateFileDialog = false }) { Text(stringResource(R.string.file_manager_cancel)) }
                 }
         )
     }
@@ -304,7 +488,7 @@ fun FileBrowser(
                 ) {
                     Icon(
                             if (showHiddenFiles) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (showHiddenFiles) "隐藏.文件" else "显示.文件",
+                            contentDescription = if (showHiddenFiles) stringResource(R.string.file_manager_hide_dot_files) else stringResource(R.string.file_manager_show_dot_files),
                             modifier = Modifier.size(18.dp),
                             tint = if (showHiddenFiles) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -318,25 +502,25 @@ fun FileBrowser(
                     ) {
                         Icon(
                                 Icons.AutoMirrored.Filled.Sort,
-                                contentDescription = "排序",
+                                contentDescription = stringResource(R.string.file_manager_sort),
                                 modifier = Modifier.size(18.dp)
                         )
                     }
-                    
+
                     DropdownMenu(
                             expanded = showSortMenu,
                             onDismissRequest = { showSortMenu = false }
                     ) {
                         DropdownMenuItem(
-                                text = { Text("按名称${if (sortMode == 0) " ✓" else ""}") },
+                                text = { Text(stringResource(R.string.file_manager_sort_name) + "${if (sortMode == 0) " ✓" else ""}") },
                                 onClick = { sortMode = 0; showSortMenu = false }
                         )
                         DropdownMenuItem(
-                                text = { Text("按大小${if (sortMode == 1) " ✓" else ""}") },
+                                text = { Text(stringResource(R.string.file_manager_sort_size) + "${if (sortMode == 1) " ✓" else ""}") },
                                 onClick = { sortMode = 1; showSortMenu = false }
                         )
                         DropdownMenuItem(
-                                text = { Text("按修改时间${if (sortMode == 2) " ✓" else ""}") },
+                                text = { Text(stringResource(R.string.file_manager_sort_by_modified) + "${if (sortMode == 2) " ✓" else ""}") },
                                 onClick = { sortMode = 2; showSortMenu = false }
                         )
                     }
@@ -349,7 +533,7 @@ fun FileBrowser(
                     ) {
                         Icon(
                                 Icons.Default.Add,
-                                contentDescription = "新建",
+                                contentDescription = stringResource(R.string.file_manager_new),
                                 modifier = Modifier.size(18.dp)
                         )
                     }
@@ -360,7 +544,7 @@ fun FileBrowser(
                     ) {
                         Icon(
                                 Icons.Default.Refresh,
-                                contentDescription = "刷新",
+                                contentDescription = stringResource(R.string.file_manager_refresh),
                                 modifier = Modifier.size(18.dp)
                         )
                     }
@@ -377,14 +561,72 @@ fun FileBrowser(
                 items(quickPaths) { quickPath ->
                     QuickPathChip(
                         entry = quickPath,
-                        isActive = currentPath.startsWith(quickPath.path),
+                        isActive =
+                            if (quickPath.name == "Linux") {
+                                currentEnvironment == "linux" && currentPath.startsWith(quickPath.path)
+                            } else {
+                                currentEnvironment == null && currentPath.startsWith(quickPath.path)
+                            },
                         onClick = {
-                            // 检查路径是否存在
+                            if (quickPath.name == "Linux") {
+                                currentEnvironment = "linux"
+                                loadDirectory("/")
+                                return@QuickPathChip
+                            }
+
                             val pathFile = File(quickPath.path)
                             if (pathFile.exists() && pathFile.isDirectory) {
+                                currentEnvironment = null
                                 loadDirectory(quickPath.path)
                             }
                         }
+                    )
+                }
+
+                items(safBookmarks) { bookmark ->
+                    var menuExpanded by remember(bookmark.uri) { mutableStateOf(false) }
+                    val repoEnv = remember(bookmark.name) { "repo:${bookmark.name}" }
+                    Box {
+                        QuickPathChipWithLongPress(
+                            entry = QuickPathEntry(name = bookmark.name, path = "/", icon = Icons.Default.Folder),
+                            isActive = currentEnvironment == repoEnv,
+                            onClick = {
+                                currentEnvironment = repoEnv
+                                loadDirectory("/")
+                            },
+                            onLongPress = { menuExpanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.repo_bookmark_delete)) },
+                                onClick = {
+                                    menuExpanded = false
+                                    val uri = runCatching { Uri.parse(bookmark.uri) }.getOrNull()
+                                    if (uri != null) {
+                                        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                        runCatching { context.contentResolver.releasePersistableUriPermission(uri, flags) }
+                                    }
+                                    coroutineScope.launch {
+                                        apiPreferences.removeSafBookmark(bookmark.uri)
+                                        if (currentEnvironment == repoEnv) {
+                                            currentEnvironment = null
+                                            loadDirectory(initialPath)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    QuickPathChip(
+                        entry = QuickPathEntry(name = "+", path = "", icon = Icons.Default.Add),
+                        isActive = false,
+                        onClick = { addSafLauncher.launch(null) }
                     )
                 }
             }
@@ -400,15 +642,21 @@ fun FileBrowser(
                         modifier = Modifier.fillMaxSize().weight(1f).padding(horizontal = 8.dp)
                 ) {
                     // 使用更健壮的方式来判断是否应该显示返回上一级的选项
-                    if (File(currentPath).parent != null) {
+                    val canGoUp = if (isSafEnv) parentPath(currentPath) != null else File(currentPath).parent != null
+                    if (canGoUp) {
                         item {
                             FileListItem(
                                     name = "..",
                                     icon = Icons.Default.FolderOpen,
                                     isDirectory = true,
                                     onClick = {
-                                        File(currentPath).parent?.let { parentPath ->
-                                            loadDirectory(parentPath)
+                                        if (isSafEnv) {
+                                            val p = parentPath(currentPath)
+                                            if (p != null) loadDirectory(p)
+                                        } else {
+                                            File(currentPath).parent?.let { parentPath ->
+                                                loadDirectory(parentPath)
+                                            }
                                         }
                                     }
                             )
@@ -432,11 +680,15 @@ fun FileBrowser(
                                     isDirectory = item.isDirectory,
                                     onClick = {
                                         if (item.isDirectory) {
-                                            val newPath = File(currentPath, item.name).path
+                                            val newPath =
+                                                if (isSafEnv) joinPath(currentPath, item.name)
+                                                else File(currentPath, item.name).path
                                             loadDirectory(newPath)
                                         } else {
-                                                val filePath = File(currentPath, item.name).path
-                                                openFile(filePath)
+                                            val filePath =
+                                                if (isSafEnv) joinPath(currentPath, item.name)
+                                                else File(currentPath, item.name).path
+                                            openFile(filePath)
                                         }
                                     },
                                     onLongPress = {
@@ -452,16 +704,18 @@ fun FileBrowser(
                                     onDismissRequest = { contextMenuExpandedFor = null }
                             ) {
                                 DropdownMenuItem(
-                                        text = { Text("删除") },
+                                        text = { Text(stringResource(R.string.file_manager_delete)) },
                                         onClick = {
-                                            val filePath = File(currentPath, item.name).path
+                                            val filePath =
+                                                if (isSafEnv) joinPath(currentPath, item.name)
+                                                else File(currentPath, item.name).path
                                             deleteFile(filePath)
                                             contextMenuExpandedFor = null
                                         },
                                         leadingIcon = {
                                             Icon(
                                                     Icons.Default.Delete,
-                                                    contentDescription = "删除",
+                                                    contentDescription = stringResource(R.string.file_manager_delete),
                                                     tint = MaterialTheme.colorScheme.error
                                             )
                                         }
@@ -483,15 +737,23 @@ fun FileBrowser(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(onClick = onCancel) { Text(if (isManageMode) "返回" else "取消") }
-                    Button(onClick = { onBindWorkspace(currentPath) }) {
+                    OutlinedButton(onClick = onCancel) { Text(if (isManageMode) stringResource(R.string.file_manager_return) else stringResource(R.string.file_manager_cancel)) }
+                    Button(
+                        onClick = {
+                            AppLogger.d(
+                                "WorkspaceFileBrowser",
+                                "bind workspace path=$currentPath env=$currentEnvironment isManageMode=$isManageMode"
+                            )
+                            onBindWorkspace(currentPath, currentEnvironment)
+                        }
+                    ) {
                         Icon(
                                 Icons.Default.Link,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("绑定当前文件夹")
+                        Text(stringResource(R.string.file_manager_bind_current_folder))
                     }
                 }
             }
@@ -519,10 +781,12 @@ private fun QuickPathChip(
                     contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )
-                Text(
-                    text = entry.name,
-                    style = MaterialTheme.typography.bodySmall
-                )
+                if (entry.name.isNotBlank() && entry.name != "+") {
+                    Text(
+                        text = entry.name,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         },
         colors = FilterChipDefaults.filterChipColors(
@@ -535,6 +799,45 @@ private fun QuickPathChip(
             borderColor = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
         )
     )
+}
+
+@Composable
+private fun QuickPathChipWithLongPress(
+    entry: QuickPathEntry,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit
+) {
+    var suppressClickOnce by remember(entry.name, entry.path) { mutableStateOf(false) }
+    Box(
+        modifier = Modifier.pointerInput(onLongPress) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                val longPressed = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis.toLong()) {
+                    waitForUpOrCancellation()
+                    false
+                } ?: true
+
+                if (longPressed) {
+                    suppressClickOnce = true
+                    onLongPress()
+                    waitForUpOrCancellation()
+                }
+            }
+        }
+    ) {
+        QuickPathChip(
+            entry = entry,
+            isActive = isActive,
+            onClick = {
+                if (suppressClickOnce) {
+                    suppressClickOnce = false
+                    return@QuickPathChip
+                }
+                onClick()
+            }
+        )
+    }
 }
 
 /** 抽取出的文件列表项，实现紧凑布局和长按手势 */

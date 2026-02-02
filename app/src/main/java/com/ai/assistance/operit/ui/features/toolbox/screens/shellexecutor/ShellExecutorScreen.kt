@@ -19,7 +19,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -37,8 +37,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.system.AndroidShellExecutor
-import com.google.android.gms.common.util.CollectionUtils.listOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,12 +53,17 @@ data class CommandRecord(
 )
 
 /** 预设命令分类 */
-enum class CommandCategory(val displayName: String) {
-    SYSTEM("系统信息"),
-    FILE("文件操作"),
-    NETWORK("网络工具"),
-    HARDWARE("硬件信息"),
-    PACKAGE("应用管理")
+enum class CommandCategory(val stringResId: Int) {
+    SYSTEM(R.string.shell_executor_category_system),
+    FILE(R.string.shell_executor_category_file),
+    NETWORK(R.string.shell_executor_category_network),
+    HARDWARE(R.string.shell_executor_category_hardware),
+    PACKAGE(R.string.shell_executor_category_package)
+}
+
+@Composable
+fun CommandCategory.getDisplayName(): String {
+    return stringResource(stringResId)
 }
 
 /** 预设命令数据类 */
@@ -73,7 +78,7 @@ data class PresetCommand(
 /**
  * Shell命令执行器屏幕
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ShellExecutorScreen(navController: NavController? = null) {
     val context = LocalContext.current
@@ -127,7 +132,7 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                 commandHistory = listOf(record) + commandHistory
                 commandInput = "" // 清空输入
             } catch (e: Exception) {
-                errorMessage = "执行命令失败: ${e.message}"
+                errorMessage = context.getString(R.string.shell_executor_execute_failed, e.message ?: "Unknown error")
                 showError = true
             } finally {
                 // 确保执行状态重置
@@ -149,22 +154,22 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                     .padding(16.dp)
             ) {
                 Text(
-                    text = "命令执行器",
+                    text = stringResource(R.string.tool_shell_executor),
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontWeight = FontWeight.Bold
                     )
                 )
-                
+
                 Spacer(modifier = Modifier.height(8.dp))
-                
+
                 Text(
-                    text = "执行Shell命令并查看结果",
+                    text = stringResource(R.string.tool_shell_executor_desc),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
                 // 命令输入区域
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -175,11 +180,11 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                             value = commandInput,
                             onValueChange = { commandInput = it },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("输入Shell命令") },
+                            placeholder = { Text(stringResource(R.string.shell_executor_input_hint)) },
                             leadingIcon = {
                                 Icon(
-                                    imageVector = Icons.Rounded.Terminal,
-                                    contentDescription = "命令",
+                                    imageVector = Icons.Filled.Terminal,
+                                    contentDescription = stringResource(R.string.shell_executor_command),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             },
@@ -188,7 +193,7 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                                     IconButton(onClick = { commandInput = "" }) {
                                         Icon(
                                             Icons.Default.Clear,
-                                            contentDescription = "清除"
+                                            contentDescription = stringResource(R.string.shell_executor_clear)
                                         )
                                     }
                                 }
@@ -271,12 +276,12 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                         } else {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "执行"
+                                contentDescription = stringResource(R.string.shell_executor_execute)
                             )
                         }
                     }
                 }
-                
+
                 // 工具栏
                 Row(
                     modifier = Modifier
@@ -296,22 +301,22 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = "清除历史",
+                                contentDescription = stringResource(R.string.shell_executor_clear_history),
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("清除历史")
+                            Text(stringResource(R.string.shell_executor_clear_history))
                         }
                     } else {
                         Spacer(modifier = Modifier.width(1.dp))
                     }
-                    
+
                     // 预设命令切换按钮
                     TextButton(
                         onClick = { showPresets = !showPresets },
                         contentPadding = PaddingValues(horizontal = 8.dp)
                     ) {
-                        Text(if (showPresets) "隐藏预设命令" else "显示预设命令")
+                        Text(if (showPresets) stringResource(R.string.shell_executor_hide_presets) else stringResource(R.string.shell_executor_show_presets))
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
                             imageVector = if (showPresets) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -320,7 +325,7 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                         )
                     }
                 }
-                
+
                 // 状态指示器
                 if (isExecuting) {
                     Row(
@@ -335,7 +340,7 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "正在执行命令...",
+                            stringResource(R.string.shell_executor_executing),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -343,7 +348,7 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                 }
             }
         }
-        
+
         // 预设命令区域
         AnimatedVisibility(
             visible = showPresets,
@@ -366,31 +371,34 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        text = "常用命令",
+                        text = stringResource(R.string.shell_executor_common_commands),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     // 按分类显示预设命令
                     presetsByCategory.forEach { (category, commands) ->
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Text(
-                                text = category.displayName,
+                                text = category.getDisplayName(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(vertical = 8.dp)
                             )
                             
-                            Row(
+                            FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                maxItemsInEachRow = 2
                             ) {
                                 commands.forEach { presetCommand ->
                                     PresetCommandChip(
                                         presetCommand = presetCommand,
+                                        modifier = Modifier.weight(1f),
                                         onClick = {
                                             commandInput = presetCommand.command
                                             showPresets = false
@@ -425,23 +433,23 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     Text(
-                        text = "输入命令并点击执行",
+                        text = stringResource(R.string.shell_executor_input_command_hint),
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Text(
-                        text = "查看命令执行结果",
+                        text = stringResource(R.string.shell_executor_view_results),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
-                    
+
                     Spacer(modifier = Modifier.height(16.dp))
-                    
+
                     TextButton(onClick = { showPresets = !showPresets }) {
-                        Text("查看预设命令")
+                        Text(stringResource(R.string.shell_executor_view_presets))
                     }
                 }
             } else {
@@ -457,14 +465,14 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                             onReExecute = { executeCommand(record.command) }
                         )
                     }
-                    
+
                     // 底部空间
                     item { Spacer(modifier = Modifier.height(80.dp)) }
                 }
             }
         }
     }
-    
+
     // 错误提示
     if (showError && errorMessage != null) {
         AlertDialog(
@@ -478,7 +486,7 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                         modifier = Modifier.size(28.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("执行错误")
+                    Text(stringResource(R.string.shell_executor_error_title))
                 }
             },
             text = { Text(errorMessage!!, style = MaterialTheme.typography.bodyMedium) },
@@ -488,7 +496,7 @@ fun ShellExecutorScreen(navController: NavController? = null) {
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.primary
                     )
-                ) { Text("确定") }
+                ) { Text(stringResource(R.string.shell_executor_confirm)) }
             },
             shape = RoundedCornerShape(16.dp),
             containerColor = MaterialTheme.colorScheme.surface
@@ -498,9 +506,9 @@ fun ShellExecutorScreen(navController: NavController? = null) {
 
 /** 预设命令芯片 */
 @Composable
-fun PresetCommandChip(presetCommand: PresetCommand, onClick: () -> Unit) {
+fun PresetCommandChip(presetCommand: PresetCommand, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.clickable { onClick() },
+        modifier = modifier.clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
     ) {
@@ -520,7 +528,9 @@ fun PresetCommandChip(presetCommand: PresetCommand, onClick: () -> Unit) {
             Text(
                 text = presetCommand.name,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -564,7 +574,7 @@ fun CommandResultCard(record: CommandRecord, onReExecute: () -> Unit = {}) {
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.Terminal,
+                        imageVector = Icons.Filled.Terminal,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
@@ -608,11 +618,11 @@ fun CommandResultCard(record: CommandRecord, onReExecute: () -> Unit = {}) {
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
                         imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "收起" else "展开"
+                        contentDescription = if (expanded) stringResource(R.string.shell_executor_collapse) else stringResource(R.string.shell_executor_expand)
                     )
                 }
             }
-            
+
             // 命令输出结果
             AnimatedVisibility(visible = expanded) {
                 Column(
@@ -623,13 +633,13 @@ fun CommandResultCard(record: CommandRecord, onReExecute: () -> Unit = {}) {
                     // 标准输出
                     if (record.result.stdout.isNotEmpty()) {
                         Text(
-                            text = "标准输出:",
+                            text = stringResource(R.string.shell_executor_stdout),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        
+
                         Spacer(modifier = Modifier.height(4.dp))
-                        
+
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -646,19 +656,19 @@ fun CommandResultCard(record: CommandRecord, onReExecute: () -> Unit = {}) {
                             )
                         }
                     }
-                    
+
                     // 标准错误
                     if (record.result.stderr.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        
+
                         Text(
-                            text = "标准错误:",
+                            text = stringResource(R.string.shell_executor_stderr),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.error
                         )
-                        
+
                         Spacer(modifier = Modifier.height(4.dp))
-                        
+
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
@@ -676,22 +686,22 @@ fun CommandResultCard(record: CommandRecord, onReExecute: () -> Unit = {}) {
                             )
                         }
                     }
-                    
+
                     // 退出代码
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "退出代码: ${record.result.exitCode}",
+                            text = stringResource(R.string.shell_executor_exit_code, record.result.exitCode.toString()),
                             style = MaterialTheme.typography.labelSmall,
                             color = if (record.result.exitCode == 0)
                                 MaterialTheme.colorScheme.onSurface
                             else
                                 MaterialTheme.colorScheme.error
                         )
-                        
+
                         Spacer(modifier = Modifier.weight(1f))
-                        
+
                         // 重新执行按钮
                         TextButton(
                             onClick = onReExecute,
@@ -699,12 +709,12 @@ fun CommandResultCard(record: CommandRecord, onReExecute: () -> Unit = {}) {
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
-                                contentDescription = "重新执行",
+                                contentDescription = stringResource(R.string.shell_executor_re_execute),
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                "重新执行",
+                                stringResource(R.string.shell_executor_re_execute),
                                 style = MaterialTheme.typography.labelSmall
                             )
                         }

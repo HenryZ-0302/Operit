@@ -2,6 +2,7 @@ package com.ai.assistance.operit.ui.floating.ui.fullscreen.viewmodel
 
 import android.content.Context
 import androidx.compose.runtime.*
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
@@ -30,7 +31,7 @@ class FloatingFullscreenModeViewModel(
     initialWaveActive: Boolean
 ) {
     // ===== 状态定义 =====
-    var aiMessage by mutableStateOf("长按下方麦克风开始说话")
+    var aiMessage by mutableStateOf(context.getString(R.string.floating_hold_microphone_to_speak))
     
     // UI状态
     var isWaveActive by mutableStateOf(initialWaveActive)
@@ -67,7 +68,7 @@ class FloatingFullscreenModeViewModel(
             // 收到最终语音结果后直接发送，不再写入底部输入框
             val finalText = text.trim()
             if (finalText.isNotEmpty()) {
-                aiMessage = "思考中..."
+                aiMessage = context.getString(R.string.floating_thinking)
                 coroutineScope.launch {
                     try {
                         maybeAutoAttachByKeyword(finalText)
@@ -117,7 +118,7 @@ class FloatingFullscreenModeViewModel(
                 aiStreamJob?.cancel()
                 aiStreamJob = null
                 activeAiStreamIdentity = null
-                aiMessage = "思考中..."
+                aiMessage = context.getString(R.string.floating_thinking)
             }
             "ai" -> {
                 val stream = message.contentStream
@@ -294,9 +295,9 @@ class FloatingFullscreenModeViewModel(
         // 获取焦点
         val view = floatContext.chatService?.getComposeView()
          if (!speechManager.requestFocus(view)) {
-             aiMessage = "无法获取输入法服务"
+             aiMessage = context.getString(R.string.floating_cannot_get_input_service)
          } else {
-             aiMessage = "长按下方麦克风开始说话"
+             aiMessage = context.getString(R.string.floating_hold_microphone_to_speak)
          }
 
          if (autoEnterVoiceChat) {
@@ -385,13 +386,13 @@ class FloatingFullscreenModeViewModel(
         coroutineScope.launch { speechManager.stopListening(isCancel = true) }
         editableText = text
         isEditMode = true
-        aiMessage = "编辑您的消息"
+        aiMessage = context.getString(R.string.floating_edit_your_message)
     }
     
     fun exitEditMode() {
         isEditMode = false
         editableText = ""
-        aiMessage = "长按下方麦克风开始说话"
+        aiMessage = context.getString(R.string.floating_hold_microphone_to_speak)
     }
     
     fun sendEditedMessage() {
@@ -399,7 +400,7 @@ class FloatingFullscreenModeViewModel(
             floatContext.onSendMessage?.invoke(editableText, PromptFunctionType.VOICE)
             isEditMode = false
             editableText = ""
-            aiMessage = "思考中..."
+            aiMessage = context.getString(R.string.floating_thinking)
         }
     }
     
@@ -417,7 +418,7 @@ class FloatingFullscreenModeViewModel(
         attachNotifications = false
         attachLocation = false
         hasOcrSelection = false
-        aiMessage = "思考中..."
+        aiMessage = context.getString(R.string.floating_thinking)
 
         coroutineScope.launch {
             try {

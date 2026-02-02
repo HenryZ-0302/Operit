@@ -1,8 +1,10 @@
 package com.ai.assistance.operit.ui.features.chat.webview.workspace.editor
 
+import android.content.Context
 import android.text.Editable
 import android.text.TextWatcher
 import android.widget.EditText
+import com.ai.assistance.operit.R
 import java.util.*
 
 /**
@@ -15,16 +17,17 @@ class PerformEdit(private val editText: EditText) {
     private val history = Stack<Action>()
     // 恢复栈
     private val historyBack = Stack<Action>()
-    
+
     var alreadyWrite = false
-    
+
     private var editable: Editable = editText.text
     // 自动操作标志，防止重复回调,导致无限撤销
     private var flag = false
     private var hasWriter = false
-    
+
     init {
-        check(editText, "EditText不能为空")
+        val context = editText.context
+        check(editText, context.getString(R.string.perform_edit_edittext_empty))
     }
     
     /**

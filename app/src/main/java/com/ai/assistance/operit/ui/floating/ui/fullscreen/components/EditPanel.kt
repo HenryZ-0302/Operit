@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.ai.assistance.operit.R
 
 /**
  * 编辑面板组件
@@ -75,12 +77,12 @@ fun EditPanel(
         ) {
             // 标题
             Text(
-                text = "编辑您的消息",
+                text = stringResource(R.string.floating_edit_your_message),
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-            
+
             // 输入框
             OutlinedTextField(
                 value = editableText,
@@ -90,7 +92,7 @@ fun EditPanel(
                     .height(120.dp),
                 placeholder = {
                     Text(
-                        text = "在此输入或编辑您的消息...",
+                        text = stringResource(R.string.floating_enter_or_edit_message),
                         color = Color.White.copy(alpha = 0.6f)
                     )
                 },
@@ -130,9 +132,9 @@ fun EditPanel(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("取消")
+                    Text(stringResource(R.string.floating_cancel))
                 }
-                
+
                 // 发送按钮
                 Button(
                     onClick = onSend,
@@ -146,7 +148,7 @@ fun EditPanel(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("发送")
+                    Text(stringResource(R.string.floating_send))
                 }
             }
         }

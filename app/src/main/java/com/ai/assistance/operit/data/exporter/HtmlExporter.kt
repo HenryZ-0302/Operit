@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.data.exporter
 
+import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
 import java.time.format.DateTimeFormatter
@@ -8,47 +10,47 @@ import java.time.format.DateTimeFormatter
  * HTML 格式导出器
  */
 object HtmlExporter {
-    
+
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-    
+
     /**
      * 导出单个对话为 HTML
      */
-    fun exportSingle(chatHistory: ChatHistory): String {
+    fun exportSingle(context: Context, chatHistory: ChatHistory): String {
         val sb = StringBuilder()
-        
+
         appendHtmlHeader(sb, chatHistory.title)
-        appendChatContent(sb, chatHistory)
-        appendHtmlFooter(sb)
-        
+        appendChatContent(context, sb, chatHistory)
+        appendHtmlFooter(context, sb)
+
         return sb.toString()
     }
-    
+
     /**
      * 导出多个对话为 HTML
      */
-    fun exportMultiple(chatHistories: List<ChatHistory>): String {
+    fun exportMultiple(context: Context, chatHistories: List<ChatHistory>): String {
         val sb = StringBuilder()
-        
-        appendHtmlHeader(sb, "聊天记录导出")
-        
+
+        appendHtmlHeader(sb, context.getString(R.string.html_export_title))
+
         sb.appendLine("<div class=\"export-info\">")
-        sb.appendLine("  <h1>聊天记录导出</h1>")
-        sb.appendLine("  <p><strong>导出时间:</strong> ${java.time.LocalDateTime.now().format(dateFormatter)}</p>")
-        sb.appendLine("  <p><strong>对话数量:</strong> ${chatHistories.size}</p>")
-        sb.appendLine("  <p><strong>总消息数:</strong> ${chatHistories.sumOf { it.messages.size }}</p>")
+        sb.appendLine("  <h1>${context.getString(R.string.html_export_title)}</h1>")
+        sb.appendLine("  <p><strong>${context.getString(R.string.html_export_time)}:</strong> ${java.time.LocalDateTime.now().format(dateFormatter)}</p>")
+        sb.appendLine("  <p><strong>${context.getString(R.string.html_export_conversation_count)}:</strong> ${chatHistories.size}</p>")
+        sb.appendLine("  <p><strong>${context.getString(R.string.html_export_total_messages)}:</strong> ${chatHistories.sumOf { it.messages.size }}</p>")
         sb.appendLine("</div>")
         sb.appendLine("<hr>")
-        
+
         for ((index, chatHistory) in chatHistories.withIndex()) {
             if (index > 0) {
                 sb.appendLine("<hr class=\"conversation-divider\">")
             }
-            appendChatContent(sb, chatHistory)
+            appendChatContent(context, sb, chatHistory)
         }
-        
-        appendHtmlFooter(sb)
-        
+
+        appendHtmlFooter(context, sb)
+
         return sb.toString()
     }
     
@@ -73,25 +75,25 @@ object HtmlExporter {
     /**
      * 添加对话内容
      */
-    private fun appendChatContent(sb: StringBuilder, chatHistory: ChatHistory) {
+    private fun appendChatContent(context: Context, sb: StringBuilder, chatHistory: ChatHistory) {
         sb.appendLine("<div class=\"conversation\">")
         sb.appendLine("  <div class=\"conversation-header\">")
         sb.appendLine("    <h2>${escapeHtml(chatHistory.title)}</h2>")
         sb.appendLine("    <div class=\"metadata\">")
-        sb.appendLine("      <span><strong>创建:</strong> ${chatHistory.createdAt.format(dateFormatter)}</span>")
-        sb.appendLine("      <span><strong>更新:</strong> ${chatHistory.updatedAt.format(dateFormatter)}</span>")
+        sb.appendLine("      <span><strong>${context.getString(R.string.html_export_created)}:</strong> ${chatHistory.createdAt.format(dateFormatter)}</span>")
+        sb.appendLine("      <span><strong>${context.getString(R.string.html_export_updated)}:</strong> ${chatHistory.updatedAt.format(dateFormatter)}</span>")
         if (chatHistory.group != null) {
-            sb.appendLine("      <span><strong>分组:</strong> ${escapeHtml(chatHistory.group)}</span>")
+            sb.appendLine("      <span><strong>${context.getString(R.string.html_export_group)}:</strong> ${escapeHtml(chatHistory.group)}</span>")
         }
-        sb.appendLine("      <span><strong>消息数:</strong> ${chatHistory.messages.size}</span>")
+        sb.appendLine("      <span><strong>${context.getString(R.string.html_export_message_count)}:</strong> ${chatHistory.messages.size}</span>")
         sb.appendLine("    </div>")
         sb.appendLine("  </div>")
         sb.appendLine("  <div class=\"messages\">")
-        
+
         for (message in chatHistory.messages) {
             appendMessageHtml(sb, message)
         }
-        
+
         sb.appendLine("  </div>")
         sb.appendLine("</div>")
     }
@@ -120,10 +122,10 @@ object HtmlExporter {
     /**
      * 添加 HTML 尾部
      */
-    private fun appendHtmlFooter(sb: StringBuilder) {
+    private fun appendHtmlFooter(context: Context, sb: StringBuilder) {
         sb.appendLine("</div>")
         sb.appendLine("<footer>")
-        sb.appendLine("  <p>导出自 Operit AI Assistant</p>")
+        sb.appendLine("  <p>${context.getString(R.string.html_export_footer)}</p>")
         sb.appendLine("</footer>")
         sb.appendLine("</body>")
         sb.appendLine("</html>")

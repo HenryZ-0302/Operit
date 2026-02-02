@@ -3,6 +3,7 @@ package com.ai.assistance.operit.api.chat.plan
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.model.InputProcessingState
@@ -23,7 +24,7 @@ class PlanModeManager(
 
     companion object {
         private const val TAG = "PlanModeManager"
-        
+
         // 用于生成执行计划的系统提示词
         private const val PLAN_GENERATION_PROMPT = """
 你是一个任务规划专家。用户将向你描述一个复杂的任务或问题，你需要将其分解为多个可以并发或顺序执行的子任务。
@@ -41,7 +42,7 @@ class PlanModeManager(
       "type": "chat"
     },
     {
-      "id": "task_2", 
+      "id": "task_2",
       "name": "任务描述",
       "instruction": "具体的执行指令",
       "dependencies": ["task_1"],
@@ -89,15 +90,15 @@ class PlanModeManager(
         try {
             // 开始时设置执行状态，整个计划执行期间保持这个状态
             enhancedAIService.setInputProcessingState(
-                InputProcessingState.Processing("正在执行深度搜索模式...")
+                InputProcessingState.Processing(context.getString(R.string.plan_mode_executing_deep_search))
             )
-            
-            emit("<log>🧠 启动深度搜索模式...</log>\n")
-            emit("<log>📊 正在分析您的请求并生成执行计划...</log>\n")
-            
+
+            emit("<log>🧠 ${context.getString(R.string.plan_mode_starting)}</log>\n")
+            emit("<log>📊 ${context.getString(R.string.plan_mode_analyzing_request)}</log>\n")
+
             // 第一步：生成执行计划
             enhancedAIService.setInputProcessingState(
-                InputProcessingState.Processing("正在生成执行计划...")
+                InputProcessingState.Processing(context.getString(R.string.plan_mode_generating_plan))
             )
             
             val executionGraph = generateExecutionPlan(
@@ -110,12 +111,12 @@ class PlanModeManager(
             )
             
             if (isCancelled.get()) {
-                emit("<log>🟡 任务已取消。</log>\n")
+                emit("<log>🟡 ${context.getString(R.string.plan_mode_task_cancelled)}</log>\n")
                 return@stream
             }
 
             if (executionGraph == null) {
-                emit("<error>❌ 无法生成有效的执行计划，切换回普通模式</error>\n")
+                emit("<error>❌ ${context.getString(R.string.plan_mode_failed_to_generate_plan)}</error>\n")
                 // 计划生成失败，恢复idle状态
                 enhancedAIService.setInputProcessingState(
                     InputProcessingState.Idle
@@ -133,7 +134,7 @@ class PlanModeManager(
             
             // 第二步：执行计划
             enhancedAIService.setInputProcessingState(
-                InputProcessingState.Processing("正在执行子任务...")
+                InputProcessingState.Processing(context.getString(R.string.plan_mode_executing_subtasks))
             )
             
             val executionStream = taskExecutor.executeSubtasks(
@@ -152,18 +153,18 @@ class PlanModeManager(
             }
 
             if (isCancelled.get()) {
-                emit("<log>🟡 任务已取消，正在停止...</log>\n")
+                emit("<log>🟡 ${context.getString(R.string.plan_mode_cancelling)}</log>\n")
                 emit("</plan>\n")
                 return@stream
             }
-            
-            emit("<log>🎯 所有子任务执行完成，开始汇总结果...</log>\n")
-            
+
+            emit("<log>🎯 ${context.getString(R.string.plan_mode_all_tasks_completed)}</log>\n")
+
             emit("</plan>\n")
-            
+
             // 第三步：汇总结果 - 设置汇总状态
             enhancedAIService.setInputProcessingState(
-                InputProcessingState.Processing("正在汇总执行结果...")
+                InputProcessingState.Processing(context.getString(R.string.plan_mode_summarizing_results))
             )
             
             // 第三步：汇总结果
@@ -189,10 +190,10 @@ class PlanModeManager(
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException || isCancelled.get()) {
                 AppLogger.d(TAG, "深度搜索模式被取消")
-                emit("<log>🟡 深度搜索模式已取消。</log>\n")
+                emit("<log>🟡 ${context.getString(R.string.plan_mode_cancelled)}</log>\n")
             } else {
                 AppLogger.e(TAG, "深度搜索模式执行失败", e)
-                emit("<error>❌ 深度搜索模式执行失败: ${e.message}</error>\n")
+                emit("<error>❌ ${context.getString(R.string.plan_mode_execution_failed)}: ${e.message}</error>\n")
             }
             // 执行失败或取消，设置为idle状态
             enhancedAIService.setInputProcessingState(
@@ -228,7 +229,8 @@ class PlanModeManager(
 
             // 使用获取到的服务实例来发送规划请求
             val planningStream = planningService.sendMessage(
-                message = "请为这个请求生成详细的执行计划",
+                context = context,
+                message = context.getString(R.string.plan_generate_detailed_plan),
                 chatHistory = planningHistory, // 传入包含系统提示词的历史
                 modelParameters = emptyList(), // 修正类型为 List
                 enableThinking = false,
@@ -310,9 +312,29 @@ $userMessage
     fun shouldUseDeepSearchMode(message: String): Boolean {
         val messageLength = message.length
         val complexityIndicators = listOf(
-            "分析", "比较", "研究", "调查", "总结", "评估", "计划", "设计", "开发",
-            "详细", "全面", "深入", "系统", "综合", "多角度", "步骤", "方案",
-            "分几个", "多个方面", "详细解释", "具体分析", "如何实现", "实施方案"
+            context.getString(R.string.plan_complexity_analyze),
+            context.getString(R.string.plan_complexity_compare),
+            context.getString(R.string.plan_complexity_research),
+            context.getString(R.string.plan_complexity_investigate),
+            context.getString(R.string.plan_complexity_summarize),
+            context.getString(R.string.plan_complexity_evaluate),
+            context.getString(R.string.plan_complexity_plan),
+            context.getString(R.string.plan_complexity_design),
+            context.getString(R.string.plan_complexity_develop),
+            context.getString(R.string.plan_complexity_detailed),
+            context.getString(R.string.plan_complexity_comprehensive),
+            context.getString(R.string.plan_complexity_in_depth),
+            context.getString(R.string.plan_complexity_systematic),
+            context.getString(R.string.plan_complexity_comprehensive_synthetic),
+            context.getString(R.string.plan_complexity_multi_angle),
+            context.getString(R.string.plan_complexity_steps),
+            context.getString(R.string.plan_complexity_solution),
+            context.getString(R.string.plan_complexity_several),
+            context.getString(R.string.plan_complexity_multiple_aspects),
+            context.getString(R.string.plan_complexity_detailed_explain),
+            context.getString(R.string.plan_complexity_specific_analysis),
+            context.getString(R.string.plan_complexity_how_to_implement),
+            context.getString(R.string.plan_complexity_implementation_plan)
         )
         
         val hasComplexityIndicators = complexityIndicators.any { indicator ->

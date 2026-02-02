@@ -39,9 +39,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,7 +74,7 @@ fun MemoryAppBar(
             modifier = Modifier
                 .weight(1f) // 让搜索框占据剩余空间
                 .height(46.dp),
-            placeholder = { Text("搜索记忆", style = MaterialTheme.typography.bodySmall) },
+            placeholder = { Text(stringResource(R.string.memory_search_hint2), style = MaterialTheme.typography.bodySmall) },
             leadingIcon = {
                 Icon(
                     Icons.Default.Search,

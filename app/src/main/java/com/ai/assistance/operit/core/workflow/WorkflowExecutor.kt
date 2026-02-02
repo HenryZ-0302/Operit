@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.core.workflow
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
@@ -33,7 +34,7 @@ sealed class NodeExecutionState {
     object Pending : NodeExecutionState()
     object Running : NodeExecutionState()
     data class Success(val result: String) : NodeExecutionState()
-    data class Skipped(val reason: String = "跳过") : NodeExecutionState()
+    data class Skipped(val reason: String = "") : NodeExecutionState()
     data class Failed(val error: String) : NodeExecutionState()
 }
 
@@ -69,7 +70,7 @@ class WorkflowExecutor(private val context: Context) {
     }
 
     private fun isSkippedState(state: NodeExecutionState?): Boolean {
-        return state is NodeExecutionState.Skipped || (state is NodeExecutionState.Success && state.result == "跳过")
+        return state is NodeExecutionState.Skipped || (state is NodeExecutionState.Success && state.result == context.getString(R.string.workflow_skip))
     }
 
     private fun parseBooleanLike(value: String): Boolean? {
@@ -93,8 +94,8 @@ class WorkflowExecutor(private val context: Context) {
                 when (refState) {
                     is NodeExecutionState.Success -> refState.result
                     is NodeExecutionState.Skipped -> refState.reason
-                    is NodeExecutionState.Failed -> throw IllegalStateException("引用的节点 ${value.nodeId} 执行失败")
-                    else -> throw IllegalStateException("引用的节点 ${value.nodeId} 尚未完成执行")
+                    is NodeExecutionState.Failed -> throw IllegalStateException(context.getString(R.string.workflow_error_referenced_node_failed, value.nodeId))
+                    else -> throw IllegalStateException(context.getString(R.string.workflow_error_referenced_node_not_completed, value.nodeId))
                 }
             }
         }
@@ -117,7 +118,7 @@ class WorkflowExecutor(private val context: Context) {
                 if (leftNum != null && rightNum != null) {
                     leftNum == rightNum
                 } else if (leftNum != null || rightNum != null) {
-                    throw IllegalArgumentException("条件比较类型不一致：left='$left', right='$right'")
+                    throw IllegalArgumentException(context.getString(R.string.workflow_condition_type_mismatch, left, right))
                 } else {
                     left == right
                 }
@@ -128,7 +129,7 @@ class WorkflowExecutor(private val context: Context) {
                 if (leftNum != null && rightNum != null) {
                     leftNum != rightNum
                 } else if (leftNum != null || rightNum != null) {
-                    throw IllegalArgumentException("条件比较类型不一致：left='$left', right='$right'")
+                    throw IllegalArgumentException(context.getString(R.string.workflow_condition_type_mismatch, left, right))
                 } else {
                     left != right
                 }
@@ -139,7 +140,7 @@ class WorkflowExecutor(private val context: Context) {
                 if (leftNum != null && rightNum != null) {
                     leftNum > rightNum
                 } else if (leftNum != null || rightNum != null) {
-                    throw IllegalArgumentException("条件比较类型不一致：left='$left', right='$right'")
+                    throw IllegalArgumentException(context.getString(R.string.workflow_condition_type_mismatch, left, right))
                 } else {
                     left > right
                 }
@@ -150,7 +151,7 @@ class WorkflowExecutor(private val context: Context) {
                 if (leftNum != null && rightNum != null) {
                     leftNum >= rightNum
                 } else if (leftNum != null || rightNum != null) {
-                    throw IllegalArgumentException("条件比较类型不一致：left='$left', right='$right'")
+                    throw IllegalArgumentException(context.getString(R.string.workflow_condition_type_mismatch, left, right))
                 } else {
                     left >= right
                 }
@@ -161,7 +162,7 @@ class WorkflowExecutor(private val context: Context) {
                 if (leftNum != null && rightNum != null) {
                     leftNum < rightNum
                 } else if (leftNum != null || rightNum != null) {
-                    throw IllegalArgumentException("条件比较类型不一致：left='$left', right='$right'")
+                    throw IllegalArgumentException(context.getString(R.string.workflow_condition_type_mismatch, left, right))
                 } else {
                     left < right
                 }
@@ -172,7 +173,7 @@ class WorkflowExecutor(private val context: Context) {
                 if (leftNum != null && rightNum != null) {
                     leftNum <= rightNum
                 } else if (leftNum != null || rightNum != null) {
-                    throw IllegalArgumentException("条件比较类型不一致：left='$left', right='$right'")
+                    throw IllegalArgumentException(context.getString(R.string.workflow_condition_type_mismatch, left, right))
                 } else {
                     left <= right
                 }
@@ -196,15 +197,15 @@ class WorkflowExecutor(private val context: Context) {
                     val listAllStr = itemNums.all { it == null }
 
                     if (!listAllNum && !listAllStr) {
-                        throw IllegalArgumentException("IN 列表类型不一致：包含数字与非数字 right='$right'")
+                        throw IllegalArgumentException(context.getString(R.string.workflow_in_list_type_mismatch, right))
                     }
 
                     if (listAllNum) {
-                        val ln = leftNum ?: throw IllegalArgumentException("条件比较类型不一致：left='$left', right='$right'")
+                        val ln = leftNum ?: throw IllegalArgumentException(context.getString(R.string.workflow_condition_type_mismatch, left, right))
                         itemNums.filterNotNull().any { it == ln }
                     } else {
                         if (leftNum != null) {
-                            throw IllegalArgumentException("条件比较类型不一致：left='$left', right='$right'")
+                            throw IllegalArgumentException(context.getString(R.string.workflow_condition_type_mismatch, left, right))
                         }
                         items.contains(left)
                     }
@@ -434,7 +435,7 @@ class WorkflowExecutor(private val context: Context) {
         triggerExtras: Map<String, String> = emptyMap(),
         onNodeStateChange: (nodeId: String, state: NodeExecutionState) -> Unit
     ): WorkflowExecutionResult = withContext(Dispatchers.IO) {
-        AppLogger.d(TAG, "开始执行工作流: ${workflow.name} (${workflow.id})")
+        AppLogger.d(TAG, context.getString(R.string.workflow_log_start_execution, workflow.name, workflow.id))
         
         val nodeResults = mutableMapOf<String, NodeExecutionState>()
         
@@ -443,12 +444,12 @@ class WorkflowExecutor(private val context: Context) {
             val allTriggerNodes = workflow.nodes.filterIsInstance<TriggerNode>()
             
             if (allTriggerNodes.isEmpty()) {
-                AppLogger.w(TAG, "工作流没有触发节点")
+                AppLogger.w(TAG, context.getString(R.string.workflow_log_no_trigger_node))
                 return@withContext WorkflowExecutionResult(
                     workflowId = workflow.id,
                     success = false,
                     nodeResults = nodeResults,
-                    message = "工作流没有触发节点，无法执行"
+                    message = "Workflow has no trigger node, cannot execute"
                 )
             }
             
@@ -457,15 +458,15 @@ class WorkflowExecutor(private val context: Context) {
                 // 如果指定了触发节点ID（通常是定时任务），只执行该触发节点
                 val specificNode = allTriggerNodes.find { it.id == triggerNodeId }
                 if (specificNode == null) {
-                    AppLogger.w(TAG, "指定的触发节点不存在: $triggerNodeId")
+                    AppLogger.w(TAG, context.getString(R.string.workflow_log_trigger_node_not_exist, triggerNodeId))
                     return@withContext WorkflowExecutionResult(
                         workflowId = workflow.id,
                         success = false,
                         nodeResults = nodeResults,
-                        message = "指定的触发节点不存在: $triggerNodeId"
+                        message = "Specified trigger node does not exist: $triggerNodeId"
                     )
                 }
-                AppLogger.d(TAG, "定时触发: 只执行指定触发节点 ${specificNode.name}")
+                AppLogger.d(TAG, context.getString(R.string.workflow_log_scheduled_trigger, specificNode.name))
                 listOf(specificNode)
             } else {
                 // 如果没有指定触发节点ID（通常是手动触发），执行所有手动触发类型的节点
@@ -476,32 +477,32 @@ class WorkflowExecutor(private val context: Context) {
                         workflowId = workflow.id,
                         success = false,
                         nodeResults = nodeResults,
-                        message = "没有手动触发类型的触发节点"
+                        message = "No manual trigger type trigger node"
                     )
                 }
-                AppLogger.d(TAG, "手动触发: 执行所有手动触发类型的节点")
+                AppLogger.d(TAG, context.getString(R.string.workflow_log_manual_trigger))
                 manualTriggers
             }
             
-            AppLogger.d(TAG, "将执行 ${triggerNodes.size} 个触发节点: ${triggerNodes.joinToString { it.name }}")
+            AppLogger.d(TAG, context.getString(R.string.workflow_log_will_execute_trigger_nodes, triggerNodes.size, triggerNodes.joinToString { it.name }))
             
             // 3. 构建依赖图
             val dependencyGraph = buildDependencyGraph(workflow)
             
             // 4. 检测环
             if (detectCycle(dependencyGraph.adjacencyList, workflow.nodes)) {
-                AppLogger.e(TAG, "工作流存在循环依赖，无法执行")
+                AppLogger.e(TAG, context.getString(R.string.workflow_log_circular_dependency))
                 return@withContext WorkflowExecutionResult(
                     workflowId = workflow.id,
                     success = false,
                     nodeResults = nodeResults,
-                    message = "工作流存在循环依赖，无法执行"
+                    message = "Workflow has circular dependencies, cannot execute"
                 )
             }
             
             // 5. 标记所有触发节点为成功（触发节点本身不需要执行）
             for (triggerNode in triggerNodes) {
-                AppLogger.d(TAG, "标记触发节点: ${triggerNode.name} (${triggerNode.id})")
+                AppLogger.d(TAG, context.getString(R.string.workflow_log_mark_trigger_node, triggerNode.name, triggerNode.id))
                 val triggerPayload = org.json.JSONObject(triggerExtras).toString()
                 nodeResults[triggerNode.id] = NodeExecutionState.Success(triggerPayload)
                 onNodeStateChange(triggerNode.id, NodeExecutionState.Success(triggerPayload))
@@ -523,17 +524,17 @@ class WorkflowExecutor(private val context: Context) {
                     workflowId = workflow.id,
                     success = false,
                     nodeResults = nodeResults,
-                    message = "工作流执行失败"
+                    message = "Workflow execution failed"
                 )
             }
             
-            AppLogger.d(TAG, "工作流执行完成: ${workflow.name}")
+            AppLogger.d(TAG, context.getString(R.string.workflow_log_execution_complete, workflow.name))
             
             return@withContext WorkflowExecutionResult(
                 workflowId = workflow.id,
                 success = true,
                 nodeResults = nodeResults,
-                message = "工作流执行成功"
+                message = "Workflow executed successfully"
             )
             
         } catch (e: Exception) {
@@ -542,7 +543,7 @@ class WorkflowExecutor(private val context: Context) {
                 workflowId = workflow.id,
                 success = false,
                 nodeResults = nodeResults,
-                message = "工作流执行异常: ${e.message}"
+                message = "Workflow execution exception: ${e.message}"
             )
         }
     }
@@ -693,14 +694,14 @@ class WorkflowExecutor(private val context: Context) {
             
             // 检查节点是否已经被执行过
             if (nodeResults.containsKey(currentNodeId)) {
-                AppLogger.d(TAG, "节点已被执行，跳过: $currentNodeId")
+                AppLogger.d(TAG, context.getString(R.string.workflow_log_node_already_executed, currentNodeId))
                 continue
             }
             
             // 查找节点
             val node = nodeById[currentNodeId]
             if (node == null) {
-                AppLogger.w(TAG, "节点不存在: $currentNodeId")
+                AppLogger.w(TAG, context.getString(R.string.workflow_log_node_not_exist, currentNodeId))
                 continue
             }
 
@@ -766,9 +767,10 @@ class WorkflowExecutor(private val context: Context) {
             }
 
             if (!shouldExecute) {
-                AppLogger.d(TAG, "节点条件不满足，跳过执行: ${node.name} (${node.id})")
-                nodeResults[node.id] = NodeExecutionState.Skipped("条件不满足")
-                onNodeStateChange(node.id, NodeExecutionState.Skipped("条件不满足"))
+                AppLogger.d(TAG, context.getString(R.string.workflow_log_condition_not_met_skip, node.name, node.id))
+                val skipReason = context.getString(R.string.workflow_condition_not_met)
+                nodeResults[node.id] = NodeExecutionState.Skipped(skipReason)
+                onNodeStateChange(node.id, NodeExecutionState.Skipped(skipReason))
 
                 for (nextNodeId in dependencyGraph.adjacencyList[currentNodeId] ?: emptyList()) {
                     if (!currentInDegree.containsKey(nextNodeId)) {
@@ -782,7 +784,7 @@ class WorkflowExecutor(private val context: Context) {
                 continue
             }
             
-            AppLogger.d(TAG, "执行节点: ${node.name} (${node.id})")
+            AppLogger.d(TAG, context.getString(R.string.workflow_log_execute_node, node.name, node.id))
             
             // 执行节点
             val executionSuccess =
@@ -798,7 +800,7 @@ class WorkflowExecutor(private val context: Context) {
             
             // 如果执行失败，停止整个流程
             if (!executionSuccess) {
-                AppLogger.e(TAG, "节点执行失败: ${node.name}")
+                AppLogger.e(TAG, context.getString(R.string.workflow_log_node_failed, node.name))
                 hasFailure = true
             }
             
@@ -882,7 +884,7 @@ class WorkflowExecutor(private val context: Context) {
                 onNodeStateChange(node.id, NodeExecutionState.Success(result))
                 true
             } catch (e: Exception) {
-                val errorMsg = "节点执行异常: ${e.message}"
+                val errorMsg = context.getString(R.string.workflow_node_execution_exception, e.message ?: "")
                 nodeResults[node.id] = NodeExecutionState.Failed(errorMsg)
                 onNodeStateChange(node.id, NodeExecutionState.Failed(errorMsg))
                 false
@@ -910,7 +912,7 @@ class WorkflowExecutor(private val context: Context) {
                 onNodeStateChange(node.id, NodeExecutionState.Success(result))
                 true
             } catch (e: Exception) {
-                val errorMsg = "节点执行异常: ${e.message}"
+                val errorMsg = context.getString(R.string.workflow_node_execution_exception, e.message ?: "")
                 nodeResults[node.id] = NodeExecutionState.Failed(errorMsg)
                 onNodeStateChange(node.id, NodeExecutionState.Failed(errorMsg))
                 false
@@ -950,7 +952,7 @@ class WorkflowExecutor(private val context: Context) {
                         if (node.useFixed) {
                             val fixed = node.fixedValue.trim()
                             val fixedInt = fixed.toLongOrNull()
-                                ?: throw IllegalArgumentException("固定值必须是整数: '${node.fixedValue}'")
+                                ?: throw IllegalArgumentException(context.getString(R.string.workflow_error_fixed_value_must_be_int, node.fixedValue))
                             fixedInt.toString()
                         } else {
                             randomInt(node.randomMin, node.randomMax).toString()
@@ -969,7 +971,7 @@ class WorkflowExecutor(private val context: Context) {
                 onNodeStateChange(node.id, NodeExecutionState.Success(extracted))
                 true
             } catch (e: Exception) {
-                val errorMsg = "节点执行异常: ${e.message}"
+                val errorMsg = context.getString(R.string.workflow_node_execution_exception, e.message ?: "")
                 nodeResults[node.id] = NodeExecutionState.Failed(errorMsg)
                 onNodeStateChange(node.id, NodeExecutionState.Failed(errorMsg))
                 false
@@ -977,9 +979,10 @@ class WorkflowExecutor(private val context: Context) {
         }
 
         if (node !is ExecuteNode) {
-            AppLogger.d(TAG, "跳过非执行节点: ${node.name}")
-            nodeResults[node.id] = NodeExecutionState.Skipped("非执行节点")
-            onNodeStateChange(node.id, NodeExecutionState.Skipped("非执行节点"))
+            AppLogger.d(TAG, context.getString(R.string.workflow_log_skip_non_execute_node, node.name))
+            val skipReason = context.getString(R.string.workflow_non_execute_node)
+            nodeResults[node.id] = NodeExecutionState.Skipped(skipReason)
+            onNodeStateChange(node.id, NodeExecutionState.Skipped(skipReason))
             return true
         }
         
@@ -990,7 +993,7 @@ class WorkflowExecutor(private val context: Context) {
         try {
             // 检查是否有 actionType
             if (node.actionType.isBlank()) {
-                val errorMsg = "节点 ${node.name} 没有配置 actionType"
+                val errorMsg = context.getString(R.string.workflow_node_execution_exception, context.getString(R.string.workflow_node_no_action, node.name))
                 AppLogger.w(TAG, errorMsg)
                 nodeResults[node.id] = NodeExecutionState.Failed(errorMsg)
                 onNodeStateChange(node.id, NodeExecutionState.Failed(errorMsg))
@@ -1006,7 +1009,7 @@ class WorkflowExecutor(private val context: Context) {
                 parameters = parameters
             )
             
-            AppLogger.d(TAG, "调用工具: ${tool.name}, 参数: ${parameters.size} 个")
+            AppLogger.d(TAG, context.getString(R.string.workflow_log_call_tool, tool.name, parameters.size))
             
             // 执行工具
             val result = toolHandler.executeTool(tool)
@@ -1019,25 +1022,24 @@ class WorkflowExecutor(private val context: Context) {
                     } else {
                         resultData.toString()
                     }
-                AppLogger.d(TAG, "节点执行成功: ${node.name}, 结果: $resultMessage")
+                AppLogger.d(TAG, context.getString(R.string.workflow_log_node_success, node.name, resultMessage))
                 nodeResults[node.id] = NodeExecutionState.Success(resultMessage)
                 onNodeStateChange(node.id, NodeExecutionState.Success(resultMessage))
                 return true
             } else {
-                val errorMsg = result.error ?: "未知错误"
-                AppLogger.e(TAG, "节点执行失败: ${node.name}, 错误: $errorMsg")
+                val errorMsg = result.error ?: context.getString(R.string.workflow_node_execution_exception, context.getString(R.string.workflow_unknown_error))
+                AppLogger.e(TAG, context.getString(R.string.workflow_log_node_error, node.name, errorMsg))
                 nodeResults[node.id] = NodeExecutionState.Failed(errorMsg)
                 onNodeStateChange(node.id, NodeExecutionState.Failed(errorMsg))
                 return false
             }
             
         } catch (e: Exception) {
-            val errorMsg = "节点执行异常: ${e.message}"
-            AppLogger.e(TAG, "节点执行异常: ${node.name}", e)
+            val errorMsg = context.getString(R.string.workflow_node_execution_exception, e.message ?: "")
+            AppLogger.e(TAG, context.getString(R.string.workflow_log_node_exception, node.name), e)
             nodeResults[node.id] = NodeExecutionState.Failed(errorMsg)
             onNodeStateChange(node.id, NodeExecutionState.Failed(errorMsg))
             return false
         }
     }
 }
-

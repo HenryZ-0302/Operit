@@ -9,10 +9,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
+import com.ai.assistance.operit.R
 
 /** Command result dialog that shows command execution output with scrollable content */
 @Composable
@@ -77,7 +79,7 @@ fun CommandResultDialog(
                 },
                 confirmButton = {
                     if (showButtons && !isExecuting) {
-                        TextButton(onClick = onDismiss) { Text("确定") }
+                        TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialog_confirm)) }
                     }
                 },
                 dismissButton = {
@@ -92,22 +94,22 @@ fun CommandResultDialog(
                                                         android.content.ClipboardManager
                                         val clip =
                                                 android.content.ClipData.newPlainText(
-                                                        "命令结果",
+                                                        context.getString(R.string.dialog_command_result),
                                                         content
                                                 )
                                         clipboard.setPrimaryClip(clip)
-                                        Toast.makeText(context, "已复制到剪贴板", Toast.LENGTH_SHORT)
+                                        Toast.makeText(context, context.getString(R.string.dialog_copied_to_clipboard), Toast.LENGTH_SHORT)
                                                 .show()
                                     } catch (e: Exception) {
                                         Toast.makeText(
                                                         context,
-                                                        "复制失败: ${e.message}",
+                                                        context.getString(R.string.dialog_copy_failed, e.message ?: ""),
                                                         Toast.LENGTH_SHORT
                                                 )
                                                 .show()
                                     }
                                 }
-                        ) { Text("复制") }
+                        ) { Text(stringResource(R.string.dialog_copy)) }
                     }
                 },
                 properties =
@@ -153,7 +155,7 @@ fun SampleCommandsCard(commands: List<Pair<String, String>>, onCommandSelected: 
                     )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("选择一个示例命令:", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.dialog_select_sample_command), style = MaterialTheme.typography.titleSmall)
             Spacer(modifier = Modifier.height(8.dp))
 
             commands.forEach { (command, description) ->

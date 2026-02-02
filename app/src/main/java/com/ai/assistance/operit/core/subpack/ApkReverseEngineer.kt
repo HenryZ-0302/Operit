@@ -2,6 +2,7 @@ package com.ai.assistance.operit.core.subpack
 
 import android.content.Context
 import android.graphics.Bitmap
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.android.apksig.ApkSigner
 import dev.rushii.arsc.*
@@ -61,7 +62,7 @@ class ApkReverseEngineer(private val context: Context) {
                 }
 
                 // 获取功能列表
-                val features = apkMeta.usesFeatures.map { it.name ?: "(未命名功能)" }.joinToString(", ")
+                val features = apkMeta.usesFeatures.map { it.name ?: context.getString(R.string.apk_unnamed_function) }.joinToString(", ")
                 if (features.isNotEmpty()) {
                     result["features"] = features
                 }
@@ -71,7 +72,7 @@ class ApkReverseEngineer(private val context: Context) {
             return result
         } catch (e: Exception) {
             AppLogger.e(TAG, "读取APK信息失败", e)
-            return mapOf("error" to (e.message ?: "未知错误"))
+            return mapOf("error" to (e.message ?: context.getString(R.string.apk_unknown_error)))
         }
     }
 
@@ -108,7 +109,7 @@ class ApkReverseEngineer(private val context: Context) {
             return extractDir
         } catch (e: Exception) {
             AppLogger.e(TAG, "APK解压失败", e)
-            throw RuntimeException("APK解压失败: ${e.message}")
+            throw RuntimeException(context.getString(R.string.apk_extract_failed, e.message ?: ""))
         }
     }
 
@@ -773,13 +774,13 @@ class ApkReverseEngineer(private val context: Context) {
     ): Pair<Boolean, String?> {
         try {
             if (!unsignedApk.exists()) {
-                val message = "未签名的APK文件不存在: ${unsignedApk.absolutePath}"
+                val message = context.getString(R.string.apk_unsigned_not_exist, unsignedApk.absolutePath)
                 AppLogger.e(TAG, message)
                 return Pair(false, message)
             }
 
             if (!keyStoreFile.exists()) {
-                val message = "密钥库文件不存在: ${keyStoreFile.absolutePath}"
+                val message = context.getString(R.string.apk_keystore_not_exist, keyStoreFile.absolutePath)
                 AppLogger.e(TAG, message)
                 return Pair(false, message)
             }
@@ -821,11 +822,11 @@ class ApkReverseEngineer(private val context: Context) {
             }
 
             val errorMessage =
-                    "使用PKCS12和JKS格式均无法加载密钥库进行签名。\nPKCS12错误: ${pkcs12Result.second}\nJKS错误: ${jksResult.second}"
+                    context.getString(R.string.apk_keystore_load_failed_both, pkcs12Result.second ?: "", jksResult.second ?: "")
             AppLogger.e(TAG, errorMessage)
             return Pair(false, errorMessage)
         } catch (e: Exception) {
-            val errorMessage = "APK签名失败: ${e.message}"
+            val errorMessage = context.getString(R.string.apk_sign_failed, e.message ?: "")
             AppLogger.e(TAG, errorMessage, e)
             return Pair(false, errorMessage)
         }
@@ -847,7 +848,7 @@ class ApkReverseEngineer(private val context: Context) {
             // 使用KeyStoreHelper获取密钥库实例
             val keyStore = KeyStoreHelper.getKeyStoreInstance(keyStoreType)
             if (keyStore == null) {
-                val errorMessage = "获取$keyStoreType 密钥库实例失败"
+                val errorMessage = context.getString(R.string.apk_get_keystore_instance_failed, keyStoreType)
                 AppLogger.e(TAG, errorMessage)
                 return Pair(false, errorMessage)
             }
@@ -857,7 +858,7 @@ class ApkReverseEngineer(private val context: Context) {
                     keyStore.load(input, keyStorePassword.toCharArray())
                     AppLogger.d(TAG, "成功以$keyStoreType 格式加载密钥库")
                 } catch (e: Exception) {
-                    val errorMessage = "加载$keyStoreType 密钥库失败: ${e.message}"
+                    val errorMessage = context.getString(R.string.apk_load_keystore_failed, keyStoreType, e.message ?: "")
                     AppLogger.e(TAG, errorMessage)
                     return Pair(false, errorMessage)
                 }
@@ -870,7 +871,7 @@ class ApkReverseEngineer(private val context: Context) {
                 }
 
                 if (aliasList.isEmpty()) {
-                    val errorMessage = "$keyStoreType 密钥库中没有任何密钥别名"
+                    val errorMessage = context.getString(R.string.apk_keystore_no_aliases, keyStoreType)
                     AppLogger.e(TAG, errorMessage)
                     return Pair(false, errorMessage)
                 } else {
@@ -893,7 +894,7 @@ class ApkReverseEngineer(private val context: Context) {
                 return signWithKeyStore(keyStore, unsignedApk, keyAlias, keyPassword, outputApk)
             }
         } catch (e: Exception) {
-            val errorMessage = "以$keyStoreType 格式加载密钥库失败: ${e.message}"
+            val errorMessage = context.getString(R.string.apk_load_keystore_format_failed, keyStoreType, e.message ?: "")
             AppLogger.e(TAG, errorMessage, e)
             return Pair(false, errorMessage)
         }
@@ -911,13 +912,13 @@ class ApkReverseEngineer(private val context: Context) {
             // 获取私钥
             val key = keyStore.getKey(keyAlias, keyPassword.toCharArray())
             if (key == null) {
-                val errorMessage = "在密钥库中找不到别名为'$keyAlias'的密钥"
+                val errorMessage = context.getString(R.string.apk_key_not_found_in_keystore, keyAlias)
                 AppLogger.e(TAG, errorMessage)
                 return Pair(false, errorMessage)
             }
 
             if (key !is PrivateKey) {
-                val errorMessage = "找到的密钥不是私钥类型: ${key.javaClass.name}"
+                val errorMessage = context.getString(R.string.apk_key_not_private_key, key.javaClass.name)
                 AppLogger.e(TAG, errorMessage)
                 return Pair(false, errorMessage)
             }
@@ -926,7 +927,7 @@ class ApkReverseEngineer(private val context: Context) {
             // 获取证书链
             val certificateChain = keyStore.getCertificateChain(keyAlias)
             if (certificateChain == null || certificateChain.isEmpty()) {
-                val errorMessage = "无法获取别名为'$keyAlias'的证书链"
+                val errorMessage = context.getString(R.string.apk_cannot_get_cert_chain, keyAlias)
                 AppLogger.e(TAG, errorMessage)
                 return Pair(false, errorMessage)
             }
@@ -934,7 +935,7 @@ class ApkReverseEngineer(private val context: Context) {
             val x509CertificateChain =
                     certificateChain.map { cert ->
                         if (cert !is X509Certificate) {
-                            val errorMessage = "证书不是X509Certificate类型: ${cert.javaClass.name}"
+                            val errorMessage = context.getString(R.string.apk_cert_not_x509, cert.javaClass.name)
                             AppLogger.e(TAG, errorMessage)
                             return Pair(false, errorMessage)
                         }
@@ -957,7 +958,7 @@ class ApkReverseEngineer(private val context: Context) {
             try {
                 apkSigner.sign()
             } catch (e: Exception) {
-                val errorMessage = "ApkSigner执行失败: ${e.message}"
+                val errorMessage = context.getString(R.string.apk_signer_execution_failed, e.message ?: "")
                 AppLogger.e(TAG, errorMessage, e)
                 return Pair(false, errorMessage)
             }
@@ -965,7 +966,7 @@ class ApkReverseEngineer(private val context: Context) {
             AppLogger.d(TAG, "APK签名完成: ${outputApk.absolutePath}")
             return Pair(true, null)
         } catch (e: Exception) {
-            val errorMessage = "使用KeyStore签名APK失败: ${e.message}"
+            val errorMessage = context.getString(R.string.apk_sign_with_keystore_failed, e.message ?: "")
             AppLogger.e(TAG, errorMessage, e)
             return Pair(false, errorMessage)
         }

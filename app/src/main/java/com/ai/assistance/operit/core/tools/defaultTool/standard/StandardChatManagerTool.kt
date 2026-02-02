@@ -7,9 +7,11 @@ import android.content.ServiceConnection
 import android.os.Build
 import android.os.IBinder
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.stream.SharedStream
 import com.ai.assistance.operit.core.tools.ChatCreationResultData
 import com.ai.assistance.operit.core.tools.ChatListResultData
+import com.ai.assistance.operit.core.tools.ChatMessagesResultData
 import com.ai.assistance.operit.core.tools.ChatServiceStartResultData
 import com.ai.assistance.operit.core.tools.ChatSwitchResultData
 import com.ai.assistance.operit.core.tools.MessageSendResultData
@@ -19,6 +21,7 @@ import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import com.ai.assistance.operit.services.ChatServiceCore
 import com.ai.assistance.operit.services.FloatingChatService
 import com.ai.assistance.operit.ui.floating.FloatingMode
@@ -41,6 +44,104 @@ class StandardChatManagerTool(private val context: Context) {
         private const val SERVICE_CONNECTION_TIMEOUT = 15000L // 15秒超时
         private const val RESPONSE_STREAM_ACQUIRE_TIMEOUT = 5000L
         private const val AI_RESPONSE_TIMEOUT = 300000L
+    }
+
+    private fun simplifyXmlBlocksForHistory(text: String): String {
+        if (text.isEmpty()) return text
+        return text
+            .replace(ChatMarkupRegex.toolTag, "")
+            .replace(ChatMarkupRegex.toolSelfClosingTag, "")
+            .replace(ChatMarkupRegex.toolResultTag, "")
+            .replace(ChatMarkupRegex.toolResultSelfClosingTag, "")
+            .replace(ChatMarkupRegex.statusTag, "")
+            .replace(ChatMarkupRegex.statusSelfClosingTag, "")
+            .trim()
+    }
+
+    suspend fun getChatMessages(tool: AITool): ToolResult {
+        return try {
+            val chatId = tool.parameters.find { it.name == "chat_id" }?.value?.trim()
+            if (chatId.isNullOrBlank()) {
+                return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Invalid parameter: missing chat_id"
+                )
+            }
+
+            val rawOrder = tool.parameters.find { it.name == "order" }?.value?.trim()
+            val order = rawOrder?.lowercase()?.takeIf { it == "asc" || it == "desc" }
+            if (rawOrder != null && rawOrder.isNotBlank() && order == null) {
+                return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Invalid parameter: order must be asc/desc"
+                )
+            }
+
+            val rawLimit = tool.parameters.find { it.name == "limit" }?.value?.trim()
+            val parsedLimit = rawLimit?.takeIf { it.isNotBlank() }?.toIntOrNull()
+            if (rawLimit != null && rawLimit.isNotBlank() && parsedLimit == null) {
+                return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Invalid parameter: limit must be an integer"
+                )
+            }
+
+            val effectiveOrder = order ?: "desc"
+            val effectiveLimit = (parsedLimit ?: 20).coerceIn(1, 200)
+
+            val chatHistoryManager = ChatHistoryManager.getInstance(appContext)
+            val title = chatHistoryManager.getChatTitle(chatId)
+            if (title == null) {
+                return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Chat does not exist: $chatId"
+                )
+            }
+
+            val messages = chatHistoryManager.loadChatMessages(
+                chatId = chatId,
+                order = effectiveOrder,
+                limit = effectiveLimit
+            )
+
+            val filteredMessages = messages.filterNot { msg -> msg.sender == "summary" }
+
+            ToolResult(
+                toolName = tool.name,
+                success = true,
+                result = ChatMessagesResultData(
+                    chatId = chatId,
+                    order = effectiveOrder,
+                    limit = effectiveLimit,
+                    messages = filteredMessages.map { msg ->
+                        ChatMessagesResultData.ChatMessageInfo(
+                            sender = msg.sender,
+                            content = simplifyXmlBlocksForHistory(msg.content),
+                            timestamp = msg.timestamp,
+                            roleName = msg.roleName,
+                            provider = msg.provider,
+                            modelName = msg.modelName
+                        )
+                    }
+                )
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to get chat messages", e)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Error getting chat messages: ${e.message}"
+            )
+        }
     }
 
     private val appContext = context.applicationContext
@@ -212,7 +313,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatServiceStartResultData(isConnected = false),
-                    error = "参数错误：initial_mode 无效：$initialModeParam"
+                    error = "Invalid parameter: initial_mode is invalid: $initialModeParam"
                 )
             }
 
@@ -230,7 +331,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatServiceStartResultData(isConnected = false),
-                    error = "参数错误：auto_enter_voice_chat 必须是 true/false"
+                    error = "Invalid parameter: auto_enter_voice_chat must be true/false"
                 )
             }
 
@@ -240,7 +341,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatServiceStartResultData(isConnected = false),
-                    error = "参数错误：wake_launched 必须是 true/false"
+                    error = "Invalid parameter: wake_launched must be true/false"
                 )
             }
 
@@ -250,7 +351,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatServiceStartResultData(isConnected = false),
-                    error = "参数错误：timeout_ms 必须是整数（毫秒）"
+                    error = "Invalid parameter: timeout_ms must be an integer (milliseconds)"
                 )
             }
 
@@ -286,7 +387,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatServiceStartResultData(isConnected = false),
-                    error = "对话服务启动失败或连接超时"
+                    error = "Chat service failed to start or connection timed out"
                 )
             }
         } catch (e: Exception) {
@@ -295,7 +396,7 @@ class StandardChatManagerTool(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = ChatServiceStartResultData(isConnected = false),
-                error = "启动对话服务时发生错误: ${e.message}"
+                error = "Error starting chat service: ${e.message}"
             )
         }
     }
@@ -315,7 +416,7 @@ class StandardChatManagerTool(private val context: Context) {
             ToolResult(
                 toolName = tool.name,
                 success = true,
-                result = StringResultData(if (stopped) "已停止对话服务" else "已请求停止对话服务")
+                result = StringResultData(if (stopped) "Chat service stopped" else "Requested to stop chat service")
             )
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to stop chat service", e)
@@ -323,7 +424,7 @@ class StandardChatManagerTool(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "停止对话服务时发生错误: ${e.message}"
+                error = "Error stopping chat service: ${e.message}"
             )
         }
     }
@@ -338,7 +439,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatCreationResultData(chatId = ""),
-                    error = "服务未连接"
+                    error = "Service not connected"
                 )
             }
 
@@ -346,7 +447,7 @@ class StandardChatManagerTool(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = ChatCreationResultData(chatId = ""),
-                error = "ChatServiceCore 未初始化"
+                error = "ChatServiceCore not initialized"
             )
 
             // 获取创建前的 chatId
@@ -403,7 +504,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatCreationResultData(chatId = ""),
-                    error = "创建对话失败，未能获取新的对话ID"
+                    error = "Failed to create chat, unable to get new chat ID"
                 )
             }
         } catch (e: Exception) {
@@ -412,7 +513,7 @@ class StandardChatManagerTool(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = ChatCreationResultData(chatId = ""),
-                error = "创建对话时发生错误: ${e.message}"
+                error = "Error creating chat: ${e.message}"
             )
         }
     }
@@ -422,47 +523,24 @@ class StandardChatManagerTool(private val context: Context) {
      */
     suspend fun listChats(tool: AITool): ToolResult {
         return try {
-            if (!ensureServiceConnected()) {
-                return ToolResult(
-                    toolName = tool.name,
-                    success = false,
-                    result = ChatListResultData(
-                        totalCount = 0,
-                        currentChatId = null,
-                        chats = emptyList()
-                    ),
-                    error = "服务未连接"
-                )
-            }
+            val chatHistoryManager = ChatHistoryManager.getInstance(appContext)
+            val chatHistories = chatHistoryManager.chatHistoriesFlow.first()
+            val currentChatId = chatHistoryManager.currentChatIdFlow.first()
+            val messageCounts = chatHistoryManager.getMessageCountsByChatId()
 
-            val core = chatCore ?: return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = ChatListResultData(
-                    totalCount = 0,
-                    currentChatId = null,
-                    chats = emptyList()
-                ),
-                error = "ChatServiceCore 未初始化"
-            )
-
-            val chatHistories = core.chatHistories.value
-            val currentChatId = core.currentChatId.value
-            
-            // 构建对话信息列表
             val chatInfoList = chatHistories.map { chat ->
                 ChatListResultData.ChatInfo(
                     id = chat.id,
                     title = chat.title,
-                    messageCount = chat.messages.size,
+                    messageCount = messageCounts[chat.id] ?: 0,
                     createdAt = chat.createdAt.toString(),
                     updatedAt = chat.updatedAt.toString(),
-                    isCurrent = chat.id == currentChatId,
+                    isCurrent = currentChatId != null && chat.id == currentChatId,
                     inputTokens = chat.inputTokens,
                     outputTokens = chat.outputTokens
                 )
             }
-            
+
             ToolResult(
                 toolName = tool.name,
                 success = true,
@@ -482,7 +560,7 @@ class StandardChatManagerTool(private val context: Context) {
                     currentChatId = null,
                     chats = emptyList()
                 ),
-                error = "列出对话时发生错误: ${e.message}"
+                error = "Error listing chats: ${e.message}"
             )
         }
     }
@@ -497,7 +575,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatSwitchResultData(chatId = "", chatTitle = ""),
-                    error = "服务未连接"
+                    error = "Service not connected"
                 )
             }
 
@@ -505,7 +583,7 @@ class StandardChatManagerTool(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = ChatSwitchResultData(chatId = "", chatTitle = ""),
-                error = "ChatServiceCore 未初始化"
+                error = "ChatServiceCore not initialized"
             )
 
             val chatId = tool.parameters.find { it.name == "chat_id" }?.value
@@ -514,7 +592,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatSwitchResultData(chatId = "", chatTitle = ""),
-                    error = "参数错误：缺少 chat_id"
+                    error = "Invalid parameter: missing chat_id"
                 )
             }
 
@@ -525,7 +603,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatSwitchResultData(chatId = chatId, chatTitle = ""),
-                    error = "对话不存在：$chatId"
+                    error = "Chat does not exist: $chatId"
                 )
             }
 
@@ -553,7 +631,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = ChatSwitchResultData(chatId = chatId, chatTitle = targetChat.title),
-                    error = "切换对话失败，当前对话ID未更新"
+                    error = "Failed to switch chat, current chat ID not updated"
                 )
             }
         } catch (e: Exception) {
@@ -562,7 +640,7 @@ class StandardChatManagerTool(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = ChatSwitchResultData(chatId = "", chatTitle = ""),
-                error = "切换对话时发生错误: ${e.message}"
+                error = "Error switching chat: ${e.message}"
             )
         }
     }
@@ -577,7 +655,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = MessageSendResultData(chatId = "", message = ""),
-                    error = "服务未连接"
+                    error = "Service not connected"
                 )
             }
 
@@ -585,7 +663,7 @@ class StandardChatManagerTool(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = MessageSendResultData(chatId = "", message = ""),
-                error = "ChatServiceCore 未初始化"
+                error = "ChatServiceCore not initialized"
             )
 
             val message = tool.parameters.find { it.name == "message" }?.value
@@ -594,7 +672,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = MessageSendResultData(chatId = "", message = ""),
-                    error = "参数错误：缺少 message"
+                    error = "Invalid parameter: missing message"
                 )
             }
 
@@ -609,7 +687,7 @@ class StandardChatManagerTool(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = MessageSendResultData(chatId = targetChatId, message = message),
-                        error = "指定的对话不存在：$targetChatId"
+                        error = "Specified chat does not exist: $targetChatId"
                     )
                 }
                 
@@ -640,7 +718,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = MessageSendResultData(chatId = "", message = message),
-                    error = "无法获取当前对话ID"
+                    error = "Unable to get current chat ID"
                 )
             }
 
@@ -655,7 +733,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = MessageSendResultData(chatId = currentChatId, message = message),
-                    error = "上一条消息仍在处理中"
+                    error = "Previous message is still being processed"
                 )
             }
 
@@ -672,7 +750,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = MessageSendResultData(chatId = currentChatId, message = message),
-                    error = "无法获取当前对话ID"
+                    error = "Unable to get current chat ID"
                 )
             }
 
@@ -695,7 +773,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = MessageSendResultData(chatId = currentChatId, message = message),
-                    error = "等待AI响应超时"
+                    error = "Timeout waiting for AI response"
                 )
             }
 
@@ -713,7 +791,7 @@ class StandardChatManagerTool(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = MessageSendResultData(chatId = currentChatId, message = message),
-                    error = "等待AI回复超时"
+                    error = "Timeout waiting for AI reply"
                 )
             }
 
@@ -749,7 +827,7 @@ class StandardChatManagerTool(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = MessageSendResultData(chatId = "", message = ""),
-                error = "发送消息时发生错误: ${e.message}"
+                error = "Error sending message: ${e.message}"
             )
         }
     }

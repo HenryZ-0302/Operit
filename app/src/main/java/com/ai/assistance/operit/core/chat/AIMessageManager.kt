@@ -2,6 +2,7 @@ package com.ai.assistance.operit.core.chat
 
 import android.annotation.SuppressLint
 import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.plan.PlanModeManager
@@ -77,6 +78,7 @@ object AIMessageManager {
      * @param enableMemoryQuery 是否允许AI查询记忆。
      * @param enableWorkspaceAttachment 是否启用工作区附着功能。
      * @param workspacePath 工作区路径。
+     * @param workspaceEnv 工作区环境。
      * @param replyToMessage 回复消息。
      * @param enableDirectImageProcessing 是否将图片附件转换为link标签（用于直接图片处理）。
      * @param enableDirectAudioProcessing 是否将音频附件转换为link标签（用于直接音频处理）。
@@ -89,6 +91,7 @@ object AIMessageManager {
         enableMemoryQuery: Boolean,
         enableWorkspaceAttachment: Boolean = false,
         workspacePath: String? = null,
+        workspaceEnv: String? = null,
         replyToMessage: ChatMessage? = null,
         enableDirectImageProcessing: Boolean = false,
         enableDirectAudioProcessing: Boolean = false,
@@ -101,8 +104,8 @@ object AIMessageManager {
                 .trim()
                 .let { if (it.length > 100) it.take(100) + "..." else it }
 
-            val roleName = message.roleName ?: if (message.sender == "ai") "AI" else "用户"
-            val instruction = "用户正在回复你之前的这条消息："
+            val roleName = message.roleName ?: if (message.sender == "ai") "AI" else context.getString(R.string.ai_message_user)
+            val instruction = context.getString(R.string.ai_message_replying_to_previous)
             "<reply_to sender=\"${roleName}\" timestamp=\"${message.timestamp}\">${instruction}\"${cleanContent}\"</reply_to>"
         } ?: ""
 
@@ -111,7 +114,8 @@ object AIMessageManager {
             try {
                 val workspaceContent = WorkspaceAttachmentProcessor.generateWorkspaceAttachment(
                     context = context,
-                    workspacePath = workspacePath
+                    workspacePath = workspacePath,
+                    workspaceEnv = workspaceEnv
                 )
                 "<workspace_attachment>$workspaceContent</workspace_attachment>"
             } catch (e: Exception) {
@@ -283,7 +287,7 @@ object AIMessageManager {
 
                     // 设置执行计划的特定UI状态
                     enhancedAiService.setInputProcessingState(
-                        InputProcessingState.ExecutingPlan("正在执行深度搜索...")
+                        InputProcessingState.ExecutingPlan(context.getString(R.string.ai_message_executing_deep_search))
                     )
 
                     // 使用深度搜索模式
@@ -356,7 +360,7 @@ object AIMessageManager {
             val shouldKeepMedia = limit > 0 && currentUserTurnIndex >= keepFromTurn
             if (!shouldKeepMedia && MediaLinkParser.hasMediaLinks(content)) {
                 val removed = MediaLinkParser.removeMediaLinks(content).trim()
-                role to (removed.ifBlank { "[音视频已省略]" })
+                role to (removed.ifBlank { context.getString(R.string.ai_message_media_omitted) })
             } else {
                 role to content
             }
@@ -380,7 +384,7 @@ object AIMessageManager {
             val shouldKeepImages = limit > 0 && currentUserTurnIndex >= keepFromTurn
             if (!shouldKeepImages && ImageLinkParser.hasImageLinks(content)) {
                 val removed = ImageLinkParser.removeImageLinks(content).trim()
-                role to (removed.ifBlank { "[图片已省略]" })
+                role to (removed.ifBlank { context.getString(R.string.ai_message_image_omitted) })
             } else {
                 role to content
             }
@@ -472,15 +476,15 @@ object AIMessageManager {
             val removedLargeTags = text
                 .replace(
                     Regex("<workspace_attachment>[\\s\\S]*?</workspace_attachment>", RegexOption.DOT_MATCHES_ALL),
-                    "[工作区已省略]"
+                    context.getString(R.string.ai_message_workspace_omitted)
                 )
                 .replace(
                     Regex("<attachment[\\s\\S]*?</attachment>", RegexOption.DOT_MATCHES_ALL),
-                    "[附件已省略]"
+                    context.getString(R.string.ai_message_attachment_omitted)
                 )
                 .replace(
                     Regex("<reply_to[\\s\\S]*?</reply_to>", RegexOption.DOT_MATCHES_ALL),
-                    "[回复引用已省略]"
+                    context.getString(R.string.ai_message_reply_omitted)
                 )
 
             return ChatMarkupRegex.toolResultTagWithAttrs.replace(removedLargeTags) { mr ->
@@ -491,9 +495,9 @@ object AIMessageManager {
                     ?.getOrNull(1)
                     ?.ifBlank { null }
                 if (name != null) {
-                    "[工具结果已省略: $name]"
+                    context.getString(R.string.ai_message_tool_result_omitted, name)
                 } else {
-                    "[工具结果已省略]"
+                    context.getString(R.string.ai_message_tool_result_omitted_short)
                 }
             }
         }
@@ -564,7 +568,7 @@ object AIMessageManager {
                 val omitted = (cleanedSegments.size - head.size - tail.size).coerceAtLeast(0)
                 cleanedSegments.clear()
                 cleanedSegments.addAll(head)
-                cleanedSegments.add(Segment(kind = "text", raw = "[...省略${omitted}段...]" ) )
+                cleanedSegments.add(Segment(kind = "text", raw = context.getString(R.string.ai_message_omitted_segment, omitted) ) )
                 cleanedSegments.addAll(tail)
             }
 
@@ -576,20 +580,20 @@ object AIMessageManager {
                         val tailChars = if (index == lastTextIndex) 24 else 12
                         condenseHeadTail(seg.raw, headChars = headChars, tailChars = tailChars).takeIf { it.isNotBlank() }
                     }
-                    "tool" -> "[工具: ${seg.toolName ?: "tool"}]"
+                    "tool" -> context.getString(R.string.ai_message_tool_start, seg.toolName ?: "tool")
                     "tool_result" -> {
                         val s = seg.status?.lowercase()
                         val statusText = when {
                             s == null -> ""
-                            s == "success" -> "成功"
-                            s == "error" -> "失败"
+                            s == "success" -> context.getString(R.string.ai_message_success)
+                            s == "error" -> context.getString(R.string.ai_message_failure)
                             else -> s
                         }
                         val name = seg.toolName ?: "tool"
                         if (statusText.isBlank()) {
-                            "[结果: $name 已省略]"
+                            context.getString(R.string.ai_message_result_omitted, name)
                         } else {
-                            "[结果: $name $statusText 已省略]"
+                            context.getString(R.string.ai_message_result_omitted_with_status, name, statusText)
                         }
                     }
                     else -> null
@@ -629,10 +633,10 @@ object AIMessageManager {
                 val summaryWithQuotes = buildString {
                     append(trimmedSummary)
                     if (conversationReviewEntries.isNotEmpty()) {
-                        append("\n\n对话回顾：\n")
+                        append(context.getString(R.string.ai_message_dialogue_review))
                         conversationReviewEntries.forEach { (role, content) ->
                             append("- ")
-                            append(if (role == "user") "用户" else "AI")
+                            append(if (role == "user") context.getString(R.string.ai_message_user_label) else "AI")
                             append(": ")
                             append(content)
                             append("\n")
@@ -641,7 +645,7 @@ object AIMessageManager {
                 }.trimEnd()
 
                 val finalSummary = if (autoContinue) {
-                    "$summaryWithQuotes\n\n请你继续，如果任务完成，输出总结"
+                    context.getString(R.string.ai_message_continue_task_if_complete, summaryWithQuotes)
                 } else {
                     summaryWithQuotes
                 }

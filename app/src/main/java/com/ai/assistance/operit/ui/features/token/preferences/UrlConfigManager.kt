@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.token.model.TabConfig
 import com.ai.assistance.operit.ui.features.token.model.UrlConfig
 import kotlinx.coroutines.flow.Flow
@@ -27,40 +28,40 @@ class UrlConfigManager(private val context: Context) {
                 name = "Claude",
                 signInUrl = "https://claude.ai/login",
                 tabs = listOf(
-                    TabConfig("聊天", "https://claude.ai/chats"),
-                    TabConfig("项目", "https://claude.ai/projects"),
-                    TabConfig("工件", "https://claude.ai/artifacts"),
-                    TabConfig("设置", "https://claude.ai/settings")
+                    TabConfig("Chat", "https://claude.ai/chats"),
+                    TabConfig("Projects", "https://claude.ai/projects"),
+                    TabConfig("Artifacts", "https://claude.ai/artifacts"),
+                    TabConfig("Settings", "https://claude.ai/settings")
                 )
             ),
             UrlConfig(
                 name = "ChatGPT",
                 signInUrl = "https://chat.openai.com/auth/login",
                 tabs = listOf(
-                    TabConfig("聊天", "https://chat.openai.com/"),
+                    TabConfig("Chat", "https://chat.openai.com/"),
                     TabConfig("GPTs", "https://chat.openai.com/gpts"),
-                    TabConfig("设置", "https://chat.openai.com/settings"),
-                    TabConfig("账户", "https://platform.openai.com/account")
+                    TabConfig("Settings", "https://chat.openai.com/settings"),
+                    TabConfig("Account", "https://platform.openai.com/account")
                 )
             ),
             UrlConfig(
                 name = "Gemini",
                 signInUrl = "https://gemini.google.com/",
                 tabs = listOf(
-                    TabConfig("聊天", "https://gemini.google.com/app"),
-                    TabConfig("历史", "https://gemini.google.com/history"),
-                    TabConfig("设置", "https://gemini.google.com/settings"),
-                    TabConfig("帮助", "https://support.google.com/gemini")
+                    TabConfig("Chat", "https://gemini.google.com/app"),
+                    TabConfig("History", "https://gemini.google.com/history"),
+                    TabConfig("Settings", "https://gemini.google.com/settings"),
+                    TabConfig("Help", "https://support.google.com/gemini")
                 )
             ),
             UrlConfig(
                 name = "Poe",
                 signInUrl = "https://poe.com/login",
                 tabs = listOf(
-                    TabConfig("聊天", "https://poe.com/"),
-                    TabConfig("探索", "https://poe.com/explore"),
-                    TabConfig("创建", "https://poe.com/create"),
-                    TabConfig("设置", "https://poe.com/settings")
+                    TabConfig("Chat", "https://poe.com/"),
+                    TabConfig("Explore", "https://poe.com/explore"),
+                    TabConfig("Create", "https://poe.com/create"),
+                    TabConfig("Settings", "https://poe.com/settings")
                 )
             )
         )
@@ -75,10 +76,10 @@ class UrlConfigManager(private val context: Context) {
             try {
                 json.decodeFromString<UrlConfig>(configJson)
             } catch (e: Exception) {
-                UrlConfig() // 返回默认配置
+                UrlConfig().localizePresetTabNames(context)
             }
         } else {
-            UrlConfig() // 返回默认配置
+            UrlConfig().localizePresetTabNames(context)
         }
     }
 
@@ -91,6 +92,29 @@ class UrlConfigManager(private val context: Context) {
 
     // 重置为默认配置
     suspend fun resetToDefault() {
-        saveUrlConfig(UrlConfig())
+        saveUrlConfig(UrlConfig().localizePresetTabNames(context))
     }
-} 
+}
+
+private fun UrlConfig.localizePresetTabNames(context: Context): UrlConfig {
+    if (tabs.isEmpty()) return this
+
+    val mappedTabs = tabs.map { tab ->
+        val localizedTitle = when (tab.title) {
+            "Chat", "聊天" -> context.getString(R.string.url_tab_chat)
+            "Projects", "项目" -> context.getString(R.string.url_tab_projects)
+            "Artifacts", "工件" -> context.getString(R.string.url_tab_artifacts)
+            "Settings", "设置" -> context.getString(R.string.url_tab_settings)
+            "Account", "账户" -> context.getString(R.string.url_tab_account)
+            "History", "历史" -> context.getString(R.string.url_tab_history)
+            "Help", "帮助" -> context.getString(R.string.url_tab_help)
+            "Explore", "探索" -> context.getString(R.string.url_tab_explore)
+            "Create", "创建" -> context.getString(R.string.url_tab_create)
+            else -> tab.title
+        }
+
+        if (localizedTitle == tab.title) tab else TabConfig(title = localizedTitle, url = tab.url)
+    }
+
+    return copy(tabs = mappedTabs)
+}

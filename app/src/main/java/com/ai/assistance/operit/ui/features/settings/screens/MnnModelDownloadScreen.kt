@@ -57,8 +57,9 @@ fun MnnModelDownloadScreen(
             }
         }
     }
-    
+
     // 加载模型列表
+    val loadFailedMessage = stringResource(R.string.mnn_load_failed)
     LaunchedEffect(Unit) {
         isLoading = true
         errorMessage = null
@@ -66,7 +67,7 @@ fun MnnModelDownloadScreen(
         if (result.isSuccess) {
             modelList = result.getOrNull() ?: emptyList()
         } else {
-            errorMessage = result.exceptionOrNull()?.message ?: "加载失败"
+            errorMessage = result.exceptionOrNull()?.message ?: loadFailedMessage
         }
         isLoading = false
     }
@@ -123,7 +124,7 @@ fun MnnModelDownloadScreen(
                                     if (result.isSuccess) {
                                         modelList = result.getOrNull() ?: emptyList()
                                     } else {
-                                        errorMessage = result.exceptionOrNull()?.message ?: "加载失败"
+                                        errorMessage = result.exceptionOrNull()?.message ?: loadFailedMessage
                                     }
                                     isLoading = false
                                 }

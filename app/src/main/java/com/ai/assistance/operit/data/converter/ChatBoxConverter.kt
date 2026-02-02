@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.data.converter
 
+import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
 import kotlinx.serialization.json.*
@@ -32,24 +34,24 @@ import java.util.UUID
  *   ]
  * }
  */
-class ChatBoxConverter : ChatFormatConverter {
-    
+class ChatBoxConverter(private val context: Context) : ChatFormatConverter {
+
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
     }
-    
+
     override fun convert(content: String): List<ChatHistory> {
         return try {
             val rootElement = parseRootElement(content)
-            
+
             when (rootElement) {
                 is JsonObject -> parseObjectFormat(rootElement)
-                is JsonArray -> throw ConversionException("不支持的 ChatBox 格式：请导入 ChatBox 导出的 JSON（设置 > 常规设置 > 数据备份 > 导出勾选数据）")
-                else -> throw ConversionException("不支持的 ChatBox 格式")
+                is JsonArray -> throw ConversionException(context.getString(R.string.chatbox_unsupported_format) + "：" + context.getString(R.string.chatbox_unsupported_format_detail))
+                else -> throw ConversionException(context.getString(R.string.chatbox_unsupported_format))
             }
         } catch (e: Exception) {
-            throw ConversionException("解析 ChatBox 格式失败: ${e.message}", e)
+            throw ConversionException(context.getString(R.string.chatbox_parse_error, e.message ?: ""), e)
         }
     }
     
@@ -68,7 +70,7 @@ class ChatBoxConverter : ChatFormatConverter {
                 val session = parseSession(obj)
                 if (session != null) listOf(session) else emptyList()
             }
-            else -> throw ConversionException("不是有效的 ChatBox 导出文件（请在 ChatBox 的 设置 > 常规设置 > 数据备份 中使用“导出勾选数据”导出 JSON）")
+            else -> throw ConversionException(context.getString(R.string.chatbox_invalid_export_file) + "（" + context.getString(R.string.chatbox_invalid_export_hint) + "）")
         }
     }
     
@@ -135,7 +137,7 @@ class ChatBoxConverter : ChatFormatConverter {
                 messages = messages,
                 createdAt = createdAt,
                 updatedAt = updatedAt,
-                group = "从 ChatBox 导入"
+                group = context.getString(R.string.chatbox_import_group)
             )
         } catch (e: Exception) {
             return null
@@ -259,7 +261,7 @@ class ChatBoxConverter : ChatFormatConverter {
 
         val finalContent = when {
             !content.isNullOrBlank() -> content
-            !errorText.isNullOrBlank() -> "[消息生成失败: $errorText]"
+            !errorText.isNullOrBlank() -> context.getString(R.string.chatbox_message_generation_failed, errorText)
             else -> null
         } ?: return null
 
@@ -268,7 +270,7 @@ class ChatBoxConverter : ChatFormatConverter {
             ?: false
 
         return if (hasImages) {
-            "$finalContent\n[该消息原本包含图片，但未被保存]"
+            "$finalContent\n${context.getString(R.string.chatbox_image_not_saved)}"
         } else {
             finalContent
         }
@@ -316,9 +318,9 @@ class ChatBoxConverter : ChatFormatConverter {
      */
     private fun normalizeRole(role: String): String {
         return when (role.lowercase()) {
-            "user", "human", "用户" -> "user"
-            "assistant", "ai", "bot", "model", "助手" -> "ai"
-            "system", "系统" -> "user"
+            "user", "human", context.getString(R.string.chatbox_role_user).lowercase() -> "user"
+            "assistant", "ai", "bot", "model", context.getString(R.string.chatbox_role_assistant).lowercase() -> "ai"
+            "system", context.getString(R.string.chatbox_role_system).lowercase() -> "user"
             else -> "user"
         }
     }

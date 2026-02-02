@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.api.chat.library
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.data.model.Memory
 import com.ai.assistance.operit.data.repository.MemoryRepository
@@ -59,7 +60,7 @@ class ProblemLibraryTool private constructor(private val context: Context) {
         return Memory(
                 uuid = record.uuid,
                 title = record.summary.ifEmpty { record.query.take(50) },
-                content = "问题: ${record.query}\n\n解决方案: ${record.solution}",
+                content = context.getString(R.string.problem_library_question, record.query, record.solution),
                 contentType = "text/plain",
                 source = "problem_library_legacy", // Mark as legacy
                 importance = 0.5f, // Lower importance for legacy data
@@ -72,16 +73,19 @@ class ProblemLibraryTool private constructor(private val context: Context) {
     private fun convertToProblemRecord(memory: Memory): ProblemRecord {
         // 尝试从内容中提取问题和解决方案
         val contentParts = memory.content.split("\n\n")
+        val questionLabel = context.getString(R.string.problem_library_question_label)
+        val solutionLabel = context.getString(R.string.problem_library_solution_label)
+
         val query =
-                if (contentParts.isNotEmpty() && contentParts[0].startsWith("问题:")) {
-                    contentParts[0].substringAfter("问题:").trim()
+                if (contentParts.isNotEmpty() && contentParts[0].startsWith(questionLabel)) {
+                    contentParts[0].substringAfter(questionLabel).trim()
                 } else {
                     memory.title
                 }
 
         val solution =
-                if (contentParts.size > 1 && contentParts[1].startsWith("解决方案:")) {
-                    contentParts[1].substringAfter("解决方案:").trim()
+                if (contentParts.size > 1 && contentParts[1].startsWith(solutionLabel)) {
+                    contentParts[1].substringAfter(solutionLabel).trim()
                 } else {
                     memory.content
                 }
@@ -206,37 +210,45 @@ class ProblemLibraryTool private constructor(private val context: Context) {
                     val searchResults = searchProblemLibrary(query).take(5) // 最多返回5条记录
 
                     if (searchResults.isEmpty()) {
-                        return@withContext "未找到相关 Legacy 记录"
+                        return@withContext context.getString(R.string.problem_library_no_legacy_found)
                     }
 
                     return@withContext formatProblemLibraryResults(searchResults)
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "查询 Legacy 问题库失败: ${e.message}", e)
-                    "查询 Legacy 问题库时出错: ${e.message}"
+                    context.getString(R.string.problem_library_query_error, e.message ?: "")
                 }
             }
 
     // 格式化问题库查询结果
     private fun formatProblemLibraryResults(records: List<ProblemRecord>): String {
         val result = StringBuilder()
-        result.appendLine("找到 ${records.size} 条相关 Legacy 记录:")
+        result.appendLine(context.getString(R.string.problem_library_found_records, records.size))
 
         records.forEach { record ->
             result.appendLine("\nUUID: ${record.uuid}")
 
             // 优先显示摘要，如果没有则显示原始查询
             if (record.summary.isNotEmpty()) {
-                result.appendLine("摘要: ${record.summary}")
+                result.appendLine(context.getString(R.string.problem_library_summary, record.summary))
             } else {
-                result.appendLine("问题: ${record.query}")
+                result.appendLine(context.getString(R.string.problem_library_query, record.query))
             }
 
             // 显示使用的工具
-            result.appendLine("使用工具: ${record.tools.joinToString(", ")}")
+            result.appendLine(
+                context.getString(
+                    R.string.problem_library_using_tool,
+                    record.tools.joinToString(", ")
+                )
+            )
 
             // 显示时间
             result.appendLine(
-                    "时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date(record.timestamp))}"
+                context.getString(
+                    R.string.problem_library_time,
+                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date(record.timestamp))
+                )
             )
         }
 

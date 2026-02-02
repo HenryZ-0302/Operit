@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import java.io.File
 import java.io.FileOutputStream
@@ -99,16 +100,16 @@ class DeepgramSttProvider(
         return try {
             withContext(Dispatchers.IO) {
                 if (endpointUrl.isBlank()) {
-                    throw IOException("Deepgram STT URL 未设置，请填写完整接口地址（例如 https://api.deepgram.com/v1/listen）。")
+                    throw IOException(context.getString(R.string.deepgram_stt_url_not_set))
                 }
                 if (!endpointUrl.startsWith("http://") && !endpointUrl.startsWith("https://")) {
-                    throw IOException("Deepgram STT URL 必须以 http:// 或 https:// 开头。")
+                    throw IOException(context.getString(R.string.deepgram_stt_url_invalid_scheme))
                 }
                 if (apiKey.isBlank()) {
-                    throw IOException("Deepgram STT API Key 未设置，请在设置中填写。")
+                    throw IOException(context.getString(R.string.deepgram_stt_api_key_not_set))
                 }
                 if (model.isBlank()) {
-                    throw IOException("Deepgram STT model 未设置，请在设置中填写（例如 nova-2）。")
+                    throw IOException(context.getString(R.string.deepgram_stt_model_not_set))
                 }
 
                 _isInitialized.value = true
@@ -274,7 +275,8 @@ class DeepgramSttProvider(
                                                 }
 
                                                 if (pcmBytesWritten > MAX_FILE_BYTES) {
-                                                    throw IOException("音频文件过大（>${MAX_FILE_BYTES / 1024 / 1024}MB），请缩短录音时长。")
+                                                    val maxSizeMB = MAX_FILE_BYTES / 1024 / 1024
+                                                    throw IOException(context.getString(R.string.deepgram_stt_file_too_large, maxSizeMB))
                                                 }
 
                                                 vadFramePos = 0
@@ -317,8 +319,9 @@ class DeepgramSttProvider(
 
             if (file.length() > MAX_FILE_BYTES) {
                 file.delete()
+                val maxSizeMB = MAX_FILE_BYTES / 1024 / 1024
                 _recognitionState.value = SpeechService.RecognitionState.ERROR
-                _recognitionError.value = SpeechService.RecognitionError(-1, "音频文件过大（>${MAX_FILE_BYTES / 1024 / 1024}MB），请缩短录音时长。")
+                _recognitionError.value = SpeechService.RecognitionError(-1, context.getString(R.string.deepgram_stt_file_too_large, maxSizeMB))
                 return false
             }
 
@@ -558,7 +561,7 @@ class DeepgramSttProvider(
         val response = try {
             httpClient.newCall(request).execute()
         } catch (e: IOException) {
-            throw IOException("请求 Deepgram STT 失败", e)
+            throw IOException(context.getString(R.string.deepgram_stt_request_failed), e)
         }
 
         response.use { resp ->

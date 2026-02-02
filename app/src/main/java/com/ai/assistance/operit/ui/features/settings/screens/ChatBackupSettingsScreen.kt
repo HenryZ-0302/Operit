@@ -70,6 +70,7 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ImportStrategy
 import com.ai.assistance.operit.data.model.PreferenceProfile
 import com.ai.assistance.operit.data.backup.OperitBackupDirs
+import com.ai.assistance.operit.data.backup.RawSnapshotBackupManager
 import com.ai.assistance.operit.data.backup.RoomDatabaseBackupManager
 import com.ai.assistance.operit.data.backup.RoomDatabaseBackupPreferences
 import com.ai.assistance.operit.data.backup.RoomDatabaseBackupScheduler
@@ -128,6 +129,15 @@ enum class RoomDatabaseRestoreOperation {
     FAILED
 }
 
+enum class RawSnapshotOperation {
+    IDLE,
+    BACKING_UP,
+    BACKUP_SUCCESS,
+    RESTORING,
+    RESTORE_SUCCESS,
+    FAILED
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatBackupSettingsScreen() {
@@ -158,6 +168,11 @@ fun ChatBackupSettingsScreen() {
     var roomDbBackupOperationMessage by remember { mutableStateOf("") }
     var roomDbRestoreOperationState by remember { mutableStateOf(RoomDatabaseRestoreOperation.IDLE) }
     var roomDbRestoreOperationMessage by remember { mutableStateOf("") }
+    var rawSnapshotOperationState by remember { mutableStateOf(RawSnapshotOperation.IDLE) }
+    var rawSnapshotOperationMessage by remember { mutableStateOf("") }
+    var pendingRawSnapshotRestoreUri by remember { mutableStateOf<Uri?>(null) }
+    var showRawSnapshotRestoreConfirmDialog by remember { mutableStateOf(false) }
+    var showRawSnapshotRestoreRestartDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showMemoryImportStrategyDialog by remember { mutableStateOf(false) }
     var pendingMemoryImportUri by remember { mutableStateOf<Uri?>(null) }
@@ -376,6 +391,18 @@ fun ChatBackupSettingsScreen() {
             }
         }
 
+    val rawSnapshotRestoreFilePickerLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                result.data?.data?.let { uri ->
+                    pendingRawSnapshotRestoreUri = uri
+                    showRawSnapshotRestoreConfirmDialog = true
+                }
+            }
+        }
+
     val memoryFilePickerLauncher =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.StartActivityForResult()
@@ -513,6 +540,132 @@ fun ChatBackupSettingsScreen() {
                 }
             )
         }
+        item {
+            DataManagementCard(
+                totalChatCount = totalChatCount,
+                operationState = operationState,
+                operationMessage = operationMessage,
+                onExport = {
+                    // 显示格式选择对话框
+                    showExportFormatDialog = true
+                },
+                onImport = {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "*/*"  // 接受所有类型
+                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
+                            "application/json",
+                            "text/markdown",
+                            "text/plain",
+                            "text/csv"
+                        ))
+                    }
+                    chatFilePickerLauncher.launch(intent)
+                },
+                onDelete = { showDeleteConfirmDialog = true }
+            )
+        }
+        item {
+            CharacterCardManagementCard(
+                totalCharacterCardCount = totalCharacterCardCount,
+                operationState = characterCardOperationState,
+                operationMessage = characterCardOperationMessage,
+                onExport = {
+                    scope.launch {
+                        characterCardOperationState = CharacterCardOperation.EXPORTING
+                        characterCardOperationMessage = ""
+                        try {
+                            val filePath = characterCardManager.exportAllCharacterCardsToBackupFile()
+                            if (filePath != null) {
+                                characterCardOperationState = CharacterCardOperation.EXPORTED
+                                characterCardOperationMessage = context.getString(
+                                    R.string.backup_character_cards_export_result_success,
+                                    totalCharacterCardCount,
+                                    filePath
+                                )
+                            } else {
+                                characterCardOperationState = CharacterCardOperation.FAILED
+                                characterCardOperationMessage =
+                                    context.getString(R.string.backup_export_failed_create_file)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            characterCardOperationState = CharacterCardOperation.FAILED
+                            characterCardOperationMessage = context.getString(
+                                R.string.backup_export_failed_with_reason,
+                                e.localizedMessage ?: e.toString()
+                            )
+                        }
+                    }
+                },
+                onImport = {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "application/json"
+                    }
+                    characterCardFilePickerLauncher.launch(intent)
+                }
+            )
+        }
+        item {
+            MemoryManagementCard(
+                totalMemoryCount = totalMemoryCount,
+                totalLinkCount = totalMemoryLinkCount,
+                operationState = memoryOperationState,
+                operationMessage = memoryOperationMessage,
+                onExport = { showExportProfileDialog = true },
+                onImport = {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "application/json"
+                    }
+                    memoryFilePickerLauncher.launch(intent)
+                }
+            )
+        }
+        item {
+            ModelConfigManagementCard(
+                totalConfigCount = totalModelConfigCount,
+                operationState = modelConfigOperationState,
+                operationMessage = modelConfigOperationMessage,
+                onExport = {
+                    scope.launch {
+                        modelConfigOperationState = ModelConfigOperation.EXPORTING
+                        try {
+                            val jsonContent = modelConfigManager.exportAllConfigs()
+                            val exportDir = OperitBackupDirs.modelConfigDir()
+                            val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault())
+                            val timestamp = dateFormat.format(Date())
+                            val exportFile = File(exportDir, "model_config_backup_$timestamp.json")
+                            exportFile.writeText(jsonContent)
+
+                            // 导出成功，显示安全警告对话框
+                            exportedModelConfigPath = exportFile.absolutePath
+                            showModelConfigExportWarning = true
+                            modelConfigOperationState = ModelConfigOperation.EXPORTED
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            modelConfigOperationState = ModelConfigOperation.FAILED
+                            modelConfigOperationMessage = context.getString(
+                                R.string.backup_export_failed_with_reason,
+                                e.localizedMessage ?: e.toString()
+                            )
+                        }
+                    }
+                },
+                onImport = {
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "application/json"
+                    }
+                    modelConfigFilePickerLauncher.launch(intent)
+                }
+            )
+        }
+        item {
+            FaqCard()
+        }
+
         item {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -783,130 +936,140 @@ fun ChatBackupSettingsScreen() {
                 }
             }
         }
-        item {
-            DataManagementCard(
-                totalChatCount = totalChatCount,
-                operationState = operationState,
-                operationMessage = operationMessage,
-                onExport = {
-                    // 显示格式选择对话框
-                    showExportFormatDialog = true
-                },
-                onImport = {
-                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "*/*"  // 接受所有类型
-                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(
-                            "application/json",
-                            "text/markdown",
-                            "text/plain",
-                            "text/csv"
-                        ))
-                    }
-                    chatFilePickerLauncher.launch(intent)
-                },
-                onDelete = { showDeleteConfirmDialog = true }
-            )
-        }
-        item {
-            CharacterCardManagementCard(
-                totalCharacterCardCount = totalCharacterCardCount,
-                operationState = characterCardOperationState,
-                operationMessage = characterCardOperationMessage,
-                onExport = {
-                    scope.launch {
-                        characterCardOperationState = CharacterCardOperation.EXPORTING
-                        characterCardOperationMessage = ""
-                        try {
-                            val filePath = characterCardManager.exportAllCharacterCardsToBackupFile()
-                            if (filePath != null) {
-                                characterCardOperationState = CharacterCardOperation.EXPORTED
-                                characterCardOperationMessage = context.getString(
-                                    R.string.backup_character_cards_export_result_success,
-                                    totalCharacterCardCount,
-                                    filePath
-                                )
-                            } else {
-                                characterCardOperationState = CharacterCardOperation.FAILED
-                                characterCardOperationMessage =
-                                    context.getString(R.string.backup_export_failed_create_file)
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            characterCardOperationState = CharacterCardOperation.FAILED
-                            characterCardOperationMessage = context.getString(
-                                R.string.backup_export_failed_with_reason,
-                                e.localizedMessage ?: e.toString()
-                            )
-                        }
-                    }
-                },
-                onImport = {
-                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "application/json"
-                    }
-                    characterCardFilePickerLauncher.launch(intent)
-                }
-            )
-        }
-        item {
-            MemoryManagementCard(
-                totalMemoryCount = totalMemoryCount,
-                totalLinkCount = totalMemoryLinkCount,
-                operationState = memoryOperationState,
-                operationMessage = memoryOperationMessage,
-                onExport = { showExportProfileDialog = true },
-                onImport = {
-                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "application/json"
-                    }
-                    memoryFilePickerLauncher.launch(intent)
-                }
-            )
-        }
-        item {
-            ModelConfigManagementCard(
-                totalConfigCount = totalModelConfigCount,
-                operationState = modelConfigOperationState,
-                operationMessage = modelConfigOperationMessage,
-                onExport = {
-                    scope.launch {
-                        modelConfigOperationState = ModelConfigOperation.EXPORTING
-                        try {
-                            val jsonContent = modelConfigManager.exportAllConfigs()
-                            val exportDir = OperitBackupDirs.modelConfigDir()
-                            val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.getDefault())
-                            val timestamp = dateFormat.format(Date())
-                            val exportFile = File(exportDir, "model_config_backup_$timestamp.json")
-                            exportFile.writeText(jsonContent)
 
-                            // 导出成功，显示安全警告对话框
-                            exportedModelConfigPath = exportFile.absolutePath
-                            showModelConfigExportWarning = true
-                            modelConfigOperationState = ModelConfigOperation.EXPORTED
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                            modelConfigOperationState = ModelConfigOperation.FAILED
-                            modelConfigOperationMessage = context.getString(
-                                R.string.backup_export_failed_with_reason,
-                                e.localizedMessage ?: e.toString()
-                            )
+        item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    SectionHeader(
+                        title = stringResource(R.string.backup_raw_snapshot_title),
+                        subtitle = stringResource(R.string.backup_raw_snapshot_subtitle),
+                        icon = Icons.Default.Storage
+                    )
+
+                    Text(
+                        modifier = Modifier.fillMaxWidth(),
+                        text = stringResource(R.string.backup_raw_snapshot_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ManagementButton(
+                            text = stringResource(R.string.backup_raw_snapshot_backup_now),
+                            icon = Icons.Default.CloudDownload,
+                            onClick = {
+                                scope.launch {
+                                    rawSnapshotOperationState = RawSnapshotOperation.BACKING_UP
+                                    rawSnapshotOperationMessage = context.getString(R.string.backup_raw_snapshot_progress_preparing)
+                                    try {
+                                        val outFile = RawSnapshotBackupManager.exportToBackupDir(
+                                            context = context,
+                                            onProgress = { progress ->
+                                                val suffix = progress.percent?.let { " ${it}%" } ?: ""
+                                                rawSnapshotOperationMessage = when (progress.stage) {
+                                                    RawSnapshotBackupManager.ExportProgress.PREPARING ->
+                                                        context.getString(R.string.backup_raw_snapshot_progress_preparing)
+
+                                                    RawSnapshotBackupManager.ExportProgress.SCANNING_FILES ->
+                                                        progress.scannedFiles?.let { scanned ->
+                                                            context.getString(
+                                                                R.string.backup_raw_snapshot_progress_scanning_files_with_count,
+                                                                scanned
+                                                            )
+                                                        } ?: context.getString(R.string.backup_raw_snapshot_progress_scanning_files)
+
+                                                    RawSnapshotBackupManager.ExportProgress.ZIPPING_FILES ->
+                                                        context.getString(R.string.backup_raw_snapshot_progress_zipping_files) + suffix
+
+                                                    RawSnapshotBackupManager.ExportProgress.ZIPPING_SHARED_PREFS ->
+                                                        context.getString(R.string.backup_raw_snapshot_progress_zipping_shared_prefs)
+
+                                                    RawSnapshotBackupManager.ExportProgress.ZIPPING_DATASTORE ->
+                                                        context.getString(R.string.backup_raw_snapshot_progress_zipping_datastore)
+
+                                                    RawSnapshotBackupManager.ExportProgress.ZIPPING_DATABASES ->
+                                                        context.getString(R.string.backup_raw_snapshot_progress_zipping_databases)
+
+                                                    RawSnapshotBackupManager.ExportProgress.FINALIZING ->
+                                                        context.getString(R.string.backup_raw_snapshot_progress_finalizing)
+                                                }
+                                            }
+                                        )
+                                        rawSnapshotOperationState = RawSnapshotOperation.BACKUP_SUCCESS
+                                        rawSnapshotOperationMessage = outFile.absolutePath
+                                    } catch (e: Exception) {
+                                        rawSnapshotOperationState = RawSnapshotOperation.FAILED
+                                        rawSnapshotOperationMessage = e.localizedMessage ?: e.toString()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+
+                        ManagementButton(
+                            text = stringResource(R.string.backup_raw_snapshot_restore_from_file),
+                            icon = Icons.Default.FileOpen,
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    type = "*/*"
+                                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip"))
+                                }
+                                rawSnapshotRestoreFilePickerLauncher.launch(intent)
+                            },
+                            modifier = Modifier.weight(1f, fill = false),
+                            isWarning = true
+                        )
+                    }
+
+                    AnimatedVisibility(visible = rawSnapshotOperationState != RawSnapshotOperation.IDLE) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            when (rawSnapshotOperationState) {
+                                RawSnapshotOperation.BACKING_UP ->
+                                    OperationProgressView(
+                                        message = rawSnapshotOperationMessage.ifBlank {
+                                            stringResource(R.string.backup_raw_snapshot_backing_up)
+                                        }
+                                    )
+                                RawSnapshotOperation.RESTORING ->
+                                    OperationProgressView(
+                                        message = rawSnapshotOperationMessage.ifBlank {
+                                            stringResource(R.string.backup_raw_snapshot_restoring)
+                                        }
+                                    )
+                                RawSnapshotOperation.BACKUP_SUCCESS ->
+                                    OperationResultCard(
+                                        title = stringResource(R.string.backup_export_success),
+                                        message = rawSnapshotOperationMessage,
+                                        icon = Icons.Default.CloudDownload
+                                    )
+                                RawSnapshotOperation.RESTORE_SUCCESS ->
+                                    OperationResultCard(
+                                        title = stringResource(R.string.backup_import_success),
+                                        message = rawSnapshotOperationMessage,
+                                        icon = Icons.Default.Restore
+                                    )
+                                RawSnapshotOperation.FAILED ->
+                                    OperationResultCard(
+                                        title = stringResource(R.string.backup_operation_failed),
+                                        message = rawSnapshotOperationMessage,
+                                        icon = Icons.Default.Info,
+                                        isError = true
+                                    )
+                                else -> {}
+                            }
                         }
                     }
-                },
-                onImport = {
-                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "application/json"
-                    }
-                    modelConfigFilePickerLauncher.launch(intent)
                 }
-            )
-        }
-        item {
-            FaqCard()
+            }
         }
     }
 
@@ -1251,6 +1414,92 @@ fun ChatBackupSettingsScreen() {
         )
     }
 
+    if (showRawSnapshotRestoreConfirmDialog) {
+        val targetName = pendingRawSnapshotRestoreUri?.lastPathSegment ?: "-"
+
+        AlertDialog(
+            onDismissRequest = {
+                showRawSnapshotRestoreConfirmDialog = false
+                pendingRawSnapshotRestoreUri = null
+            },
+            title = { Text(stringResource(R.string.backup_raw_snapshot_restore_confirm_title)) },
+            text = { Text(stringResource(R.string.backup_raw_snapshot_restore_confirm_message, targetName)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRawSnapshotRestoreConfirmDialog = false
+                        val uri = pendingRawSnapshotRestoreUri
+                        pendingRawSnapshotRestoreUri = null
+                        if (uri != null) {
+                            scope.launch {
+                                rawSnapshotOperationState = RawSnapshotOperation.RESTORING
+                                rawSnapshotOperationMessage = context.getString(R.string.backup_raw_snapshot_progress_preparing)
+                                try {
+                                    try {
+                                        context.contentResolver.takePersistableUriPermission(
+                                            uri,
+                                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                        )
+                                    } catch (_: Exception) {
+                                    }
+                                    RawSnapshotBackupManager.restoreFromBackupUri(
+                                        context = context,
+                                        uri = uri,
+                                        onProgress = { progress ->
+                                            rawSnapshotOperationMessage = when (progress) {
+                                                RawSnapshotBackupManager.RestoreProgress.PREPARING ->
+                                                    context.getString(R.string.backup_raw_snapshot_progress_preparing)
+
+                                                RawSnapshotBackupManager.RestoreProgress.READING_ZIP ->
+                                                    context.getString(R.string.backup_raw_snapshot_progress_reading_zip)
+
+                                                RawSnapshotBackupManager.RestoreProgress.EXTRACTING ->
+                                                    context.getString(R.string.backup_raw_snapshot_progress_extracting)
+
+                                                RawSnapshotBackupManager.RestoreProgress.REPLACING_FILES ->
+                                                    context.getString(R.string.backup_raw_snapshot_progress_replacing_files)
+
+                                                RawSnapshotBackupManager.RestoreProgress.REPLACING_SHARED_PREFS ->
+                                                    context.getString(R.string.backup_raw_snapshot_progress_replacing_shared_prefs)
+
+                                                RawSnapshotBackupManager.RestoreProgress.REPLACING_DATASTORE ->
+                                                    context.getString(R.string.backup_raw_snapshot_progress_replacing_datastore)
+
+                                                RawSnapshotBackupManager.RestoreProgress.REPLACING_DATABASES ->
+                                                    context.getString(R.string.backup_raw_snapshot_progress_replacing_databases)
+
+                                                RawSnapshotBackupManager.RestoreProgress.FINALIZING ->
+                                                    context.getString(R.string.backup_raw_snapshot_progress_finalizing)
+                                            }
+                                        }
+                                    )
+                                    rawSnapshotOperationState = RawSnapshotOperation.RESTORE_SUCCESS
+                                    rawSnapshotOperationMessage = targetName
+                                    showRawSnapshotRestoreRestartDialog = true
+                                } catch (e: Exception) {
+                                    rawSnapshotOperationState = RawSnapshotOperation.FAILED
+                                    rawSnapshotOperationMessage = e.localizedMessage ?: e.toString()
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.backup_raw_snapshot_restore_confirm_action))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRawSnapshotRestoreConfirmDialog = false
+                        pendingRawSnapshotRestoreUri = null
+                    }
+                ) {
+                    Text(stringResource(R.string.backup_raw_snapshot_restore_cancel_action))
+                }
+            }
+        )
+    }
+
     if (showRoomDbRestoreRestartDialog) {
         AlertDialog(
             onDismissRequest = { showRoomDbRestoreRestartDialog = false },
@@ -1273,6 +1522,33 @@ fun ChatBackupSettingsScreen() {
             dismissButton = {
                 TextButton(onClick = { showRoomDbRestoreRestartDialog = false }) {
                     Text(stringResource(R.string.backup_room_db_restart_later))
+                }
+            }
+        )
+    }
+
+    if (showRawSnapshotRestoreRestartDialog) {
+        AlertDialog(
+            onDismissRequest = { showRawSnapshotRestoreRestartDialog = false },
+            title = { Text(stringResource(R.string.backup_raw_snapshot_restart_title)) },
+            text = { Text(stringResource(R.string.backup_raw_snapshot_restart_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showRawSnapshotRestoreRestartDialog = false
+                        val intent = Intent(context, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                        }
+                        context.startActivity(intent)
+                        exitProcess(0)
+                    }
+                ) {
+                    Text(stringResource(R.string.backup_raw_snapshot_restart_now))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRawSnapshotRestoreRestartDialog = false }) {
+                    Text(stringResource(R.string.backup_raw_snapshot_restart_later))
                 }
             }
         )

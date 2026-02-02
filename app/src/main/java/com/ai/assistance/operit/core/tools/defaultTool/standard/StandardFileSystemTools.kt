@@ -5,14 +5,15 @@ import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.DirectoryListingData
-import com.ai.assistance.operit.core.tools.FileApplyResultData
 import com.ai.assistance.operit.core.tools.FileContentData
+import com.ai.assistance.operit.core.tools.FileApplyResultData
 import com.ai.assistance.operit.core.tools.BinaryFileContentData
 import com.ai.assistance.operit.core.tools.FileExistsData
 import com.ai.assistance.operit.core.tools.FileInfoData
 import com.ai.assistance.operit.core.tools.FileOperationData
 import com.ai.assistance.operit.core.tools.FilePartContentData
 import com.ai.assistance.operit.core.tools.FindFilesResultData
+import com.ai.assistance.operit.core.tools.ToolProgressBus
 import com.ai.assistance.operit.core.tools.GrepResultData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.data.model.AITool
@@ -47,6 +48,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -58,7 +63,6 @@ import com.ai.assistance.operit.terminal.TerminalManager
 import com.ai.assistance.operit.terminal.provider.filesystem.FileSystemProvider
 import com.ai.assistance.operit.terminal.utils.SSHFileConnectionManager
 import com.ai.assistance.operit.core.tools.defaultTool.PathValidator
-import com.ai.assistance.operit.core.tools.ToolProgressBus
 import com.ai.assistance.operit.api.chat.llmprovider.AIService
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelParameter
@@ -103,6 +107,8 @@ open class StandardFileSystemTools(protected val context: Context) {
         TerminalManager.getInstance(context)
     }
 
+    private var lastLinuxFileSystemProviderLabel: String? = null
+
     // Linux文件系统提供者，优先使用SSH连接，否则从TerminalManager获取
     protected fun getLinuxFileSystem(): FileSystemProvider {
         // 先尝试获取SSH连接的文件系统
@@ -110,18 +116,32 @@ open class StandardFileSystemTools(protected val context: Context) {
         
         // 如果SSH已登录，使用SSH文件系统
         if (sshProvider != null) {
-            AppLogger.d(TAG, "Using SSH file system provider")
+            if (lastLinuxFileSystemProviderLabel != "ssh") {
+                AppLogger.d(TAG, "Using SSH file system provider")
+                lastLinuxFileSystemProviderLabel = "ssh"
+            }
             return sshProvider
         }
         
         // 否则使用本地Terminal的文件系统
-        AppLogger.d(TAG, "Using local terminal file system provider")
+        if (lastLinuxFileSystemProviderLabel != "local") {
+            AppLogger.d(TAG, "Using local terminal file system provider")
+            lastLinuxFileSystemProviderLabel = "local"
+        }
         return terminalManager.getFileSystemProvider()
     }
 
     // Linux文件系统工具实例
     protected val linuxTools: LinuxFileSystemTools by lazy {
         LinuxFileSystemTools(context)
+    }
+
+    private val safTools: SafFileSystemTools by lazy {
+        SafFileSystemTools(context, apiPreferences)
+    }
+
+    protected fun isSafEnvironment(environment: String?): Boolean {
+        return environment?.startsWith("repo:", ignoreCase = true) == true
     }
 
     /** 检查是否是Linux环境 */
@@ -156,6 +176,7 @@ open class StandardFileSystemTools(protected val context: Context) {
         val sb = StringBuilder()
         val stream =
             service.sendMessage(
+                context = context,
                 message = prompt,
                 chatHistory = emptyList(),
                 modelParameters = modelParameters,
@@ -309,87 +330,205 @@ open class StandardFileSystemTools(protected val context: Context) {
         queries: List<String>,
         perQueryMaxResults: Int,
         round: Int,
+        prefetchedFiles: List<String>? = null,
         toolNameForProgress: String? = null,
         progressBase: Float = 0f,
         progressSpan: Float = 0f,
         progressMessage: String = ""
     ): Pair<List<GrepContextCandidate>, Int> {
         val limitedQueries = queries.take(8)
-        val completedCount = AtomicInteger(0)
-        val totalQueries = maxOf(limitedQueries.size, 1)
-
-        if (toolNameForProgress != null && progressSpan > 0f) {
-            val msg = if (progressMessage.isNotBlank()) progressMessage else "Searching..."
-            ToolProgressBus.update(toolNameForProgress, progressBase, "$msg (0/$totalQueries)")
-        }
-
-        val results = coroutineScope {
-            val deferreds =
-                limitedQueries.map { query ->
-                    async {
-                        val res =
-                            grepCode(
-                                AITool(
-                                    name = "grep_code",
-                                    parameters =
-                                        listOf(
-                                            ToolParameter("path", searchPath),
-                                            ToolParameter("pattern", query),
-                                            ToolParameter("file_pattern", filePattern),
-                                            ToolParameter("case_insensitive", "true"),
-                                            ToolParameter("context_lines", "3"),
-                                            ToolParameter("max_results", perQueryMaxResults.toString()),
-                                            ToolParameter("environment", environment ?: "")
-                                        )
-                                )
-                            )
-
-                        val done = completedCount.incrementAndGet()
-                        if (toolNameForProgress != null && progressSpan > 0f) {
-                            val fraction = done.toFloat() / totalQueries.toFloat()
-                            val msg = if (progressMessage.isNotBlank()) progressMessage else "Searching..."
-                            ToolProgressBus.update(
-                                toolNameForProgress,
-                                progressBase + progressSpan * fraction,
-                                "$msg ($done/$totalQueries)"
-                            )
-                        }
-
-                        res
-                    }
-                }
-            deferreds.awaitAll()
-        }
-
         val candidates = mutableListOf<GrepContextCandidate>()
-        var maxFilesSearched = 0
         val dedup = HashSet<String>()
 
-        results.forEachIndexed { idx, res ->
-            if (!res.success) return@forEachIndexed
-            val data = res.result as? GrepResultData ?: return@forEachIndexed
-            maxFilesSearched = maxOf(maxFilesSearched, data.filesSearched)
-            val query = limitedQueries.getOrNull(idx) ?: ""
+        if (limitedQueries.isEmpty()) {
+            return Pair(emptyList(), 0)
+        }
 
-            data.matches.forEach { fm ->
-                fm.lineMatches.forEach { lm ->
-                    val key = "${fm.filePath}#${lm.lineNumber}#${(lm.matchContext ?: "").take(120)}"
-                    if (!dedup.add(key)) return@forEach
-                    candidates.add(
-                        GrepContextCandidate(
-                            filePath = fm.filePath,
-                            lineNumber = lm.lineNumber,
-                            lineContent = lm.lineContent,
-                            matchContext = lm.matchContext,
-                            query = query,
-                            round = round
+        val foundFiles =
+            if (prefetchedFiles != null) {
+                prefetchedFiles
+            } else {
+                val findFilesResult =
+                    findFiles(
+                        AITool(
+                            name = "find_files",
+                            parameters = listOf(
+                                ToolParameter("path", searchPath),
+                                ToolParameter("pattern", filePattern),
+                                ToolParameter("use_path_pattern", "false"),
+                                ToolParameter("case_insensitive", "false"),
+                                ToolParameter("environment", environment ?: "")
+                            )
                         )
                     )
+
+                if (!findFilesResult.success) {
+                    return Pair(emptyList(), 0)
+                }
+
+                (findFilesResult.result as? FindFilesResultData)?.files.orEmpty()
+            }
+        if (foundFiles.isEmpty()) {
+            return Pair(emptyList(), 0)
+        }
+
+        val regexes =
+            limitedQueries.map { q ->
+                runCatching { Regex(q, RegexOption.IGNORE_CASE) }.getOrNull()
+            }
+        val perQueryCounts = regexes.map { AtomicInteger(0) }
+
+        fun allQueriesDone(): Boolean {
+            return perQueryCounts.all { it.get() >= perQueryMaxResults }
+        }
+
+        val filesSearched = AtomicInteger(0)
+        var lastProgressUpdateMs = 0L
+        val lock = Mutex()
+
+        val cores = runCatching { Runtime.getRuntime().availableProcessors() }.getOrNull() ?: 2
+        val concurrency = minOf(6, maxOf(1, cores))
+        val semaphore = Semaphore(concurrency)
+        val batchSize = concurrency * 4
+
+        suspend fun processOneFile(filePath: String) {
+            semaphore.withPermit {
+                if (allQueriesDone()) return@withPermit
+
+                val done = filesSearched.incrementAndGet()
+                if (toolNameForProgress != null && progressSpan > 0f) {
+                    val now = System.currentTimeMillis()
+                    if (done == 1 || done % 10 == 0 || now - lastProgressUpdateMs > 400L) {
+                        val fraction = done.toFloat() / foundFiles.size.toFloat()
+                        val msg = if (progressMessage.isNotBlank()) progressMessage else "Searching..."
+                        ToolProgressBus.update(
+                            toolNameForProgress,
+                            (progressBase + progressSpan * fraction).coerceIn(0f, 0.99f),
+                            "$msg (files $done/${foundFiles.size})"
+                        )
+                        lastProgressUpdateMs = now
+                    }
+                }
+
+                val readResult =
+                    readFileFull(
+                        AITool(
+                            name = "read_file_full",
+                            parameters =
+                                listOf(
+                                    ToolParameter("path", filePath),
+                                    ToolParameter("text_only", "true"),
+                                    ToolParameter("environment", environment ?: "")
+                                )
+                        )
+                    )
+
+                if (!readResult.success) return@withPermit
+
+                val fileContent = (readResult.result as? FileContentData)?.content ?: return@withPermit
+                val lines = fileContent.lines()
+                if (lines.isEmpty()) return@withPermit
+
+                fun clip(raw: String, maxChars: Int): String {
+                    val t = raw.trim()
+                    if (t.length <= maxChars) return t
+                    return t.take(maxChars) + "...(truncated)"
+                }
+
+                for (qIdx in regexes.indices) {
+                    val rx = regexes[qIdx] ?: continue
+                    if (perQueryCounts[qIdx].get() >= perQueryMaxResults) continue
+
+                    val matchedLineNumbers = ArrayList<Int>(8)
+                    for (i in lines.indices) {
+                        if (rx.containsMatchIn(lines[i])) {
+                            matchedLineNumbers.add(i)
+                            if (matchedLineNumbers.size >= perQueryMaxResults * 3) break
+                        }
+                    }
+
+                    if (matchedLineNumbers.isEmpty()) continue
+
+                    val mergedMatches = mergeNearbyMatches(matchedLineNumbers, 3)
+                    if (mergedMatches.isEmpty()) continue
+
+                    val localCandidates = mutableListOf<GrepContextCandidate>()
+                    for (matchGroup in mergedMatches) {
+                        val firstLine = matchGroup.first()
+                        val lastLine = matchGroup.last()
+                        val startIdx = maxOf(0, firstLine - 3)
+                        val endIdx = minOf(lines.size - 1, lastLine + 3)
+                        val context =
+                            lines.subList(startIdx, endIdx + 1)
+                                .joinToString("\n") { clip(it, 400) }
+                                .let { clip(it, 4000) }
+                        val matchedLinesContent =
+                            matchGroup
+                                .asSequence()
+                                .take(5)
+                                .map { clip(lines[it], 80) }
+                                .joinToString(" | ")
+                        val lineContent =
+                            if (matchGroup.size == 1) {
+                                clip(lines[firstLine], 300)
+                            } else {
+                                "${matchGroup.size} matches: ${matchedLinesContent.take(200)}..."
+                            }
+
+                        localCandidates.add(
+                            GrepContextCandidate(
+                                filePath = filePath,
+                                lineNumber = firstLine + 1,
+                                lineContent = lineContent,
+                                matchContext = context,
+                                query = limitedQueries[qIdx],
+                                round = round
+                            )
+                        )
+                    }
+
+                    if (localCandidates.isEmpty()) continue
+
+                    lock.withLock {
+                        var remaining = perQueryMaxResults - perQueryCounts[qIdx].get()
+                        if (remaining <= 0) return@withLock
+
+                        for (c in localCandidates) {
+                            if (remaining <= 0) break
+                            val key = "${c.filePath}#${c.lineNumber}#${(c.matchContext ?: "").take(120)}"
+                            if (!dedup.add(key)) continue
+                            candidates.add(c)
+                            perQueryCounts[qIdx].incrementAndGet()
+                            remaining--
+                        }
+                    }
                 }
             }
         }
 
-        return Pair(candidates, maxFilesSearched)
+        coroutineScope {
+            var idx = 0
+            while (idx < foundFiles.size && !allQueriesDone()) {
+                val end = minOf(foundFiles.size, idx + batchSize)
+                val batch = foundFiles.subList(idx, end)
+                val jobs = batch.map { fp ->
+                    async(Dispatchers.IO) { processOneFile(fp) }
+                }
+                jobs.awaitAll()
+                idx = end
+            }
+        }
+
+        if (toolNameForProgress != null && progressSpan > 0f) {
+            val msg = if (progressMessage.isNotBlank()) progressMessage else "Searching..."
+            ToolProgressBus.update(
+                toolNameForProgress,
+                (progressBase + progressSpan).coerceIn(0f, 0.99f),
+                "$msg (files ${filesSearched.get()}/${foundFiles.size})"
+            )
+        }
+
+        return Pair(candidates, filesSearched.get())
     }
 
     protected suspend fun grepContextAgentic(
@@ -420,6 +559,28 @@ open class StandardFileSystemTools(protected val context: Context) {
             val perRoundSearchSpan = 0.2f
             val perRoundRefineSpan = 0.05f
 
+            ToolProgressBus.update(toolName, 0.08f, "Indexing files...")
+            val findFilesResult =
+                findFiles(
+                    AITool(
+                        name = "find_files",
+                        parameters = listOf(
+                            ToolParameter("path", searchPath),
+                            ToolParameter("pattern", filePattern),
+                            ToolParameter("use_path_pattern", "false"),
+                            ToolParameter("case_insensitive", "false"),
+                            ToolParameter("environment", environment ?: "")
+                        )
+                    )
+                )
+
+            val prefetchedFiles: List<String>? =
+                if (findFilesResult.success) {
+                    (findFilesResult.result as? FindFilesResultData)?.files.orEmpty()
+                } else {
+                    null
+                }
+
             for (round in 1..3) {
                 val roundBase = 0.1f + (round - 1) * (perRoundSearchSpan + perRoundRefineSpan)
                 AppLogger.d(TAG, "grep_context: Starting search round $round/3. queries=${queries.joinToString(" | ") { it.take(60) }}")
@@ -431,6 +592,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                         queries = queries,
                         perQueryMaxResults = 30,
                         round = round,
+                        prefetchedFiles = prefetchedFiles,
                         toolNameForProgress = toolName,
                         progressBase = roundBase,
                         progressSpan = perRoundSearchSpan,
@@ -517,14 +679,14 @@ open class StandardFileSystemTools(protected val context: Context) {
                     toolName = toolName,
                     success = true,
                     result =
-                        GrepResultData(
-                            searchPath = displayPath,
-                            pattern = intent,
-                            matches = emptyList(),
-                            totalMatches = 0,
-                            filesSearched = filesSearched,
-                            env = envLabel
-                        ),
+                    GrepResultData(
+                        searchPath = displayPath,
+                        pattern = intent,
+                        matches = emptyList(),
+                        totalMatches = 0,
+                        filesSearched = filesSearched,
+                        env = envLabel
+                    ),
                     error = ""
                 )
             }
@@ -581,14 +743,14 @@ open class StandardFileSystemTools(protected val context: Context) {
                 toolName = toolName,
                 success = true,
                 result =
-                    GrepResultData(
-                        searchPath = displayPath,
-                        pattern = intent,
-                        matches = fileMatches,
-                        totalMatches = selectedCandidates.size,
-                        filesSearched = filesSearched,
-                        env = envLabel
-                    ),
+                GrepResultData(
+                    searchPath = displayPath,
+                    pattern = intent,
+                    matches = fileMatches,
+                    totalMatches = selectedCandidates.size,
+                    filesSearched = filesSearched,
+                    env = envLabel
+                ),
                 error = ""
             )
         } catch (e: Exception) {
@@ -668,6 +830,9 @@ open class StandardFileSystemTools(protected val context: Context) {
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.listFiles(tool)
+        }
+        if (isSafEnvironment(environment)) {
+            return safTools.listFiles(tool)
         }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
@@ -1217,6 +1382,10 @@ open class StandardFileSystemTools(protected val context: Context) {
         if (isLinuxEnvironment(environment)) {
             return linuxTools.readFileFull(tool)
         }
+
+        if (isSafEnvironment(environment)) {
+            return safTools.readFileFull(tool)
+        }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
         if (path.isBlank()) {
@@ -1314,6 +1483,10 @@ open class StandardFileSystemTools(protected val context: Context) {
         if (isLinuxEnvironment(environment)) {
             return linuxTools.readFileBinary(tool)
         }
+
+        if (isSafEnvironment(environment)) {
+            return safTools.readFileBinary(tool)
+        }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
         if (path.isBlank()) {
@@ -1370,6 +1543,10 @@ open class StandardFileSystemTools(protected val context: Context) {
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.readFile(tool)
+        }
+
+        if (isSafEnvironment(environment)) {
+            return safTools.readFile(tool)
         }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
@@ -1484,6 +1661,10 @@ open class StandardFileSystemTools(protected val context: Context) {
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.readFilePart(tool)
+        }
+
+        if (isSafEnvironment(environment)) {
+            return safTools.readFilePart(tool)
         }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
@@ -1601,6 +1782,9 @@ open class StandardFileSystemTools(protected val context: Context) {
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.writeFile(tool)
+        }
+        if (isSafEnvironment(environment)) {
+            return safTools.writeFile(tool)
         }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
@@ -1736,6 +1920,9 @@ open class StandardFileSystemTools(protected val context: Context) {
         if (isLinuxEnvironment(environment)) {
             return linuxTools.writeFileBinary(tool)
         }
+        if (isSafEnvironment(environment)) {
+            return safTools.writeFileBinary(tool)
+        }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
         if (path.isBlank()) {
@@ -1750,21 +1937,6 @@ open class StandardFileSystemTools(protected val context: Context) {
                     details = "Path parameter is required"
                 ),
                 error = "Path parameter is required"
-            )
-        }
-
-        if (base64Content.isBlank()) {
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result =
-                FileOperationData(
-                    operation = "write_binary",
-                    path = path,
-                    successful = false,
-                    details = "base64Content parameter is required"
-                ),
-                error = "base64Content parameter is required"
             )
         }
 
@@ -1863,6 +2035,9 @@ open class StandardFileSystemTools(protected val context: Context) {
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.deleteFile(tool)
+        }
+        if (isSafEnvironment(environment)) {
+            return safTools.deleteFile(tool)
         }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
@@ -1970,8 +2145,7 @@ open class StandardFileSystemTools(protected val context: Context) {
                     operation = "delete",
                     path = path,
                     successful = false,
-                    details =
-                    "Error deleting file/directory: ${e.message}"
+                    details = "Error deleting file/directory: ${e.message}"
                 ),
                 error = "Error deleting file/directory: ${e.message}"
             )
@@ -1986,6 +2160,9 @@ open class StandardFileSystemTools(protected val context: Context) {
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.fileExists(tool)
+        }
+        if (isSafEnvironment(environment)) {
+            return safTools.fileExists(tool)
         }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
@@ -2052,6 +2229,10 @@ open class StandardFileSystemTools(protected val context: Context) {
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.moveFile(tool)
+        }
+
+        if (isSafEnvironment(environment)) {
+            return safTools.moveFile(tool)
         }
         PathValidator.validateAndroidPath(sourcePath, tool.name, "source")?.let { return it }
         PathValidator.validateAndroidPath(destPath, tool.name, "destination")?.let { return it }
@@ -2562,6 +2743,21 @@ open class StandardFileSystemTools(protected val context: Context) {
         val srcEnv = sourceEnvironment ?: environment ?: "android"
         val dstEnv = destEnvironment ?: environment ?: "android"
 
+        if ((isSafEnvironment(srcEnv) || isSafEnvironment(dstEnv)) &&
+            (isLinuxEnvironment(srcEnv) || isLinuxEnvironment(dstEnv))) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = FileOperationData(
+                    operation = "copy",
+                    path = sourcePath,
+                    successful = false,
+                    details = "Repository environment cannot be used with linux environment"
+                ),
+                error = "Repository environment cannot be used with linux environment"
+            )
+        }
+
         // 检查是否是跨环境复制
         val isCrossEnvironment = srcEnv.lowercase() != dstEnv.lowercase()
 
@@ -2589,6 +2785,10 @@ open class StandardFileSystemTools(protected val context: Context) {
                     )
                 )
             )
+        }
+
+        if (isSafEnvironment(srcEnv) || isSafEnvironment(dstEnv) || isSafEnvironment(environment)) {
+            return safTools.copyFile(tool)
         }
         PathValidator.validateAndroidPath(sourcePath, tool.name, "source")?.let { return it }
         PathValidator.validateAndroidPath(destPath, tool.name, "destination")?.let { return it }
@@ -2739,6 +2939,9 @@ open class StandardFileSystemTools(protected val context: Context) {
         if (isLinuxEnvironment(environment)) {
             return linuxTools.makeDirectory(tool)
         }
+        if (isSafEnvironment(environment)) {
+            return safTools.makeDirectory(tool)
+        }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
         if (path.isBlank()) {
@@ -2856,6 +3059,9 @@ open class StandardFileSystemTools(protected val context: Context) {
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.findFiles(tool)
+        }
+        if (isSafEnvironment(environment)) {
+            return safTools.findFiles(tool)
         }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
@@ -3140,6 +3346,10 @@ open class StandardFileSystemTools(protected val context: Context) {
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.fileInfo(tool)
+        }
+
+        if (isSafEnvironment(environment)) {
+            return safTools.fileInfo(tool)
         }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
@@ -4278,13 +4488,20 @@ open class StandardFileSystemTools(protected val context: Context) {
         val maxResults =
             tool.parameters.find { it.name == "max_results" }?.value?.toIntOrNull() ?: 100
 
+        val envLabel = environment.orEmpty().trim().ifBlank { "android" }
+
         AppLogger.d(TAG, "grep_code: Starting search - path=$path, pattern=\"$pattern\", file_pattern=$filePattern, max_results=$maxResults")
+
+        ToolProgressBus.update(tool.name, 0.02f, "Finding files...")
 
         // 如果是Linux环境，委托给LinuxFileSystemTools
         if (isLinuxEnvironment(environment)) {
             return linuxTools.grepCode(tool)
         }
-        PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+
+        if (!isSafEnvironment(environment)) {
+            PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
+        }
 
         if (path.isBlank()) {
             return ToolResult(
@@ -4332,8 +4549,13 @@ open class StandardFileSystemTools(protected val context: Context) {
                 val foundFiles = (findFilesResult.result as FindFilesResultData).files
                 AppLogger.d(TAG, "grep_code: Found ${foundFiles.size} files to search")
 
+                if (foundFiles.isNotEmpty()) {
+                    ToolProgressBus.update(tool.name, 0.10f, "Searching files (0/${foundFiles.size})")
+                }
+
                 if (foundFiles.isEmpty()) {
                     AppLogger.d(TAG, "grep_code: No files found matching pattern")
+                    ToolProgressBus.update(tool.name, 1f, "Search completed")
                     return@withContext ToolResult(
                         toolName = tool.name,
                         success = true,
@@ -4342,7 +4564,8 @@ open class StandardFileSystemTools(protected val context: Context) {
                             pattern = pattern,
                             matches = emptyList(),
                             totalMatches = 0,
-                            filesSearched = 0
+                            filesSearched = 0,
+                            env = envLabel
                         ),
                         error = ""
                     )
@@ -4357,114 +4580,141 @@ open class StandardFileSystemTools(protected val context: Context) {
 
                 // 3. 遍历每个文件，搜索匹配的行
                 val fileMatches = mutableListOf<GrepResultData.FileMatch>()
-                var totalMatches = 0
-                var filesSearched = 0
+                val fileMatchesLock = Mutex()
+                val totalMatches = AtomicInteger(0)
+                val filesSearched = AtomicInteger(0)
 
-                for (filePath in foundFiles) {
-                    if (totalMatches >= maxResults) {
-                        AppLogger.d(TAG, "grep_code: Reached max results limit ($maxResults), stopping search")
-                        break
-                    }
+                val cores = runCatching { Runtime.getRuntime().availableProcessors() }.getOrNull() ?: 2
+                val concurrency = minOf(6, maxOf(1, cores))
+                val semaphore = Semaphore(concurrency)
+                val batchSize = concurrency * 4
 
-                    filesSearched++
-                    val fileStartTime = System.currentTimeMillis()
+                suspend fun processOneFile(filePath: String) {
+                    semaphore.withPermit {
+                        if (totalMatches.get() >= maxResults) return@withPermit
 
-                    // 读取文件内容（启用 text_only 模式，跳过图片等非文本文件）
-                    val readResult = readFileFull(
-                        AITool(
-                            name = "read_file_full",
-                            parameters = listOf(
-                                ToolParameter("path", filePath),
-                                ToolParameter("text_only", "true")
+                        fun clip(raw: String, maxChars: Int): String {
+                            val t = raw.trim()
+                            if (t.length <= maxChars) return t
+                            return t.take(maxChars) + "...(truncated)"
+                        }
+
+                        val done = filesSearched.incrementAndGet()
+                        if (done == 1 || done % 5 == 0) {
+                            val fraction = done.toFloat() / foundFiles.size.toFloat()
+                            val p = 0.10f + 0.85f * fraction
+                            ToolProgressBus.update(tool.name, p.coerceIn(0f, 0.95f), "Searching files ($done/${foundFiles.size})")
+                        }
+
+                        // 读取文件内容（启用 text_only 模式，跳过图片等非文本文件）
+                        val readResult = readFileFull(
+                            AITool(
+                                name = "read_file_full",
+                                parameters = listOf(
+                                    ToolParameter("path", filePath),
+                                    ToolParameter("text_only", "true"),
+                                    ToolParameter("environment", environment ?: "")
+                                )
                             )
                         )
-                    )
 
-                    if (!readResult.success) {
-                        // 如果读取失败（可能是二进制文件或权限问题），跳过该文件
-                        AppLogger.d(TAG, "grep_code: Skipped file $filePath (${readResult.error})")
-                        continue
-                    }
+                        if (!readResult.success) {
+                            return@withPermit
+                        }
 
-                    val fileContent = (readResult.result as FileContentData).content
-                    val lines = fileContent.lines()
-                    
-                    // 使用 regex.findAll 在整个文件内容上一次性找到所有匹配，比逐行遍历更高效
-                    // 对于大文件，考虑限制处理大小或分块处理
-                    val matches = if (fileContent.length > 10_000_000) { // 10MB limit
-                        // 对于超大文件，只处理前10MB以避免ANR
-                        val limitedContent = fileContent.take(10_000_000)
-                        regex.findAll(limitedContent)
-                    } else {
-                        regex.findAll(fileContent)
-                    }
-                val matchedLineNumbers = matches
-                    .map { match ->
-                        // 通过计算匹配位置之前的换行符数量得到行号
-                        fileContent.substring(0, match.range.first).count { it == '\n' }
-                    }
-                    .distinct()
-                    .sorted()
-                    .toList()
+                        val fileContent = (readResult.result as FileContentData).content
+                        val lines = fileContent.lines()
 
-                if (matchedLineNumbers.isEmpty()) {
-                    continue
+                        val matches = if (fileContent.length > 10_000_000) {
+                            val limitedContent = fileContent.take(10_000_000)
+                            regex.findAll(limitedContent)
+                        } else {
+                            regex.findAll(fileContent)
+                        }
+
+                        val matchedLineNumbers =
+                            matches
+                                .map { match ->
+                                    fileContent.substring(0, match.range.first).count { it == '\n' }
+                                }
+                                .distinct()
+                                .sorted()
+                                .toList()
+
+                        if (matchedLineNumbers.isEmpty()) return@withPermit
+
+                        val mergedMatches = mergeNearbyMatches(matchedLineNumbers, contextLines)
+                        val lineMatches = mutableListOf<GrepResultData.LineMatch>()
+
+                        val remaining = maxResults - totalMatches.get()
+                        if (remaining <= 0) return@withPermit
+
+                        for (matchGroup in mergedMatches) {
+                            if (lineMatches.size >= remaining) break
+
+                            val firstLine = matchGroup.first()
+                            val lastLine = matchGroup.last()
+
+                            val startIdx = maxOf(0, firstLine - contextLines)
+                            val endIdx = minOf(lines.size - 1, lastLine + contextLines)
+                            val context =
+                                lines.subList(startIdx, endIdx + 1)
+                                    .joinToString("\n") { clip(it, 400) }
+                                    .let { clip(it, 4000) }
+                            val matchedLinesContent =
+                                matchGroup
+                                    .asSequence()
+                                    .take(5)
+                                    .map { clip(lines[it], 80) }
+                                    .joinToString(" | ")
+
+                            lineMatches.add(
+                                GrepResultData.LineMatch(
+                                    lineNumber = firstLine + 1,
+                                    lineContent = if (matchGroup.size == 1) {
+                                        clip(lines[firstLine], 300)
+                                    } else {
+                                        "${matchGroup.size} matches: ${matchedLinesContent.take(200)}..."
+                                    },
+                                    matchContext = context
+                                )
+                            )
+                        }
+
+                        if (lineMatches.isEmpty()) return@withPermit
+
+                        totalMatches.addAndGet(lineMatches.size)
+                        fileMatchesLock.withLock {
+                            fileMatches.add(
+                                GrepResultData.FileMatch(
+                                    filePath = filePath,
+                                    lineMatches = lineMatches
+                                )
+                            )
+                        }
+                    }
                 }
-                
-                val fileElapsed = System.currentTimeMillis() - fileStartTime
-                AppLogger.d(TAG, "grep_code: File $filesSearched/${foundFiles.size} - Found ${matchedLineNumbers.size} matching lines in ${File(filePath).name} (${fileElapsed}ms)")
 
-                // 合并相近的匹配（根据上下文窗口大小）
-                val mergedMatches = mergeNearbyMatches(matchedLineNumbers, contextLines)
-                
-                val lineMatches = mutableListOf<GrepResultData.LineMatch>()
-                
-                // 为每个合并后的匹配组创建一个 LineMatch
-                for (matchGroup in mergedMatches) {
-                    if (totalMatches >= maxResults) {
-                        break
+                coroutineScope {
+                    var idx = 0
+                    while (idx < foundFiles.size && totalMatches.get() < maxResults) {
+                        val end = minOf(foundFiles.size, idx + batchSize)
+                        val batch = foundFiles.subList(idx, end)
+                        val jobs = batch.map { fp ->
+                            async(Dispatchers.IO) { processOneFile(fp) }
+                        }
+                        jobs.awaitAll()
+                        idx = end
                     }
-                    
-                    val firstLine = matchGroup.first()
-                    val lastLine = matchGroup.last()
-                    
-                    // 获取合并后的上下文
-                    val startIdx = maxOf(0, firstLine - contextLines)
-                    val endIdx = minOf(lines.size - 1, lastLine + contextLines)
-                    val context = lines.subList(startIdx, endIdx + 1).joinToString("\n")
-                    
-                    // 收集这个区间内所有匹配的行内容
-                    val matchedLinesContent = matchGroup.map { lines[it].trim() }.joinToString(" | ")
-                    
-                    lineMatches.add(
-                        GrepResultData.LineMatch(
-                            lineNumber = firstLine + 1, // 第一个匹配的行号
-                            lineContent = if (matchGroup.size == 1) {
-                                lines[firstLine].trim()
-                            } else {
-                                "${matchGroup.size} matches: ${matchedLinesContent.take(200)}..." // 限制长度
-                            },
-                            matchContext = context
-                        )
-                    )
-                    
-                    totalMatches++
                 }
-
-                // 如果该文件有匹配，添加到结果中
-                if (lineMatches.isNotEmpty()) {
-                    fileMatches.add(
-                        GrepResultData.FileMatch(
-                            filePath = filePath,
-                            lineMatches = lineMatches
-                        )
-                    )
-                }
-            }
 
                 // 4. 返回结果
                 val totalElapsed = System.currentTimeMillis() - startTime
-                AppLogger.d(TAG, "grep_code: Completed - Found $totalMatches matches in ${fileMatches.size} files (searched $filesSearched/${foundFiles.size} files, ${totalElapsed}ms total)")
+                val totalMatchesValue = totalMatches.get()
+                val filesSearchedValue = filesSearched.get()
+                AppLogger.d(TAG, "grep_code: Completed - Found $totalMatchesValue matches in ${fileMatches.size} files (searched $filesSearchedValue/${foundFiles.size} files, ${totalElapsed}ms total)")
+
+                ToolProgressBus.update(tool.name, 1f, "Search completed")
                 
                 ToolResult(
                     toolName = tool.name,
@@ -4473,14 +4723,16 @@ open class StandardFileSystemTools(protected val context: Context) {
                         searchPath = path,
                         pattern = pattern,
                         matches = fileMatches.take(20), // 最多显示20个文件
-                        totalMatches = totalMatches,
-                        filesSearched = filesSearched
+                        totalMatches = totalMatchesValue,
+                        filesSearched = filesSearchedValue,
+                        env = envLabel
                     ),
                     error = ""
                 )
             } catch (e: Exception) {
                 val totalElapsed = System.currentTimeMillis() - startTime
                 AppLogger.e(TAG, "grep_code: Error after ${totalElapsed}ms - ${e.message}", e)
+                ToolProgressBus.update(tool.name, 1f, "Search failed")
                 return@withContext ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -4501,6 +4753,11 @@ open class StandardFileSystemTools(protected val context: Context) {
         if (isLinuxEnvironment(environment)) {
             return linuxTools.grepContext(tool)
         }
+
+        if (isSafEnvironment(environment)) {
+            return grepContextSaf(tool)
+        }
+
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
 
         if (path.isBlank()) {
@@ -4551,6 +4808,74 @@ open class StandardFileSystemTools(protected val context: Context) {
                 error = "Error performing context search: ${e.message}"
             )
         }
+    }
+
+    protected open suspend fun grepContextSaf(tool: AITool): ToolResult {
+        val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        val environment = tool.parameters.find { it.name == "environment" }?.value
+        val intent = tool.parameters.find { it.name == "intent" }?.value ?: ""
+        val filePattern = tool.parameters.find { it.name == "file_pattern" }?.value ?: "*"
+        val maxResults = tool.parameters.find { it.name == "max_results" }?.value?.toIntOrNull() ?: 10
+
+        if (path.isBlank()) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Path parameter is required"
+            )
+        }
+
+        if (intent.isBlank()) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Intent parameter is required"
+            )
+        }
+
+        val envLabel = environment.orEmpty().trim().ifBlank { "repo" }
+
+        val existsRes =
+            fileExists(
+                AITool(
+                    name = "file_exists",
+                    parameters = listOf(
+                        ToolParameter("path", path),
+                        ToolParameter("environment", environment.orEmpty())
+                    )
+                )
+            )
+        if (!existsRes.success) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Failed to check path: ${existsRes.error}"
+            )
+        }
+
+        val existsData = existsRes.result as? FileExistsData
+        if (existsData == null || !existsData.exists) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Path does not exist: $path"
+            )
+        }
+
+        return grepContextAgentic(
+            toolName = tool.name,
+            displayPath = path,
+            searchPath = path,
+            environment = environment,
+            intent = intent,
+            filePattern = filePattern,
+            maxResults = maxResults,
+            envLabel = envLabel
+        )
     }
 
     protected suspend fun grepContextInFile(

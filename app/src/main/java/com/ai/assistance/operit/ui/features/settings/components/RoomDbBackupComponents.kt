@@ -3,19 +3,17 @@ package com.ai.assistance.operit.ui.features.settings.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -88,13 +86,11 @@ fun RoomDbBackupListItem(
                 )
             }
 
-            TextButton(onClick = onRestoreClick) {
+            IconButton(onClick = onRestoreClick) {
                 Icon(
                     imageVector = Icons.Default.Restore,
-                    contentDescription = null
+                    contentDescription = stringResource(R.string.backup_room_db_restore_confirm_action)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = stringResource(R.string.backup_room_db_restore_confirm_action))
             }
         }
     }

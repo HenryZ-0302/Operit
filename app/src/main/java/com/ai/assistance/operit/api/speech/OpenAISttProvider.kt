@@ -5,6 +5,10 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.speech.SpeechPrerollStore
 import java.io.File
@@ -68,6 +72,10 @@ class OpenAISttProvider(
     private var lastLanguageCode: String? = null
     private var vad: OnnxSileroVad? = null
 
+    private var aec: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
+    private var agc: AutomaticGainControl? = null
+
     private val _recognitionState = MutableStateFlow(SpeechService.RecognitionState.UNINITIALIZED)
     override val currentState: SpeechService.RecognitionState
         get() = _recognitionState.value
@@ -100,19 +108,19 @@ class OpenAISttProvider(
         return try {
             withContext(Dispatchers.IO) {
                 if (endpointUrl.isBlank()) {
-                    throw IOException("OpenAI STT URL 未设置，请填写完整接口地址（例如 https://api.openai.com/v1/audio/transcriptions）。")
+                    throw IOException(context.getString(R.string.openai_stt_error_url_not_set))
                 }
                 if (!endpointUrl.startsWith("http://") && !endpointUrl.startsWith("https://")) {
-                    throw IOException("OpenAI STT URL 必须以 http:// 或 https:// 开头。")
+                    throw IOException(context.getString(R.string.openai_stt_error_url_invalid_scheme))
                 }
                 if (!endpointUrl.contains("/audio/transcriptions")) {
-                    throw IOException("OpenAI STT URL 必须包含 /v1/audio/transcriptions（请填写完整到 audio/transcriptions）。")
+                    throw IOException(context.getString(R.string.openai_stt_error_url_invalid_path))
                 }
                 if (apiKey.isBlank()) {
-                    throw IOException("OpenAI STT API Key 未设置，请在设置中填写。")
+                    throw IOException(context.getString(R.string.openai_stt_error_api_key_not_set))
                 }
                 if (model.isBlank()) {
-                    throw IOException("OpenAI STT model 未设置，请在设置中填写（例如 whisper-1 或 gpt-4o-mini-transcribe）。")
+                    throw IOException(context.getString(R.string.openai_stt_error_model_not_set))
                 }
 
                 _isInitialized.value = true
@@ -154,7 +162,7 @@ class OpenAISttProvider(
                 }
 
                 val record = AudioRecord(
-                    MediaRecorder.AudioSource.MIC,
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
                     SAMPLE_RATE,
                     CHANNEL_CONFIG,
                     AUDIO_FORMAT,
@@ -180,6 +188,11 @@ class OpenAISttProvider(
                 audioRecord = record
                 outputFile = file
                 outputStream = stream
+
+                try {
+                    setupAudioEffects(record.audioSessionId)
+                } catch (_: Exception) {
+                }
 
                 record.startRecording()
 
@@ -290,7 +303,8 @@ class OpenAISttProvider(
                                                 }
 
                                                 if (pcmBytesWritten > MAX_FILE_BYTES) {
-                                                    throw IOException("音频文件过大（>${MAX_FILE_BYTES / 1024 / 1024}MB），请缩短录音时长。")
+                                                    val fileSizeMB = MAX_FILE_BYTES / 1024 / 1024
+                                                    throw IOException(context.getString(R.string.openai_stt_error_file_too_large, fileSizeMB))
                                                 }
 
                                                 vadFramePos = 0
@@ -332,9 +346,10 @@ class OpenAISttProvider(
                 }
 
             if (file.length() > MAX_FILE_BYTES) {
+                val fileSizeMB = MAX_FILE_BYTES / 1024 / 1024
                 file.delete()
                 _recognitionState.value = SpeechService.RecognitionState.ERROR
-                _recognitionError.value = SpeechService.RecognitionError(-1, "音频文件过大（>${MAX_FILE_BYTES / 1024 / 1024}MB），请缩短录音时长。")
+                _recognitionError.value = SpeechService.RecognitionError(-1, context.getString(R.string.openai_stt_error_file_too_large, fileSizeMB))
                 return false
             }
 
@@ -371,6 +386,7 @@ class OpenAISttProvider(
             scope.cancel()
         } catch (_: Exception) {
         }
+        releaseAudioEffects()
         runCatching { audioRecord?.release() }
         audioRecord = null
         runCatching { outputStream?.close() }
@@ -450,6 +466,7 @@ class OpenAISttProvider(
             record?.stop()
         } catch (_: Exception) {
         }
+        releaseAudioEffects()
         try {
             record?.release()
         } catch (_: Exception) {
@@ -483,6 +500,51 @@ class OpenAISttProvider(
         }
 
         return null
+    }
+
+    private fun setupAudioEffects(audioSessionId: Int) {
+        releaseAudioEffects()
+
+        if (audioSessionId <= 0) return
+
+        if (AcousticEchoCanceler.isAvailable()) {
+            try {
+                aec = AcousticEchoCanceler.create(audioSessionId)?.also { it.enabled = true }
+            } catch (_: Exception) {
+            }
+        }
+        if (NoiseSuppressor.isAvailable()) {
+            try {
+                noiseSuppressor = NoiseSuppressor.create(audioSessionId)?.also { it.enabled = true }
+            } catch (_: Exception) {
+            }
+        }
+        if (AutomaticGainControl.isAvailable()) {
+            try {
+                agc = AutomaticGainControl.create(audioSessionId)?.also { it.enabled = true }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun releaseAudioEffects() {
+        try {
+            aec?.release()
+        } catch (_: Exception) {
+        }
+        aec = null
+
+        try {
+            noiseSuppressor?.release()
+        } catch (_: Exception) {
+        }
+        noiseSuppressor = null
+
+        try {
+            agc?.release()
+        } catch (_: Exception) {
+        }
+        agc = null
     }
 
     private fun writePcm16le(stream: FileOutputStream, pcm: ShortArray, length: Int, offset: Int = 0) {
@@ -573,7 +635,7 @@ class OpenAISttProvider(
         val response = try {
             httpClient.newCall(request).execute()
         } catch (e: IOException) {
-            throw IOException("请求 OpenAI STT 失败", e)
+            throw IOException(context.getString(R.string.openai_stt_error_request_failed), e)
         }
 
         response.use { resp ->

@@ -377,7 +377,7 @@ class FloatingChatService : Service(), FloatingWindowCallback {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "AI助手悬浮窗"
+            val name = getString(R.string.floating_chat_window_title)
             val descriptionText = getString(R.string.floating_service_description)
             val importance = NotificationManager.IMPORTANCE_LOW
             val channel =
@@ -393,8 +393,8 @@ class FloatingChatService : Service(), FloatingWindowCallback {
     private fun createNotification() =
             NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
-                    .setContentTitle("AI助手悬浮窗")
-                    .setContentText("AI助手正在后台运行")
+                    .setContentTitle(getString(R.string.floating_chat_window_title))
+                    .setContentText(getString(R.string.floating_chat_running_in_background))
                     .setPriority(NotificationCompat.PRIORITY_LOW)
                     .setOngoing(true)
                     .setCategory(NotificationCompat.CATEGORY_SERVICE)

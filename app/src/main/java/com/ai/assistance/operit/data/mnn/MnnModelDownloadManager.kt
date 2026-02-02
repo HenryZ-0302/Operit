@@ -2,6 +2,7 @@ package com.ai.assistance.operit.data.mnn
 
 import android.content.Context
 import android.os.Environment
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -270,7 +271,7 @@ class MnnModelDownloadManager private constructor(private val context: Context) 
         return try {
             val cacheFile = File(context.filesDir, CACHE_FILE_NAME)
             if (!cacheFile.exists()) {
-                return Result.failure(Exception("无缓存数据"))
+                return Result.failure(Exception(context.getString(R.string.mnn_no_cache_data)))
             }
             val jsonString = cacheFile.readText()
             val marketData = json.decodeFromString<ModelMarketData>(jsonString)
@@ -317,7 +318,7 @@ class MnnModelDownloadManager private constructor(private val context: Context) 
             val jsonString = response.body?.string() ?: ""
             if (jsonString.isEmpty()) {
                 AppLogger.e(TAG, "响应体为空")
-                return@withContext Result.failure(Exception("响应体为空"))
+                return@withContext Result.failure(Exception(context.getString(R.string.mnn_response_empty)))
             }
             
             AppLogger.d(TAG, "文件列表响应长度: ${jsonString.length}")
@@ -377,7 +378,7 @@ class MnnModelDownloadManager private constructor(private val context: Context) 
                     // 先获取仓库文件列表，找到实际的文件路径
                     val filesResult = fetchRepoFiles(url)
                     if (filesResult.isFailure) {
-                        val error = "获取仓库文件列表失败: ${filesResult.exceptionOrNull()?.message}"
+                        val error = context.getString(R.string.mnn_fetch_repo_files_failed, filesResult.exceptionOrNull()?.message ?: "")
                         updateDownloadState(modelName, DownloadState.Failed(error))
                         return@launch
                     }
@@ -470,7 +471,7 @@ class MnnModelDownloadManager private constructor(private val context: Context) 
                 AppLogger.d(TAG, "响应码: ${response.code}")
                 
                 if (!response.isSuccessful && response.code != 206) {
-                    val error = "下载失败: HTTP ${response.code} ${response.message}"
+                    val error = context.getString(R.string.mnn_download_failed_http, response.code, response.message)
                     AppLogger.e(TAG, error)
                     updateDownloadState(modelName, DownloadState.Failed(error))
                     return@launch
@@ -482,9 +483,9 @@ class MnnModelDownloadManager private constructor(private val context: Context) 
                 AppLogger.d(TAG, "Content-Length: $contentLength 字节")
                 AppLogger.d(TAG, "总大小: $totalBytes 字节 (${formatFileSize(totalBytes)})")
                 AppLogger.d(TAG, "开始写入数据...")
-                
+
                 val inputStream = response.body?.byteStream() ?: run {
-                    updateDownloadState(modelName, DownloadState.Failed("响应体为空"))
+                    updateDownloadState(modelName, DownloadState.Failed(context.getString(R.string.mnn_response_empty)))
                     return@launch
                 }
                 
@@ -543,14 +544,14 @@ class MnnModelDownloadManager private constructor(private val context: Context) 
                     removePersistentState(modelName)
                 } else {
                     AppLogger.e(TAG, "❌ 重命名失败！")
-                    updateDownloadState(modelName, DownloadState.Failed("重命名失败"))
+                    updateDownloadState(modelName, DownloadState.Failed(context.getString(R.string.mnn_rename_failed)))
                 }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "========== 下载异常 ==========")
                 AppLogger.e(TAG, "模型: $modelName", e)
                 AppLogger.e(TAG, "错误: ${e.javaClass.simpleName}: ${e.message}")
                 e.printStackTrace()
-                updateDownloadState(modelName, DownloadState.Failed(e.message ?: "未知错误"))
+                updateDownloadState(modelName, DownloadState.Failed(e.message ?: context.getString(R.string.mnn_unknown_error)))
             }
         }
         downloadJobs[modelName] = job
@@ -724,7 +725,7 @@ class MnnModelDownloadManager private constructor(private val context: Context) 
                 
                 if (!response.isSuccessful && response.code != 206) {
                     response.close()
-                    val error = "下载文件失败: $fileName (HTTP ${response.code})"
+                    val error = context.getString(R.string.mnn_download_file_failed, fileName, response.code.toString())
                     updateDownloadState(modelName, DownloadState.Failed(error))
                     return@withContext Result.failure(Exception(error))
                 }
@@ -746,7 +747,7 @@ class MnnModelDownloadManager private constructor(private val context: Context) 
                                     modelName,
                                     DownloadState.Paused(progress, downloadedBytes)
                                 )
-                                return@withContext Result.failure(Exception("下载已暂停"))
+                                return@withContext Result.failure(Exception(context.getString(R.string.mnn_download_paused)))
                             }
                             
                             output.write(buffer, 0, bytesRead)
@@ -796,7 +797,7 @@ class MnnModelDownloadManager private constructor(private val context: Context) 
             Result.success(modelFolder)
         } catch (e: Exception) {
             AppLogger.e(TAG, "下载失败", e)
-            updateDownloadState(modelName, DownloadState.Failed(e.message ?: "未知错误"))
+            updateDownloadState(modelName, DownloadState.Failed(e.message ?: context.getString(R.string.mnn_unknown_error)))
             Result.failure(e)
         }
     }

@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -157,13 +158,13 @@ private fun CharacterCardAssignOption(
                 if (!avatarUri.isNullOrBlank()) {
                     Image(
                         painter = rememberAsyncImagePainter(model = Uri.parse(avatarUri)),
-                        contentDescription = "角色卡头像",
+                        contentDescription = stringResource(R.string.character_card_avatar),
                         modifier = Modifier.fillMaxWidth(),
                         contentScale = ContentScale.Crop
                     )
                 } else {
                     Text(
-                        text = card.name.firstOrNull()?.toString() ?: "角",
+                        text = card.name.firstOrNull()?.toString() ?: stringResource(R.string.character_card_single_char),
                         style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )

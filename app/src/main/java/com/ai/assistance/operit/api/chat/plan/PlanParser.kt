@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.api.chat.plan
 
+import com.ai.assistance.operit.R
+import com.ai.assistance.operit.core.application.OperitApplication
 import com.ai.assistance.operit.util.AppLogger
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
@@ -72,7 +74,7 @@ object PlanParser {
                     adjList[depId]?.add(task.id)
                     inDegree[task.id] = inDegree[task.id]!! + 1
                 } else {
-                    AppLogger.w(TAG, "任务 ${task.id} 依赖的任务 $depId 不存在")
+                    AppLogger.w(TAG, OperitApplication.instance.getString(R.string.plan_task_dependency_not_exist, task.id, depId))
                 }
             }
         }
@@ -106,7 +108,7 @@ object PlanParser {
         
         // 检查是否存在循环依赖
         if (result.size != tasks.size) {
-            AppLogger.e(TAG, "存在循环依赖，无法进行拓扑排序")
+            AppLogger.e(TAG, OperitApplication.instance.getString(R.string.plan_circular_dependency) + "，无法进行拓扑排序")
             return emptyList()
         }
         
@@ -123,7 +125,7 @@ object PlanParser {
         // 检查任务 ID 是否唯一
         val taskIds = graph.tasks.map { it.id }
         if (taskIds.size != taskIds.toSet().size) {
-            return false to "任务 ID 不唯一"
+            return false to OperitApplication.instance.getString(R.string.plan_task_id_not_unique)
         }
         
         // 检查依赖关系是否有效
@@ -131,7 +133,7 @@ object PlanParser {
         graph.tasks.forEach { task ->
             task.dependencies.forEach { depId ->
                 if (!validTaskIds.contains(depId)) {
-                    return false to "任务 ${task.id} 依赖的任务 $depId 不存在"
+                    return false to OperitApplication.instance.getString(R.string.plan_task_dependency_not_exist, task.id, depId)
                 }
             }
         }
@@ -139,9 +141,9 @@ object PlanParser {
         // 检查是否存在循环依赖
         val sortedTasks = topologicalSort(graph)
         if (sortedTasks.isEmpty() && graph.tasks.isNotEmpty()) {
-            return false to "存在循环依赖"
+            return false to OperitApplication.instance.getString(R.string.plan_circular_dependency)
         }
         
-        return true to "执行图有效"
+        return true to OperitApplication.instance.getString(R.string.plan_execution_graph_valid)
     }
 } 

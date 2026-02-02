@@ -22,6 +22,9 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -81,6 +84,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
     override suspend fun listFiles(tool: AITool): ToolResult {
         val environment = tool.parameters.find { it.name == "environment" }?.value
         if (environment == "linux") {
+            return super.listFiles(tool)
+        }
+        if (isSafEnvironment(environment)) {
             return super.listFiles(tool)
         }
 
@@ -392,6 +398,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         if (environment == "linux") {
             return super.readFileFull(tool)
         }
+        if (isSafEnvironment(environment)) {
+            return super.readFileFull(tool)
+        }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
         val textOnly = tool.parameters.find { it.name == "text_only" }?.value?.toBoolean() ?: false
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
@@ -510,6 +519,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         if (environment == "linux") {
             return super.readFile(tool)
         }
+        if (isSafEnvironment(environment)) {
+            return super.readFile(tool)
+        }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
         
@@ -619,6 +631,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
     override suspend fun readFilePart(tool: AITool): ToolResult {
         val environment = tool.parameters.find { it.name == "environment" }?.value
         if (environment == "linux") {
+            return super.readFilePart(tool)
+        }
+        if (isSafEnvironment(environment)) {
             return super.readFilePart(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
@@ -829,6 +844,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.writeFile(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        if (isSafEnvironment(environment)) {
+            return super.writeFile(tool)
+        }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
         val content = tool.parameters.find { it.name == "content" }?.value ?: ""
         val append = tool.parameters.find { it.name == "append" }?.value?.toBoolean() ?: false
@@ -872,16 +890,63 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                     )
 
             // 使用两种写入方法中的一种:
-            // 方法1: 使用base64命令解码并写入文件
+            // 方法1: 使用base64命令解码并写入文件（大内容时分块，避免命令行过长）
             val redirectOperator = if (append) ">>" else ">"
+            val maxInlineBase64 = 32768
+            val base64ChunkSize = 16384 // 4的倍数，保证base64解码边界正确
             val writeResult =
-                    AndroidShellExecutor.executeShellCommand(
-                            "echo '$contentBase64' | base64 -d $redirectOperator '$path'"
-                    )
+                    if (contentBase64.length <= maxInlineBase64) {
+                        AndroidShellExecutor.executeShellCommand(
+                                "echo '$contentBase64' | base64 -d $redirectOperator '$path'"
+                        )
+                    } else {
+                        var chunkSuccess = true
+                        var firstChunk = true
+                        var index = 0
+                        while (index < contentBase64.length) {
+                            val end = (index + base64ChunkSize).coerceAtMost(contentBase64.length)
+                            val chunk = contentBase64.substring(index, end)
+                            val chunkRedirect = if (firstChunk) redirectOperator else ">>"
+                            val chunkResult =
+                                    AndroidShellExecutor.executeShellCommand(
+                                            "echo '$chunk' | base64 -d $chunkRedirect '$path'"
+                                    )
+                            if (!chunkResult.success) {
+                                AppLogger.e(
+                                        TAG,
+                                        "Failed to write base64 chunk: ${chunkResult.stderr}"
+                                )
+                                chunkSuccess = false
+                                break
+                            }
+                            firstChunk = false
+                            index = end
+                        }
+                        if (chunkSuccess) {
+                            AndroidShellExecutor.CommandResult(true, "", "", 0)
+                        } else {
+                            AndroidShellExecutor.CommandResult(false, "", "Failed to write base64 chunks")
+                        }
+                    }
 
             if (!writeResult.success) {
                 AppLogger.e(TAG, "Failed to write with base64 method: ${writeResult.stderr}")
-                // 方法2: 尝试直接写入，无需base64
+                if (content.length > maxInlineBase64) {
+                    return ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result =
+                                    FileOperationData(
+                                            operation = if (append) "append" else "write",
+                                            path = path,
+                                            successful = false,
+                                            details =
+                                                    "Failed to write to file: ${writeResult.stderr}"
+                                    ),
+                            error = "Failed to write to file: ${writeResult.stderr}"
+                    )
+                }
+                // 方法2: 尝试直接写入，无需base64（仅适用于较小内容）
                 val fallbackResult =
                         AndroidShellExecutor.executeShellCommand(
                                 "printf '%s' '$content' $redirectOperator '$path'"
@@ -971,14 +1036,14 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                     when {
                         e is InterruptedException ||
                                 e.message?.contains("interrupted", ignoreCase = true) == true ->
-                                "ADB连接被中断，可能是网络不稳定导致。请检查ADB连接并重试。错误详情: ${e.message}"
+                                "ADB connection interrupted, possibly due to network instability. Please check ADB connection and retry. Error details: ${e.message}"
                         e is java.net.SocketException ||
                                 e.message?.contains("socket", ignoreCase = true) == true ->
-                                "ADB网络连接异常，请检查设备是否仍然连接并重试。错误详情: ${e.message}"
-                        e is java.io.IOException -> "文件IO错误: ${e.message}。请检查文件路径是否有写入权限。"
+                                "ADB network connection exception, please check if device is still connected and retry. Error details: ${e.message}"
+                        e is java.io.IOException -> "File IO error: ${e.message}. Please check if the file path has write permission."
                         e.message?.contains("permission", ignoreCase = true) == true ->
-                                "权限拒绝，无法写入文件: ${e.message}。请检查应用是否有适当的权限。"
-                        else -> "写入文件时出错: ${e.message}"
+                                "Permission denied, cannot write to file: ${e.message}. Please check if the app has appropriate permissions."
+                        else -> "Error writing to file: ${e.message}"
                     }
 
             return ToolResult(
@@ -1002,7 +1067,13 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         if (environment == "linux") {
             return super.deleteFile(tool)
         }
+
+        if (isSafEnvironment(environment)) {
+            return super.deleteFile(tool)
+        }
+
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
         
         // 如果是Operit内部存储路径，使用super的高权限方法
@@ -1081,7 +1152,13 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         if (environment == "linux") {
             return super.fileExists(tool)
         }
+
+        if (isSafEnvironment(environment)) {
+            return super.fileExists(tool)
+        }
+
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
         
         // 如果是Operit内部存储路径，使用super的高权限方法
@@ -1167,8 +1244,11 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.moveFile(tool)
         }
         val sourcePath = tool.parameters.find { it.name == "source" }?.value ?: ""
-        PathValidator.validateAndroidPath(sourcePath, tool.name)?.let { return it }
         val destPath = tool.parameters.find { it.name == "destination" }?.value ?: ""
+        if (isSafEnvironment(environment)) {
+            return super.moveFile(tool)
+        }
+        PathValidator.validateAndroidPath(sourcePath, tool.name)?.let { return it }
         PathValidator.validateAndroidPath(destPath, tool.name)?.let { return it }
         
         // 如果源文件或目标文件在Operit内部存储，使用super的高权限方法
@@ -1259,6 +1339,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         val sourcePath = tool.parameters.find { it.name == "source" }?.value ?: ""
         val destPath = tool.parameters.find { it.name == "destination" }?.value ?: ""
         val recursive = tool.parameters.find { it.name == "recursive" }?.value?.toBoolean() ?: true
+        if (sourcePath.startsWith("content://", ignoreCase = true) || destPath.startsWith("content://", ignoreCase = true)) {
+            return super.copyFile(tool)
+        }
         PathValidator.validateAndroidPath(sourcePath, tool.name, "source")?.let { return it }
         PathValidator.validateAndroidPath(destPath, tool.name, "destination")?.let { return it }
         
@@ -1413,6 +1496,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
             return super.makeDirectory(tool)
         }
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+        if (isSafEnvironment(environment)) {
+            return super.makeDirectory(tool)
+        }
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
         
         // 如果是Operit内部存储路径，使用super的高权限方法
@@ -1535,7 +1621,13 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         if (environment == "linux") {
             return super.findFiles(tool)
         }
+
+        if (isSafEnvironment(environment)) {
+            return super.findFiles(tool)
+        }
+
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
         val pattern = tool.parameters.find { it.name == "pattern" }?.value ?: ""
 
@@ -1710,7 +1802,13 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
         if (environment == "linux") {
             return super.fileInfo(tool)
         }
+
+        if (isSafEnvironment(environment)) {
+            return super.fileInfo(tool)
+        }
+
         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
+
         PathValidator.validateAndroidPath(path, tool.name)?.let { return it }
         
         // 如果是Operit内部存储路径，使用super的高权限方法
@@ -1805,9 +1903,16 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                 // Get last modified time
                 val modifiedResult =
                         AndroidShellExecutor.executeShellCommand(
-                                "stat -c %y '$path' 2>/dev/null || echo ''"
+                                "stat -c %Y '$path' 2>/dev/null || echo ''"
                         )
-                val lastModified = modifiedResult.stdout.trim()
+                val lastModifiedEpochSec = modifiedResult.stdout.trim().toLongOrNull()
+                val lastModified =
+                        if (lastModifiedEpochSec != null && lastModifiedEpochSec > 0) {
+                            SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+                                .format(Date(lastModifiedEpochSec * 1000L))
+                        } else {
+                            ""
+                        }
 
                 return ToolResult(
                         toolName = tool.name,
@@ -2428,9 +2533,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                     operation = "open",
                                     path = "",
                                     successful = false,
-                                    details = "必须提供path参数"
+                                    details = "Must provide path parameter"
                             ),
-                    error = "必须提供path参数"
+                    error = "Must provide path parameter"
             )
         }
 
@@ -2449,9 +2554,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                         operation = "open",
                                         path = path,
                                         successful = false,
-                                        details = "文件不存在: $path"
+                                        details = "File does not exist: $path"
                                 ),
-                        error = "文件不存在: $path"
+                        error = "File does not exist: $path"
                 )
             }
 
@@ -2475,7 +2580,7 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                         operation = "open",
                                         path = path,
                                         successful = true,
-                                        details = "已使用系统应用打开文件: $path"
+                                        details = "Opened file with system app: $path"
                                 ),
                         error = ""
                 )
@@ -2488,13 +2593,13 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                         operation = "open",
                                         path = path,
                                         successful = false,
-                                        details = "打开文件失败: ${result.stderr}"
+                                        details = "Failed to open file: ${result.stderr}"
                                 ),
-                        error = "打开文件失败: ${result.stderr}"
+                        error = "Failed to open file: ${result.stderr}"
                 )
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "打开文件时出错", e)
+            AppLogger.e(TAG, "Error opening file", e)
             return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -2503,9 +2608,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                     operation = "open",
                                     path = path,
                                     successful = false,
-                                    details = "打开文件时出错: ${e.message}"
+                                    details = "Error opening file: ${e.message}"
                             ),
-                    error = "打开文件时出错: ${e.message}"
+                    error = "Error opening file: ${e.message}"
             )
         }
     }
@@ -2533,9 +2638,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                     operation = "share",
                                     path = "",
                                     successful = false,
-                                    details = "必须提供path参数"
+                                    details = "Must provide path parameter"
                             ),
-                    error = "必须提供path参数"
+                    error = "Must provide path parameter"
             )
         }
 
@@ -2554,9 +2659,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                         operation = "share",
                                         path = path,
                                         successful = false,
-                                        details = "文件不存在: $path"
+                                        details = "File does not exist: $path"
                                 ),
-                        error = "文件不存在: $path"
+                        error = "File does not exist: $path"
                 )
             }
 
@@ -2581,7 +2686,7 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                         operation = "share",
                                         path = path,
                                         successful = true,
-                                        details = "已打开分享界面，分享文件: $path"
+                                        details = "Opened share interface, sharing file: $path"
                                 ),
                         error = ""
                 )
@@ -2594,13 +2699,13 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                         operation = "share",
                                         path = path,
                                         successful = false,
-                                        details = "分享文件失败: ${result.stderr}"
+                                        details = "Failed to share file: ${result.stderr}"
                                 ),
-                        error = "分享文件失败: ${result.stderr}"
+                        error = "Failed to share file: ${result.stderr}"
                 )
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "分享文件时出错", e)
+            AppLogger.e(TAG, "Error sharing file", e)
             return ToolResult(
                     toolName = tool.name,
                     success = false,
@@ -2609,9 +2714,9 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
                                     operation = "share",
                                     path = path,
                                     successful = false,
-                                    details = "分享文件时出错: ${e.message}"
+                                    details = "Error sharing file: ${e.message}"
                             ),
-                    error = "分享文件时出错: ${e.message}"
+                    error = "Error sharing file: ${e.message}"
             )
         }
     }
@@ -2622,9 +2727,6 @@ open class DebuggerFileSystemTools(context: Context) : AccessibilityFileSystemTo
     }
 
     /** Write base64 encoded content to a binary file */
-//     override suspend fun writeFileBinary(tool: AITool): ToolResult {
-//         val path = tool.parameters.find { it.name == "path" }?.value ?: ""
-//         val base64Content = tool.parameters.find { it.name == "base64Content" }?.value ?: ""
 
 //         if (path.isBlank()) {
 //             return ToolResult(

@@ -39,7 +39,7 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
         }
         val truncated = result.substring(0, maxResultLength)
         val remainingLength = result.length - maxResultLength
-        return "$truncated\n\n[... 结果过长，已截断 $remainingLength 个字符。建议使用文件操作或分页查询。]"
+        return "$truncated\n\n[... Result too long, truncated $remainingLength characters. Recommend using file operations or pagination.]"
     }
 
     /**
@@ -91,10 +91,10 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
                                         extractedText.append("<link type=\"image\" id=\"$imageId\"></link>")
                                     } else {
                                         val dataSize = data.length
-                                        extractedText.append("[图像: $mimeType, 大小: $dataSize bytes]")
+                                        extractedText.append("[Image: $mimeType, Size: $dataSize bytes]")
                                     }
                                 } else {
-                                    extractedText.append("[图像: $mimeType, 大小: 0 bytes]")
+                                    extractedText.append("[Image: $mimeType, Size: 0 bytes]")
                                 }
                             }
                             "resource" -> {
@@ -114,17 +114,17 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
                                         } else if (text != null && text.isNotEmpty()) {
                                             extractedText.append(text)
                                         } else {
-                                            extractedText.append("[资源: $uri]")
+                                            extractedText.append("[Resource: $uri]")
                                         }
                                     } else if (text != null && text.isNotEmpty()) {
                                         extractedText.append(text)
                                     } else {
-                                        extractedText.append("[资源: $uri]")
+                                        extractedText.append("[Resource: $uri]")
                                     }
                                 }
                             }
                             else -> {
-                                extractedText.append("[未知内容类型 '$contentType': ${contentItem}]")
+                                extractedText.append("[Unknown content type '$contentType': ${contentItem}]")
                             }
                         }
 
@@ -225,7 +225,7 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "无效的MCP工具名称格式，应为 '服务器名称:工具名称'"
+                    error = "Invalid MCP tool name format, should be 'server_name:tool_name'"
             )
         }
 
@@ -239,7 +239,7 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "无法连接到MCP服务器: $serverName"
+                    error = "Cannot connect to MCP server: $serverName"
             )
         }
 
@@ -251,7 +251,7 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
                     success = false,
                     result = StringResultData(""),
                     error =
-                            "MCP服务 '$serverName' 未激活。请先使用 'use_package' 工具并指定包名 '$serverName' 来激活它。"
+                            "MCP service '$serverName' is not activated. Please use the 'use_package' tool with the package name '$serverName' to activate it first."
             )
         }
 
@@ -279,7 +279,7 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
                                 toolName = tool.name,
                                 success = false,
                                 result = StringResultData(""),
-                                error = "工具调用返回空响应"
+                                error = "Tool call returned empty response"
                         )
                     } else {
                         val success = response.optBoolean("success", false)
@@ -301,10 +301,10 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
                             val errorObj = response.optJSONObject("error")
                             val errorMessage = if (errorObj != null) {
                                 val code = errorObj.optInt("code", -1)
-                                val message = errorObj.optString("message", "未知错误")
+                                val message = errorObj.optString("message", "Unknown error")
                                 "[$code] $message"
                             } else {
-                                "工具调用失败，但未返回错误信息"
+                                "Tool call failed but no error message returned"
                             }
                             
                             AppLogger.w(TAG, "MCP工具调用失败: $serverName:$actualToolName - $errorMessage")
@@ -317,7 +317,7 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
                         }
                     }
                 } catch (e: Exception) {
-                    val errorMessage = "调用工具时发生异常: ${e.message}"
+                    val errorMessage = "Exception occurred while calling tool: ${e.message}"
                     AppLogger.e(TAG, "调用MCP工具时发生异常: $errorMessage", e)
                     ToolResult(
                             toolName = tool.name,
@@ -385,7 +385,7 @@ class MCPToolExecutor(private val context: Context, private val mcpManager: MCPM
         if (toolNameParts.size < 2) {
             return ToolValidationResult(
                     valid = false,
-                    errorMessage = "无效的MCP工具名称格式，应为 '服务器名称:工具名称'"
+                    errorMessage = "Invalid MCP tool name format, should be 'server_name:tool_name'"
             )
         }
 

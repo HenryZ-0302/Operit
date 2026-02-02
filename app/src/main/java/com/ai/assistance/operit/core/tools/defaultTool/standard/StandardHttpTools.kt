@@ -140,7 +140,7 @@ class StandardHttpTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "URL参数不能为空"
+                    error = "URL parameter cannot be empty"
             )
         }
 
@@ -150,7 +150,7 @@ class StandardHttpTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "无效的URL格式: $url"
+                    error = "Invalid URL format: $url"
             )
         }
 
@@ -161,7 +161,7 @@ class StandardHttpTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "不支持的HTTP方法: $method"
+                    error = "Unsupported HTTP method: $method"
             )
         }
 
@@ -226,7 +226,7 @@ class StandardHttpTools(private val context: Context) {
                                             toolName = tool.name,
                                             success = false,
                                             result = StringResultData(""),
-                                            error = "无效的表单数据格式: ${e.message}"
+                                            error = "Invalid form data format: ${e.message}"
                                     )
                                 }
                             }
@@ -244,7 +244,7 @@ class StandardHttpTools(private val context: Context) {
                                         toolName = tool.name,
                                         success = false,
                                         result = StringResultData(""),
-                                        error = "multipart请求体类型需要使用专门的multipart_request工具"
+                                        error = "multipart request body type requires dedicated multipart_request tool"
                                 )
                             }
                             else -> {
@@ -252,7 +252,7 @@ class StandardHttpTools(private val context: Context) {
                                         toolName = tool.name,
                                         success = false,
                                         result = StringResultData(""),
-                                        error = "不支持的请求体类型: $bodyType"
+                                        error = "Unsupported request body type: $bodyType"
                                 )
                             }
                         }
@@ -266,16 +266,16 @@ class StandardHttpTools(private val context: Context) {
             val request = requestBuilder.build()
 
             // 详细记录请求信息
-            val logSB = StringBuilder("\n====== HTTP请求详情开始 ======")
+            val logSB = StringBuilder("\n====== HTTP Request Details Start ======")
             logSB.append("\nURL: $url")
-            logSB.append("\n方法: $method")
-            logSB.append("\n请求头:")
+            logSB.append("\nMethod: $method")
+            logSB.append("\nRequest headers:")
             request.headers.forEach { header ->
                 logSB.append("\n  ${header.first}: ${header.second}")
             }
             if (method != "GET" && method != "HEAD" && bodyParam.isNotBlank()) {
-                logSB.append("\n请求体类型: $bodyType")
-                logSB.append("\n请求体内容: $bodyParam")
+                logSB.append("\nRequest body type: $bodyType")
+                logSB.append("\nRequest body content: $bodyParam")
             }
 
             // 记录Cookie存储情况
@@ -284,7 +284,7 @@ class StandardHttpTools(private val context: Context) {
                 logSB.append("\nCookies:")
                 val cookies = cookieJar.loadForRequest(requestCookieUrl)
                 if (cookies.isEmpty()) {
-                    logSB.append("\n  无Cookie")
+                    logSB.append("\n  No Cookie")
                 } else {
                     cookies.forEach { cookie ->
                         logSB.append("\n  ${cookie.name}: ${cookie.value}")
@@ -292,7 +292,7 @@ class StandardHttpTools(private val context: Context) {
                 }
             }
 
-            logSB.append("\n====== HTTP请求详情结束 ======")
+            logSB.append("\n====== HTTP Request Details End ======")
             AppLogger.d(TAG, logSB.toString())
 
             val response = client.newCall(request).execute()
@@ -308,7 +308,7 @@ class StandardHttpTools(private val context: Context) {
 
             // 提取响应的Cookie
             val responseCookieUrl =
-                    url.toHttpUrlOrNull() ?: throw IllegalArgumentException("无效的URL: $url")
+                    url.toHttpUrlOrNull() ?: throw IllegalArgumentException("Invalid URL: $url")
             val responseCookies = cookieJar.loadForRequest(responseCookieUrl)
             val cookiesMap = responseCookies.associate { it.name to it.value }
 
@@ -318,7 +318,7 @@ class StandardHttpTools(private val context: Context) {
                                     toolName = tool.name,
                                     success = false,
                                     result = StringResultData(""),
-                                    error = "响应体为空"
+                                    error = "Response body is empty"
                             )
 
             var responseBodyString: String? = null
@@ -357,7 +357,7 @@ class StandardHttpTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "执行HTTP请求时出错: ${e.message}"
+                    error = "Error executing HTTP request: ${e.message}"
             )
         }
     }
@@ -399,7 +399,7 @@ class StandardHttpTools(private val context: Context) {
 
             val requestCookieUrl =
                     urlString.toHttpUrlOrNull()
-                            ?: throw IllegalArgumentException("无效的URL: $urlString")
+                            ?: throw IllegalArgumentException("Invalid URL: $urlString")
 
             while (keys.hasNext()) {
                 val name = keys.next()
@@ -487,7 +487,7 @@ class StandardHttpTools(private val context: Context) {
                     ToolResult(
                             toolName = tool.name,
                             success = true,
-                            result = StringResultData("当前Cookie状态:\n$jsonResult")
+                            result = StringResultData("Current cookie status:\n$jsonResult")
                     )
                 }
                 "set" -> {
@@ -496,7 +496,7 @@ class StandardHttpTools(private val context: Context) {
                                 toolName = tool.name,
                                 success = false,
                                 result = StringResultData(""),
-                                error = "设置Cookie需要指定domain参数"
+                                error = "setCookie requires domain parameter"
                         )
                     }
 
@@ -507,14 +507,14 @@ class StandardHttpTools(private val context: Context) {
                         ToolResult(
                                 toolName = tool.name,
                                 success = true,
-                                result = StringResultData("成功设置${cookies.size}个Cookie到域名 $domain")
+                                result = StringResultData("Successfully set ${cookies.size} cookies to domain $domain")
                         )
                     } else {
                         ToolResult(
                                 toolName = tool.name,
                                 success = false,
                                 result = StringResultData(""),
-                                error = "Cookie格式错误，无法解析"
+                                error = "Cookie format error, cannot parse"
                         )
                     }
                 }
@@ -525,7 +525,7 @@ class StandardHttpTools(private val context: Context) {
                         ToolResult(
                                 toolName = tool.name,
                                 success = true,
-                                result = StringResultData("已清除所有Cookie")
+                                result = StringResultData("Cleared all cookies")
                         )
                     } else {
                         // 清除指定域名的Cookie
@@ -533,7 +533,7 @@ class StandardHttpTools(private val context: Context) {
                         ToolResult(
                                 toolName = tool.name,
                                 success = true,
-                                result = StringResultData("已清除域名 $domain 的Cookie")
+                                result = StringResultData("Cleared cookies for domain $domain")
                         )
                     }
                 }
@@ -542,7 +542,7 @@ class StandardHttpTools(private val context: Context) {
                             toolName = tool.name,
                             success = false,
                             result = StringResultData(""),
-                            error = "不支持的action: $action，支持的操作有: get, set, clear"
+                            error = "Unsupported action: $action, supported actions are: get, set, clear"
                     )
                 }
             }
@@ -552,7 +552,7 @@ class StandardHttpTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "管理Cookie时出错: ${e.message}"
+                    error = "Error managing cookies: ${e.message}"
             )
         }
     }
@@ -581,7 +581,7 @@ class StandardHttpTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "URL参数不能为空"
+                    error = "URL parameter cannot be empty"
             )
         }
 
@@ -591,7 +591,7 @@ class StandardHttpTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "无效的URL格式: $url"
+                    error = "Invalid URL format: $url"
             )
         }
 
@@ -601,7 +601,7 @@ class StandardHttpTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "多部分表单请求仅支持POST和PUT方法，不支持: $method"
+                    error = "Multipart form requests only support POST and PUT methods, not supported: $method"
             )
         }
 
@@ -653,7 +653,7 @@ class StandardHttpTools(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "解析表单数据出错: ${e.message}"
+                        error = "Error parsing form data: ${e.message}"
                 )
             }
 
@@ -673,7 +673,7 @@ class StandardHttpTools(private val context: Context) {
                                 toolName = tool.name,
                                 success = false,
                                 result = StringResultData(""),
-                                error = "文件不存在或无法读取: $filePath"
+                                error = "File does not exist or cannot be read: $filePath"
                         )
                     }
 
@@ -686,7 +686,7 @@ class StandardHttpTools(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "解析文件数据出错: ${e.message}"
+                        error = "Error parsing file data: ${e.message}"
                 )
             }
 
@@ -715,7 +715,7 @@ class StandardHttpTools(private val context: Context) {
 
             // 提取响应的Cookie
             val responseCookieUrl =
-                    url.toHttpUrlOrNull() ?: throw IllegalArgumentException("无效的URL: $url")
+                    url.toHttpUrlOrNull() ?: throw IllegalArgumentException("Invalid URL: $url")
             val responseCookies = cookieJar.loadForRequest(responseCookieUrl)
             val cookiesMap = responseCookies.associate { it.name to it.value }
 
@@ -725,7 +725,7 @@ class StandardHttpTools(private val context: Context) {
                                     toolName = tool.name,
                                     success = false,
                                     result = StringResultData(""),
-                                    error = "响应体为空"
+                                    error = "Response body is empty"
                             )
 
             var responseBodyString: String? = null
@@ -762,7 +762,7 @@ class StandardHttpTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "执行多部分表单请求时出错: ${e.message}"
+                    error = "Error executing multipart form request: ${e.message}"
             )
         }
     }

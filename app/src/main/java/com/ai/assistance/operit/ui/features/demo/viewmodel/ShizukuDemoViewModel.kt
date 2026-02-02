@@ -128,7 +128,7 @@ class ShizukuDemoViewModel(application: Application) : AndroidViewModel(applicat
     /** Execute root command */
     fun executeRootCommand(command: String, context: Context) {
         viewModelScope.launch {
-            val result = RootAuthorizer.executeRootCommand(command)
+            val result = RootAuthorizer.executeRootCommand(command, context)
             if (result.first) {
                 Toast.makeText(context, context.getString(R.string.command_execution_success), Toast.LENGTH_SHORT).show()
                 stateManager.updateResultText("${context.getString(R.string.command_execution_success)}:\n${result.second}")

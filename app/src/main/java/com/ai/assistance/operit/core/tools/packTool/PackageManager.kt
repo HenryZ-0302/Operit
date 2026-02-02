@@ -67,6 +67,8 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     // Map of package name to package description (all available packages in market)
     private val availablePackages = mutableMapOf<String, ToolPackage>()
 
+    private val packageLoadErrors = ConcurrentHashMap<String, String>()
+
     private val activePackageToolNames = mutableMapOf<String, Set<String>>()
 
     private val activePackageStateIds = ConcurrentHashMap<String, String?>()
@@ -159,6 +161,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
      */
     private fun loadAvailablePackages() {
         synchronized(initLock) {
+            packageLoadErrors.clear()
             // Load packages from assets (JS only, skip TS files)
             val assetManager = context.assets
             val packageFiles = assetManager.list(ASSETS_PACKAGES_DIR) ?: emptyArray()
@@ -205,9 +208,12 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     private fun loadPackageFromJsFile(file: File): ToolPackage? {
         try {
             val jsContent = file.readText()
-            return parseJsPackage(jsContent)
+            return parseJsPackage(jsContent) { key, error ->
+                packageLoadErrors[key] = "${file.path}: $error"
+            }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error loading package from JS file: ${file.path}", e)
+            packageLoadErrors[file.nameWithoutExtension] = "${file.path}: ${e.stackTraceToString()}"
             return null
         }
     }
@@ -217,9 +223,13 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         try {
             val assetManager = context.assets
             val jsContent = assetManager.open(assetPath).bufferedReader().use { it.readText() }
-            return parseJsPackage(jsContent)
+            return parseJsPackage(jsContent) { key, error ->
+                packageLoadErrors[key] = "$assetPath: $error"
+            }
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error loading package from JS asset: $assetPath", e)
+            packageLoadErrors[assetPath.substringAfterLast("/").removeSuffix(".js")] =
+                "$assetPath: ${e.stackTraceToString()}"
             return null
         }
     }
@@ -228,7 +238,10 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
      * Parses a JavaScript package file into a ToolPackage object Uses the metadata in the file
      * header and extracts function definitions using JsEngine
      */
-    private fun parseJsPackage(jsContent: String): ToolPackage? {
+    private fun parseJsPackage(
+        jsContent: String,
+        onError: (key: String, error: String) -> Unit = { _, _ -> }
+    ): ToolPackage? {
         try {
             // Extract metadata from comments at the top of the file
             val metadataString = extractMetadataFromJs(jsContent)
@@ -294,8 +307,21 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             return packageMetadata.copy(tools = tools, states = states)
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error parsing JS package: ${e.message}", e)
+            val fallbackKey = try {
+                val metadataString = extractMetadataFromJs(jsContent)
+                val metadataJson = org.json.JSONObject(JsonValue.readHjson(metadataString).toString())
+                metadataJson.optString("name").takeIf { it.isNotBlank() } ?: "unknown"
+            } catch (_: Exception) {
+                "unknown"
+            }
+            onError(fallbackKey, e.stackTraceToString())
             return null
         }
+    }
+
+    fun getPackageLoadErrors(): Map<String, String> {
+        ensureInitialized()
+        return packageLoadErrors.toMap()
     }
 
     /** 验证JavaScript文件中是否存在指定的函数 这确保了我们可以在运行时调用该函数 */
@@ -460,11 +486,11 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
             if (toolPackage.env.isNotEmpty()) {
                 val missingRequiredEnv = mutableListOf<String>()
                 val missingOptionalEnv = mutableListOf<Pair<String, String>>() // env name, default value
-                
+
                 toolPackage.env.forEach { envVar ->
                     val envName = envVar.name.trim()
                     if (envName.isEmpty()) return@forEach
-                    
+
                     val value = try {
                         envPreferences.getEnv(envName)
                     } catch (e: Exception) {
@@ -475,7 +501,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                         )
                         null
                     }
-                    
+
                     if (envVar.required) {
                         // Check required environment variables
                         if (value.isNullOrEmpty()) {
@@ -517,7 +543,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                     AppLogger.w(TAG, msg)
                     return msg
                 }
-                
+
                 // Log info about optional env vars using defaults
                 if (missingOptionalEnv.isNotEmpty()) {
                     AppLogger.i(
@@ -541,7 +567,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
         if (skillManager.getAvailableSkills().containsKey(packageName) &&
             !skillVisibilityPreferences.isSkillVisibleToAi(packageName)
         ) {
-            return "Skill '$packageName' 已设置为不展示给AI"
+            return "Skill '$packageName' is set to not show to AI"
         }
 
         val skillPrompt = skillManager.getSkillSystemPrompt(packageName)
@@ -571,7 +597,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                 toolName = toolName,
                 success = false,
                 result = StringResultData(""),
-                error = "缺少必需参数: package_name"
+                error = "Missing required parameter: package_name"
             )
         }
 
@@ -582,7 +608,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                 toolName = toolName,
                 success = false,
                 result = StringResultData(""),
-                error = "Skill '$packageName' 已设置为不展示给AI"
+                error = "Skill '$packageName' is set to not show to AI"
             )
         }
 
@@ -911,18 +937,18 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     fun useMCPServer(serverName: String): String {
         // 检查服务器是否已注册
         if (!mcpManager.isServerRegistered(serverName)) {
-            return "MCP服务器 '$serverName' 不存在或未注册。"
+            return "MCP server '$serverName' does not exist or is not registered."
         }
 
         // 获取服务器配置
         val serverConfig =
             mcpManager.getRegisteredServers()[serverName]
-                ?: return "无法获取MCP服务器配置: $serverName"
+                ?: return "Cannot get MCP server configuration: $serverName"
 
         // 创建MCP包
         val mcpPackage =
             MCPPackage.fromServer(context, serverConfig)
-                ?: return "无法连接到MCP服务器: $serverName"
+                ?: return "Cannot connect to MCP server: $serverName"
 
         // 转换为标准工具包
         val toolPackage = mcpPackage.toToolPackage()
@@ -940,7 +966,7 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
                 executor = mcpToolExecutor
             )
 
-            AppLogger.d(TAG, "已注册MCP工具: $toolName")
+            AppLogger.d(TAG, "Registered MCP tool: $toolName")
         }
 
         return generateMCPSystemPrompt(toolPackage, serverName)
@@ -950,19 +976,19 @@ private constructor(private val context: Context, private val aiToolHandler: AIT
     private fun generateMCPSystemPrompt(toolPackage: ToolPackage, serverName: String): String {
         val sb = StringBuilder()
 
-        sb.appendLine("正在使用MCP服务器: $serverName")
-        sb.appendLine("使用时间: ${java.time.LocalDateTime.now()}")
-        sb.appendLine("描述: ${toolPackage.description.resolve(context)}")
+        sb.appendLine("Using MCP server: $serverName")
+        sb.appendLine("Time: ${java.time.LocalDateTime.now()}")
+        sb.appendLine("Description: ${toolPackage.description.resolve(context)}")
         sb.appendLine()
-        sb.appendLine("可用工具列表:")
+        sb.appendLine("Available tools:")
 
         toolPackage.tools.forEach { tool ->
             // 使用 serverName:toolName 格式
             sb.appendLine("- $serverName:${tool.name}: ${tool.description.resolve(context)}")
             if (tool.parameters.isNotEmpty()) {
-                sb.appendLine("  参数:")
+                sb.appendLine("  Parameters:")
                 tool.parameters.forEach { param ->
-                    val requiredText = if (param.required) "(必需)" else "(可选)"
+                    val requiredText = if (param.required) "(required)" else "(optional)"
                     sb.appendLine("  - ${param.name} ${requiredText}: ${param.description.resolve(context)}")
                 }
             }

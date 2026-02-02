@@ -3,6 +3,7 @@ package com.ai.assistance.operit.ui.permissions
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import androidx.compose.material3.ColorScheme
 import androidx.datastore.core.DataStore
@@ -209,7 +210,7 @@ class ToolPermissionSystem private constructor(private val context: Context) {
      * Get human-readable description of an operation
      */
     fun getOperationDescription(tool: AITool): String {
-        return operationDescriptionRegistry[tool.name]?.invoke(tool) ?: "${tool.name} 操作"
+        return operationDescriptionRegistry[tool.name]?.invoke(tool) ?: context.getString(R.string.tool_permission_operation, tool.name)
     }
     
     /**

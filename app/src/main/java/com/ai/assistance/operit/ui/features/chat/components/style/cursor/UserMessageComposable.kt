@@ -93,7 +93,7 @@ fun UserMessageComposable(message: ChatMessage, backgroundColor: Color, textColo
     val selectedImageBitmap = remember { mutableStateOf<Bitmap?>(null) }
 
     // Parse message content to separate text and attachments
-    val parseResult = remember(message.content) { parseMessageContent(message.content) }
+    val parseResult = remember(message.content) { parseMessageContent(context, message.content) }
     val textContent = parseResult.processedText
     val trailingAttachments = parseResult.trailingAttachments
     val replyInfo = parseResult.replyInfo
@@ -322,7 +322,7 @@ data class ImageLinkData(
  * Parses the message content to extract text and attachments Keeps inline attachments as @filename
  * in the text Extracts trailing attachments that appear at the end of the message
  */
-private fun parseMessageContent(content: String): MessageParseResult {
+private fun parseMessageContent(context: android.content.Context, content: String): MessageParseResult {
     // First, strip out any <memory> tags so they are not displayed in the UI.
     var cleanedContent =
         content.replace(Regex("<memory>.*?</memory>", RegexOption.DOT_MATCHES_ALL), "").trim()
@@ -379,7 +379,7 @@ private fun parseMessageContent(content: String): MessageParseResult {
     val replyInfo = replyMatch?.let { match ->
         val fullContent = match.groupValues[3]
         // 指示语，用于从回复内容中提取纯净的预览文本
-        val instruction = "用户正在回复你之前的这条消息："
+        val instruction = context.getString(R.string.chat_reply_instruction)
         val displayContent = fullContent
             .removePrefix(instruction)
             .trim()
@@ -407,7 +407,7 @@ private fun parseMessageContent(content: String): MessageParseResult {
         workspaceAttachments.add(
             AttachmentData(
                 id = "workspace_context",
-                filename = "工作区状态",
+                filename = context.getString(R.string.chat_workspace_status),
                 type = "application/vnd.workspace-context+xml",
                 size = workspaceContent.length.toLong(),
                 content = workspaceContent

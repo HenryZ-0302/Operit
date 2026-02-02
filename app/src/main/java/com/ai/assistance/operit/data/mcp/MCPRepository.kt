@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.mcp.MCPManager
@@ -288,7 +289,7 @@ class MCPRepository(private val context: Context) {
             val metadata = _mcpServers.value.find { it.id == pluginId }
             if (metadata == null) {
                 AppLogger.e(TAG, "找不到服务器信息: $pluginId")
-                return@withContext InstallResult.Error("找不到对应的服务器信息")
+                return@withContext InstallResult.Error(context.getString(R.string.mcp_repository_server_not_found))
             }
 
             val result = installPluginInternal(metadata, progressCallback)
@@ -370,7 +371,7 @@ class MCPRepository(private val context: Context) {
                 result
             } catch (e: Exception) {
                 AppLogger.e(TAG, "从本地ZIP安装插件失败", e)
-                InstallResult.Error("安装时出错: ${e.message}")
+                InstallResult.Error(context.getString(R.string.mcp_repository_install_error, e.message ?: ""))
             } finally {
                 _isLoading.value = false
             }
@@ -432,7 +433,7 @@ class MCPRepository(private val context: Context) {
             val repoOwnerAndName = extractOwnerAndRepo(server.repoUrl)
             if (repoOwnerAndName == null) {
                 AppLogger.e(TAG, "无法从 URL 提取仓库信息: ${server.repoUrl}")
-                return InstallResult.Error("无效的 GitHub 仓库 URL")
+                return InstallResult.Error(context.getString(R.string.mcp_repository_invalid_github_url))
             }
 
             val (owner, repoName) = repoOwnerAndName
@@ -442,7 +443,7 @@ class MCPRepository(private val context: Context) {
             val zipFile = downloadRepositoryZip(owner, repoName, server.id, progressCallback)
 
             if (zipFile == null || !zipFile.exists()) {
-                return InstallResult.Error("下载仓库 ZIP 文件失败")
+                return InstallResult.Error(context.getString(R.string.mcp_repository_download_zip_failed))
             }
 
             progressCallback(InstallProgress.Extracting(0))
@@ -451,12 +452,12 @@ class MCPRepository(private val context: Context) {
 
             if (!extractSuccess) {
                 pluginDir.deleteRecursively()
-                return InstallResult.Error("解压仓库文件失败")
+                return InstallResult.Error(context.getString(R.string.mcp_repository_extract_repo_failed))
             }
 
             val extractedDirs = pluginDir.listFiles()?.filter { it.isDirectory } ?: emptyList()
             if (extractedDirs.isEmpty()) {
-                return InstallResult.Error("解压后没有找到仓库目录")
+                return InstallResult.Error(context.getString(R.string.mcp_repository_no_repo_dir))
             }
 
             val mainDir = extractedDirs.first()
@@ -467,7 +468,7 @@ class MCPRepository(private val context: Context) {
 
         } catch (e: Exception) {
             AppLogger.e(TAG, "安装插件失败", e)
-            return InstallResult.Error("安装插件时出错: ${e.message}")
+            return InstallResult.Error(context.getString(R.string.mcp_repository_plugin_install_error, e.message ?: ""))
         }
     }
 
@@ -506,7 +507,7 @@ class MCPRepository(private val context: Context) {
                         progressCallback(InstallProgress.Downloading(-1))
                     }
                 }
-            } ?: return InstallResult.Error("无法读取ZIP文件")
+            } ?: return InstallResult.Error(context.getString(R.string.mcp_repository_cannot_read_zip))
 
             progressCallback(InstallProgress.Extracting(0))
             val extractSuccess = extractZipFile(tempFile, pluginDir, progressCallback)
@@ -514,7 +515,7 @@ class MCPRepository(private val context: Context) {
 
             if (!extractSuccess) {
                 pluginDir.deleteRecursively()
-                return InstallResult.Error("解压本地ZIP文件失败")
+                return InstallResult.Error(context.getString(R.string.mcp_repository_extract_local_zip_failed))
             }
 
             val extractedDirs = pluginDir.listFiles()?.filter { it.isDirectory } ?: emptyList()
@@ -527,7 +528,7 @@ class MCPRepository(private val context: Context) {
 
         } catch (e: Exception) {
             AppLogger.e(TAG, "安装本地ZIP插件失败", e)
-            return InstallResult.Error("安装本地ZIP插件时出错: ${e.message}")
+            return InstallResult.Error(context.getString(R.string.mcp_repository_install_local_zip_error, e.message ?: ""))
         }
     }
 
@@ -983,16 +984,6 @@ class MCPRepository(private val context: Context) {
             }
         }
     }
-
-    /**
-     * 更新所有服务器的安装状态（已废弃，使用loadPluginsFromMCPLocalServer代替）
-     */
-    @Deprecated("使用loadPluginsFromMCPLocalServer代替")
-    private suspend fun updateInstalledStatus() {
-        // 该方法已被loadPluginsFromMCPLocalServer替代
-        loadPluginsFromMCPLocalServer()
-    }
-
     /**
      * 初始化仓库
      */

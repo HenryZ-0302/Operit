@@ -44,9 +44,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
+import com.ai.assistance.operit.R
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
@@ -341,7 +343,7 @@ private fun ProgressCard(
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Smartphone,
-                        contentDescription = "Phone Agent",
+                        contentDescription = stringResource(R.string.common_phone_agent),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
@@ -359,7 +361,7 @@ private fun ProgressCard(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "Phone Agent ${info.currentStep}/${info.totalSteps}",
+                                text = "${stringResource(R.string.common_phone_agent)} ${info.currentStep}/${info.totalSteps}",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -379,7 +381,7 @@ private fun ProgressCard(
                     IconButton(onClick = { onToggleTakeOver(!isPaused) }) {
                         Icon(
                             imageVector = if (isPaused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                            contentDescription = if (isPaused) "恢复代理" else "接管",
+                            contentDescription = if (isPaused) stringResource(R.string.common_resume_agent) else stringResource(R.string.common_take_over),
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -387,7 +389,7 @@ private fun ProgressCard(
                     IconButton(onClick = onCancel) {
                         Icon(
                             imageVector = Icons.Filled.Close,
-                            contentDescription = "取消",
+                            contentDescription = stringResource(R.string.common_cancel),
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -400,8 +402,8 @@ private fun ProgressCard(
 private fun statusIconFor(statusText: String): ImageVector {
     val text = statusText.lowercase()
     return when {
-        text.contains("执行") || text.contains("execut") -> Icons.Filled.PlayArrow
-        text.contains("完成") || text.contains("done") || text.contains("success") -> Icons.Filled.CheckCircle
+        text.contains("execut") -> Icons.Filled.PlayArrow
+        text.contains("done") || text.contains("success") -> Icons.Filled.CheckCircle
         else -> Icons.Filled.Info
     }
 }

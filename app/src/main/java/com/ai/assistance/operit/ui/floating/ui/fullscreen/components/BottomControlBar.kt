@@ -65,12 +65,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.ExperimentalComposeUiApi
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.floating.FloatContext
 import com.ai.assistance.operit.ui.floating.FloatingMode
 import kotlin.math.abs
@@ -180,7 +182,7 @@ fun BottomControlBar(
                     // 屏幕内容
                     GlassyChip(
                         selected = attachScreenContent,
-                        text = "屏幕内容",
+                        text = stringResource(R.string.floating_screen_content),
                         icon = Icons.Default.Check,
                         showIcon = attachScreenContent,
                         onClick = { onAttachScreenContentChange(!attachScreenContent) }
@@ -191,7 +193,7 @@ fun BottomControlBar(
                     // 通知
                     GlassyChip(
                         selected = attachNotifications,
-                        text = "通知",
+                        text = stringResource(R.string.floating_notification),
                         icon = Icons.Default.Check,
                         showIcon = attachNotifications,
                         onClick = { onAttachNotificationsChange(!attachNotifications) }
@@ -202,7 +204,7 @@ fun BottomControlBar(
                     // 位置
                     GlassyChip(
                         selected = attachLocation,
-                        text = "位置",
+                        text = stringResource(R.string.floating_position),
                         icon = Icons.Default.Check,
                         showIcon = attachLocation,
                         onClick = { onAttachLocationChange(!attachLocation) }
@@ -213,7 +215,7 @@ fun BottomControlBar(
                     // 圈选识别
                     GlassyChip(
                         selected = isScreenOcrSelected,
-                        text = if (hasOcrSelection) "已圈选" else "圈选识别",
+                        text = if (hasOcrSelection) stringResource(R.string.floating_ocr_selected) else stringResource(R.string.floating_ocr_select),
                         icon = if (isScreenOcrSelected) Icons.Default.Check else Icons.Default.Crop,
                         showIcon = true,
                         onClick = {
@@ -311,7 +313,7 @@ fun BottomControlBar(
                             placeholder = {
                                 if (!isHoldToSpeakMode) {
                                     Text(
-                                        text = "输入或者长按语音",
+                                        text = stringResource(R.string.floating_input_or_hold_voice),
                                         color = Color.Gray,
                                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                                     )
@@ -328,7 +330,7 @@ fun BottomControlBar(
                                 IconButton(onClick = onToggleWaveMode) {
                                     Icon(
                                         imageVector = Icons.Default.Phone,
-                                        contentDescription = "语音通话",
+                                        contentDescription = stringResource(R.string.floating_voice_call),
                                         tint = if (isWaveActive) MaterialTheme.colorScheme.primary else Color.Gray,
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -347,7 +349,7 @@ fun BottomControlBar(
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Send,
-                                            contentDescription = "发送",
+                                            contentDescription = stringResource(R.string.floating_send),
                                             tint = if (canSend) {
                                                 MaterialTheme.colorScheme.primary
                                             } else {
@@ -491,7 +493,7 @@ fun BottomControlBar(
                                 }
                             } else {
                                 Text(
-                                    text = if (isCancelRegion) "松手取消" else "松手结束",
+                                    text = if (isCancelRegion) stringResource(R.string.floating_release_to_cancel) else stringResource(R.string.floating_release_to_finish),
                                     color = if (isCancelRegion) Color.White else Color.Black,
                                     style = MaterialTheme.typography.bodySmall,
                                     modifier = Modifier.align(Alignment.Center)
@@ -521,7 +523,7 @@ private fun BackButton(
     ) {
         Icon(
             imageVector = Icons.Default.KeyboardArrowDown,
-            contentDescription = "返回窗口模式",
+            contentDescription = stringResource(R.string.floating_back_to_window),
             tint = Color.White,
             modifier = Modifier.size(28.dp)
         )
@@ -542,7 +544,7 @@ private fun MinimizeToVoiceBallButton(
     ) {
         Icon(
             imageVector = Icons.Default.Chat,
-            contentDescription = "缩小成语音球",
+            contentDescription = stringResource(R.string.floating_shrink_to_ball),
             tint = Color.White,
             modifier = Modifier.size(24.dp)
         )
@@ -575,7 +577,7 @@ private fun MicrophoneButtonWithHints(
             visible = showDragHints,
             icon = Icons.Default.Edit,
             iconColor = MaterialTheme.colorScheme.primary,
-            description = "编辑",
+            description = stringResource(R.string.floating_edit),
             isLeft = true,
             modifier = Modifier
                 .align(Alignment.CenterStart)
@@ -587,7 +589,7 @@ private fun MicrophoneButtonWithHints(
             visible = showDragHints,
             icon = Icons.Default.Delete,
             iconColor = MaterialTheme.colorScheme.error,
-            description = "取消",
+            description = stringResource(R.string.floating_cancel),
             isLeft = false,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
@@ -804,7 +806,7 @@ private fun MicrophoneButton(
             isRecording && isDraggingToCancel.value -> {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "取消录音",
+                    contentDescription = stringResource(R.string.floating_cancel_recording),
                     tint = Color.White,
                     modifier = Modifier.size(40.dp)
                 )
@@ -812,7 +814,7 @@ private fun MicrophoneButton(
             isRecording && isDraggingToEdit.value -> {
                 Icon(
                     imageVector = Icons.Default.Edit,
-                    contentDescription = "编辑录音",
+                    contentDescription = stringResource(R.string.floating_edit_recording),
                     tint = Color.White,
                     modifier = Modifier.size(40.dp)
                 )
@@ -820,7 +822,7 @@ private fun MicrophoneButton(
             else -> {
                 Icon(
                     imageVector = Icons.Default.Mic,
-                    contentDescription = "按住说话",
+                    contentDescription = stringResource(R.string.floating_hold_to_speak),
                     tint = Color.White,
                     modifier = Modifier.size(40.dp)
                 )

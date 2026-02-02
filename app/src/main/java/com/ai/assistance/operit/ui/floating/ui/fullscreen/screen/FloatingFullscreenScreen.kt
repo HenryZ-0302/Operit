@@ -247,7 +247,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
             }) {
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "返回窗口模式",
+                    contentDescription = stringResource(R.string.floating_back_to_window),
                     tint = Color.White,
                     modifier = Modifier.size(24.dp)
                 )
@@ -257,7 +257,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
             IconButton(onClick = { floatContext.onModeChange(FloatingMode.VOICE_BALL) }) {
                 Icon(
                     imageVector = Icons.Default.Chat,
-                    contentDescription = "缩小成语音球",
+                    contentDescription = stringResource(R.string.floating_shrink_to_ball),
                     tint = Color.White,
                     modifier = Modifier.size(22.dp)
                 )
@@ -272,7 +272,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "关闭悬浮窗",
+                    contentDescription = stringResource(R.string.floating_close_floating_window),
                     tint = Color.White,
                     modifier = Modifier.size(28.dp)
                 )

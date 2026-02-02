@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.util.stream
 
+import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 
 /**
@@ -150,15 +152,22 @@ class StreamGroupBuilder<TAG> {
     /** 使用嵌套构建器添加子组 */
     fun <CHILD_TAG> child(init: StreamGroupBuilder<CHILD_TAG>.() -> Unit): StreamGroupBuilder<TAG> {
         val childBuilder = StreamGroupBuilder<CHILD_TAG>().apply(init)
-        val childGroup = childBuilder.build()
+        val childGroup = childBuilder.build(null)
         children.add(childGroup)
         return this
     }
 
-    /** 根据配置构建StreamGroup */
-    fun build(): StreamGroup<TAG> {
-        requireNotNull(tag) { "标签必须设置" }
-        requireNotNull(stream) { "数据流必须设置" }
+    /**
+     * 根据配置构建StreamGroup
+     * @param context 应用上下文（用于本地化错误消息）
+     */
+    fun build(context: Context? = null): StreamGroup<TAG> {
+        requireNotNull(tag) {
+            context?.getString(R.string.stream_group_tag_must_be_set) ?: "标签必须设置"
+        }
+        requireNotNull(stream) {
+            context?.getString(R.string.stream_group_stream_must_be_set) ?: "数据流必须设置"
+        }
 
         return StreamGroup(
                 tag = tag!!,
@@ -171,7 +180,7 @@ class StreamGroupBuilder<TAG> {
 
 /** 创建StreamGroup的便捷扩展函数 */
 fun <TAG> streamGroup(init: StreamGroupBuilder<TAG>.() -> Unit): StreamGroup<TAG> {
-    return StreamGroupBuilder<TAG>().apply(init).build()
+    return StreamGroupBuilder<TAG>().apply(init).build(null)
 }
 
 /** 创建嵌套结构的StreamGroup的便捷扩展函数 */
@@ -185,7 +194,7 @@ fun <TAG> Stream<String>.asNestedGroup(
     processor?.let { builder.processor(it) }
     init?.let { builder.apply(it) }
 
-    return builder.build()
+    return builder.build(null)
 }
 
 /** 将Pair<TAG, Stream<String>>转换为StreamGroup的扩展函数 */

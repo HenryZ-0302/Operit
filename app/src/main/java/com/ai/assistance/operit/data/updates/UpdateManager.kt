@@ -143,7 +143,7 @@ class UpdateManager private constructor(private val context: Context) {
             _updateStatus.postValue(result)
         } catch (e: Exception) {
             AppLogger.e(TAG, "Update check failed", e)
-            _updateStatus.postValue(UpdateStatus.Error("更新检查失败: ${e.message}"))
+            _updateStatus.postValue(UpdateStatus.Error(context.getString(R.string.update_check_failed, e.message)))
         }
     }
 
@@ -268,7 +268,7 @@ class UpdateManager private constructor(private val context: Context) {
 
                     finalStatus
                 } else {
-                    val finalStatus = patchUpdate ?: UpdateStatus.Error("无法获取更新信息。")
+                    val finalStatus = patchUpdate ?: UpdateStatus.Error(context.getString(R.string.update_cannot_fetch_info))
                     if (finalStatus is UpdateStatus.PatchAvailable && betaEnabled && isOnUnmeteredNetwork()) {
                         val prefs = UserPreferencesManager.getInstance(context)
                         val last = runCatching { prefs.getLastAutoPatchPreparedVersion() }.getOrNull() ?: ""
@@ -293,7 +293,7 @@ class UpdateManager private constructor(private val context: Context) {
                 }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "Error checking for updates", e)
-                return@withContext UpdateStatus.Error("更新检查失败: ${e.message}")
+                return@withContext UpdateStatus.Error(context.getString(R.string.update_check_failed, e.message))
             }
         }
     }

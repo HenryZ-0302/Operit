@@ -12,9 +12,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import android.net.Uri
+import android.content.Context
+import com.ai.assistance.operit.R
 
 /** ViewModel for MCP 服务器管理，包括安装、卸载等功能 */
-class MCPViewModel(private val repository: MCPRepository) : ViewModel() {
+class MCPViewModel(
+    private val repository: MCPRepository,
+    private val context: Context
+) : ViewModel() {
 
     // 当前安装进度
     private val _installProgress = MutableStateFlow<InstallProgress?>(null)
@@ -85,7 +90,7 @@ class MCPViewModel(private val repository: MCPRepository) : ViewModel() {
             _installResult.value = null
             
             if (selectedZipUri == null) {
-                _installResult.value = InstallResult.Error("未选择ZIP文件")
+                _installResult.value = InstallResult.Error(context.getString(R.string.mcp_error_no_zip_selected))
                 _installProgress.value = InstallProgress.Finished
                 return@launch
             }
@@ -132,7 +137,7 @@ class MCPViewModel(private val repository: MCPRepository) : ViewModel() {
                     if (success) {
                         InstallResult.Success("")
                     } else {
-                        InstallResult.Error("卸载失败")
+                        InstallResult.Error(context.getString(R.string.mcp_uninstall_failed))
                     }
 
             _installProgress.value = InstallProgress.Finished
@@ -215,11 +220,14 @@ class MCPViewModel(private val repository: MCPRepository) : ViewModel() {
     }
 
     /** ViewModel Factory */
-    class Factory(private val repository: MCPRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val repository: MCPRepository,
+        private val context: Context
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(MCPViewModel::class.java)) {
-                return MCPViewModel(repository) as T
+                return MCPViewModel(repository, context) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

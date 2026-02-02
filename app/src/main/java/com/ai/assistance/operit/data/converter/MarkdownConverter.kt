@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.data.converter
 
+import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
 import java.time.LocalDateTime
@@ -11,7 +13,7 @@ import java.util.UUID
  * Markdown 格式转换器
  * 支持多种 Markdown 对话格式
  */
-class MarkdownConverter : ChatFormatConverter {
+class MarkdownConverter(private val context: Context) : ChatFormatConverter {
     
     private val dateFormatters = listOf(
         DateTimeFormatter.ISO_LOCAL_DATE_TIME,
@@ -27,7 +29,7 @@ class MarkdownConverter : ChatFormatConverter {
             val conversations = splitConversations(content)
             conversations.mapNotNull { parseConversation(it) }
         } catch (e: Exception) {
-            throw ConversionException("解析 Markdown 格式失败: ${e.message}", e)
+            throw ConversionException(context.getString(R.string.markdown_parse_failed, e.message ?: ""), e)
         }
     }
     
@@ -198,7 +200,7 @@ class MarkdownConverter : ChatFormatConverter {
             messages = messages,
             createdAt = createdAt,
             updatedAt = LocalDateTime.now(),
-            group = "从 Markdown 导入"
+            group = context.getString(R.string.markdown_import_from)
         )
     }
     
@@ -240,16 +242,21 @@ class MarkdownConverter : ChatFormatConverter {
      */
     private fun parseRole(roleText: String): String? {
         val lower = roleText.lowercase().trim()
-        
+
         // 严格前缀匹配或完全匹配
         // 去除特殊符号（如 emoji）后再判断
         val cleanText = lower.replace(Regex("[^a-z0-9\u4e00-\u9fa5]"), "")
-        
+
+        val userText = context.getString(R.string.message_role_user)
+        val assistantText = context.getString(R.string.role_assistant)
+        val systemText = context.getString(R.string.role_system)
+        val modelText = context.getString(R.string.role_model)
+
         return when {
-            cleanText == "user" || cleanText == "用户" -> "user"
-            cleanText == "assistant" || cleanText == "ai" || cleanText == "助手" -> "ai"
-            cleanText == "system" || cleanText == "系统" -> "user" // 系统消息映射为用户
-            cleanText == "model" || cleanText == "模型" -> "ai"
+            cleanText == "user" || cleanText == userText -> "user"
+            cleanText == "assistant" || cleanText == "ai" || cleanText == assistantText -> "ai"
+            cleanText == "system" || cleanText == systemText -> "user" // 系统消息映射为用户
+            cleanText == "model" || cleanText == modelText -> "ai"
             else -> null // 无法识别时不默认为 user，而是返回 null
         }
     }

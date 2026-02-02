@@ -18,9 +18,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.mcp.InstallProgress
 import com.ai.assistance.operit.data.mcp.InstallResult
 
@@ -39,8 +41,8 @@ fun MCPInstallProgressDialog(
         installProgress: InstallProgress?,
         onDismissRequest: () -> Unit,
         result: InstallResult? = null,
-        serverName: String = "MCP 服务器",
-        operationType: String = "安装"
+        serverName: String = "",
+        operationType: String = ""
 ) {
     if (installProgress == null && result == null) return
 
@@ -69,21 +71,21 @@ fun MCPInstallProgressDialog(
                         result != null -> {
                             when (result) {
                                 is InstallResult.Success -> {
-                                    if (operationType == "卸载") {
+                                    if (operationType == stringResource(R.string.mcp_uninstall)) {
                                         Text(
-                                                "卸载成功！",
+                                                stringResource(R.string.mcp_uninstall_success),
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 color = MaterialTheme.colorScheme.primary
                                         )
                                     } else {
                                         Text(
-                                                "${operationType}成功！",
+                                                stringResource(R.string.mcp_operation_success, operationType),
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 color = MaterialTheme.colorScheme.primary
                                         )
                                         if (result.pluginPath.isNotEmpty()) {
                                             Spacer(modifier = Modifier.height(8.dp))
-                                            Text("插件已${operationType}到：", style = MaterialTheme.typography.bodyMedium)
+                                            Text(stringResource(R.string.mcp_plugin_installed_to, operationType), style = MaterialTheme.typography.bodyMedium)
                                             Text(
                                                     text = result.pluginPath,
                                                     style = MaterialTheme.typography.bodySmall,
@@ -95,7 +97,7 @@ fun MCPInstallProgressDialog(
                                 }
                                 is InstallResult.Error -> {
                                     Text(
-                                            "${operationType}失败",
+                                            stringResource(R.string.mcp_operation_failed, operationType),
                                             style = MaterialTheme.typography.bodyLarge,
                                             color = MaterialTheme.colorScheme.error
                                     )
@@ -122,14 +124,14 @@ fun MCPInstallProgressDialog(
                                         )
                                     }
                                     Text(
-                                            "准备${operationType}...",
+                                            stringResource(R.string.mcp_preparing_operation, operationType),
                                             style = MaterialTheme.typography.bodyMedium,
                                             textAlign = TextAlign.Center
                                     )
                                 }
                                 is InstallProgress.Downloading -> {
                                     Text(
-                                            "正在下载插件...",
+                                            stringResource(R.string.mcp_downloading_plugin),
                                             style = MaterialTheme.typography.bodyLarge,
                                             textAlign = TextAlign.Center
                                     )
@@ -149,7 +151,7 @@ fun MCPInstallProgressDialog(
                                     }
                                 }
                                 is InstallProgress.Extracting -> {
-                                    val actionText = if (operationType == "卸载") "正在删除文件..." else "正在解压文件..."
+                                    val actionText = if (operationType == stringResource(R.string.mcp_uninstall)) stringResource(R.string.mcp_deleting_files) else stringResource(R.string.mcp_extracting_files)
                                     Text(
                                             actionText,
                                             style = MaterialTheme.typography.bodyLarge,
@@ -172,7 +174,7 @@ fun MCPInstallProgressDialog(
                                 }
                                 InstallProgress.Finished -> {
                                     Text(
-                                            "${operationType}完成！",
+                                            stringResource(R.string.mcp_operation_complete, operationType),
                                             style = MaterialTheme.typography.bodyLarge,
                                             color = MaterialTheme.colorScheme.primary,
                                             textAlign = TextAlign.Center
@@ -181,7 +183,7 @@ fun MCPInstallProgressDialog(
                                 null -> {
                                     // This case should not happen, but we need to handle it for exhaustiveness
                                     Text(
-                                            "准备中...",
+                                            stringResource(R.string.mcp_preparing),
                                             style = MaterialTheme.typography.bodyLarge,
                                             textAlign = TextAlign.Center
                                     )
@@ -193,12 +195,12 @@ fun MCPInstallProgressDialog(
             },
             confirmButton = {
                 if (result != null || installProgress is InstallProgress.Finished) {
-                    Button(onClick = onDismissRequest) { Text("确定") }
+                    Button(onClick = onDismissRequest) { Text(stringResource(R.string.mcp_ok)) }
                 }
             },
             dismissButton = {
                 if (installProgress !is InstallProgress.Finished && result == null) {
-                    TextButton(onClick = onDismissRequest, enabled = false) { Text("${operationType}中...") }
+                    TextButton(onClick = onDismissRequest, enabled = false) { Text(stringResource(R.string.mcp_operation_in_progress, operationType)) }
                 }
             }
     )

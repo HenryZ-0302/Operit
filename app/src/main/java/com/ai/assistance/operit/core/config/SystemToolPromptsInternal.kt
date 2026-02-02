@@ -653,6 +653,31 @@ object SystemToolPromptsInternal {
                                         required = false
                                     )
                                 )
+                        ),
+                        ToolPrompt(
+                            name = "get_chat_messages",
+                            description = "Get messages from a specific chat (cross-chat history read).",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "target chat id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "order",
+                                        type = "string",
+                                        description = "optional, asc/desc (default desc)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "limit",
+                                        type = "integer",
+                                        description = "optional, number of messages to return (default 20, max 200)",
+                                        required = false
+                                    )
+                                )
                         )
                     )
             ),
@@ -1866,7 +1891,34 @@ object SystemToolPromptsInternal {
                         ToolPrompt(
                             name = "start_chat_service",
                             description = "启动对话服务（悬浮窗）。",
-                            parametersStructured = listOf()
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "initial_mode",
+                                        type = "string",
+                                        description = "可选，初始悬浮模式：WINDOW, BALL, VOICE_BALL, FULLSCREEN, RESULT_DISPLAY, SCREEN_OCR",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "auto_enter_voice_chat",
+                                        type = "boolean",
+                                        description = "可选，为 true 时在打开 FULLSCREEN 时自动进入语音模式",
+                                        required = false,
+                                        default = "false"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "wake_launched",
+                                        type = "boolean",
+                                        description = "可选，若由唤醒词启动则为 true，以便 UI 调整行为",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "可选，超时后自动关闭悬浮窗（毫秒）。<=0 表示不自动关闭。",
+                                        required = false
+                                    )
+                                )
                         ),
                         ToolPrompt(
                             name = "stop_chat_service",
@@ -1919,6 +1971,31 @@ object SystemToolPromptsInternal {
                                         name = "chat_id",
                                         type = "string",
                                         description = "可选，目标对话 ID",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "get_chat_messages",
+                            description = "读取指定对话的消息内容（跨话题读取）。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "目标对话 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "order",
+                                        type = "string",
+                                        description = "可选，asc/desc（默认 desc）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "limit",
+                                        type = "integer",
+                                        description = "可选，返回消息条数（默认20，最大200）",
                                         required = false
                                     )
                                 )

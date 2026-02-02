@@ -2,6 +2,7 @@ package com.ai.assistance.operit.core.tools.system.action
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.R
 import android.view.accessibility.AccessibilityEvent
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import kotlinx.coroutines.Dispatchers
@@ -48,14 +49,13 @@ class StandardActionListener(private val context: Context) : ActionListener {
                 AppLogger.d(TAG, "开始标准权限级别的UI操作监听")
 
                 // 标准权限只能监听应用内的基本事件
-                // 这里可以监听应用的触摸事件、按键事件等
                 startBasicEventMonitoring()
 
-                return@withContext ActionListener.ListeningResult.success("标准UI操作监听已启动")
+                return@withContext ActionListener.ListeningResult.success(context.getString(R.string.standard_action_listener_started))
             } catch (e: Exception) {
                 AppLogger.e(TAG, "启动标准UI操作监听失败", e)
                 isListening.set(false)
-                return@withContext ActionListener.ListeningResult.failure("启动失败: ${e.message}")
+                return@withContext ActionListener.ListeningResult.failure(context.getString(R.string.standard_action_listener_start_failed, e.message ?: ""))
             }
         }
 
@@ -133,4 +133,4 @@ class StandardActionListener(private val context: Context) : ActionListener {
             actionCallback?.invoke(event)
         }
     }
-} 
+}

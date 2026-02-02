@@ -34,6 +34,7 @@ import android.net.Uri
 import android.provider.Settings
 import java.io.File
 import com.ai.assistance.operit.services.notification.OperitNotificationStore
+import com.ai.assistance.operit.R
 
 /** 提供系统级操作的工具类 包括系统设置修改、应用安装和卸载等 这些操作需要用户明确授权 */
 open class StandardSystemOperationTools(private val context: Context) {
@@ -42,7 +43,7 @@ open class StandardSystemOperationTools(private val context: Context) {
         private const val TAG = "SystemOperationTools"
 
         private const val AI_REPLY_CHANNEL_ID = "AI_REPLY_CHANNEL"
-        private const val AI_REPLY_CHANNEL_NAME = "对话完成提醒"
+        private const val AI_REPLY_CHANNEL_NAME = "Chat Completion Reminder"
     }
 
     open suspend fun toast(tool: AITool): ToolResult {
@@ -52,7 +53,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "必须提供 message 参数"
+                error = "Must provide message parameter"
             )
         }
 
@@ -66,20 +67,20 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "Toast失败: ${e.message}"
+                error = "Toast failed: ${e.message}"
             )
         }
     }
 
     open suspend fun sendNotification(tool: AITool): ToolResult {
-        val title = tool.parameters.find { it.name == "title" }?.value?.takeIf { it.isNotBlank() } ?: "通知"
+        val title = tool.parameters.find { it.name == "title" }?.value?.takeIf { it.isNotBlank() } ?: "Notification"
         val message = tool.parameters.find { it.name == "message" }?.value
         if (message.isNullOrBlank()) {
             return ToolResult(
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "必须提供 message 参数"
+                error = "Must provide message parameter"
             )
         }
 
@@ -137,14 +138,14 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "发送通知失败(缺少权限): ${e.message}"
+                error = "Failed to send notification (missing permission): ${e.message}"
             )
         } catch (e: Exception) {
             ToolResult(
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "发送通知失败: ${e.message}"
+                error = "Failed to send notification: ${e.message}"
             )
         }
     }
@@ -160,7 +161,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "必须提供setting和value参数"
+                error = "Must provide setting and value parameters"
             )
         }
 
@@ -170,7 +171,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "命名空间必须是以下之一: ${validNamespaces.joinToString(", ")}"
+                error = "Namespace must be one of: ${validNamespaces.joinToString(", ")}"
             )
         }
 
@@ -187,7 +188,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "没有修改系统设置的权限。已为您打开设置页面，请授予 WRITE_SETTINGS 权限后重试。"
+                    error = "No permission to modify system settings. Settings page opened for you, please grant WRITE_SETTINGS permission and retry."
                 )
             } catch (e: Exception) {
                 AppLogger.e(TAG, "打开设置页面失败", e)
@@ -195,7 +196,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "没有修改系统设置的权限，且无法打开设置页面: ${e.message}"
+                    error = "No permission to modify system settings and cannot open settings page: ${e.message}"
                 )
             }
         }
@@ -214,7 +215,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "修改系统设置时出现安全异常: ${e.message}. 这可能需要更高的权限."
+                error = "Security exception when modifying system settings: ${e.message}. This may require higher permissions."
             )
         } catch (e: Exception) {
             AppLogger.e(TAG, "修改系统设置时出错", e)
@@ -222,7 +223,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "修改系统设置时出错: ${e.message}"
+                error = "Error modifying system settings: ${e.message}"
             )
         }
     }
@@ -237,7 +238,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "必须提供setting参数"
+                error = "Must provide setting parameter"
             )
         }
 
@@ -247,7 +248,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "命名空间必须是以下之一: ${validNamespaces.joinToString(", ")}"
+                error = "Namespace must be one of: ${validNamespaces.joinToString(", ")}"
             )
         }
 
@@ -267,7 +268,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "获取设置失败: setting '$setting' 在 namespace '$namespace' 中未找到."
+                    error = "Failed to get setting: setting '$setting' not found in namespace '$namespace'."
                 )
             }
         } catch (e: SecurityException) {
@@ -276,7 +277,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "获取系统设置时出现安全异常: ${e.message}. 这可能需要更高的权限."
+                error = "Security exception when getting system settings: ${e.message}. This may require higher permissions."
             )
         } catch (e: Exception) {
             AppLogger.e(TAG, "获取系统设置时出错", e)
@@ -284,7 +285,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "获取系统设置时出错: ${e.message}"
+                error = "Error getting system settings: ${e.message}"
             )
         }
     }
@@ -298,7 +299,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "必须提供apk_path参数"
+                error = context.getString(R.string.sys_op_must_provide_apk_path)
             )
         }
 
@@ -308,7 +309,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "APK文件不存在: $apkPath"
+                error = "APK file does not exist: $apkPath"
             )
         }
 
@@ -324,7 +325,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 operationType = "install_request",
                 packageName = apkPath,
                 success = true,
-                details = "已发送安装请求，需要用户确认。"
+                details = context.getString(R.string.sys_op_install_request_sent)
             )
             ToolResult(toolName = tool.name, success = true, result = resultData, error = "")
         } catch (e: Exception) {
@@ -333,7 +334,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "请求安装应用时出错: ${e.message}"
+                error = "Error requesting app installation: ${e.message}"
             )
         }
     }
@@ -347,7 +348,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "必须提供package_name参数"
+                error = "Must provide package_name parameter"
             )
         }
 
@@ -358,7 +359,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "应用未安装: $packageName"
+                error = "App not installed: $packageName"
             )
         }
 
@@ -372,7 +373,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 operationType = "uninstall_request",
                 packageName = packageName,
                 success = true,
-                details = "已发送卸载请求，需要用户确认。"
+                details = context.getString(R.string.sys_op_uninstall_request_sent)
             )
             ToolResult(toolName = tool.name, success = true, result = resultData, error = "")
         } catch (e: Exception) {
@@ -381,7 +382,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "请求卸载应用时出错: ${e.message}"
+                error = "Error requesting app uninstallation: ${e.message}"
             )
         }
     }
@@ -428,7 +429,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "获取应用列表失败: ${e.message}"
+                    error = "Failed to get app list: ${e.message}"
             )
         }
     }
@@ -443,7 +444,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "必须提供package_name参数"
+                error = "Must provide package_name parameter"
             )
         }
 
@@ -460,7 +461,7 @@ open class StandardSystemOperationTools(private val context: Context) {
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(intent)
-                val details = if (activityName.isNotBlank()) "活动: $activityName" else ""
+                val details = if (activityName.isNotBlank()) "Activity: $activityName" else ""
                 val resultData = AppOperationData(
                     operationType = "start",
                     packageName = packageName,
@@ -473,7 +474,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "启动应用失败: 无法找到应用的启动Intent. 请检查包名或Activity名称."
+                    error = "Failed to start app: Cannot find app launch Intent. Please check package name or Activity name."
                 )
             }
         } catch (e: Exception) {
@@ -482,7 +483,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "启动应用时出错: ${e.message}"
+                error = "Error starting app: ${e.message}"
             )
         }
     }
@@ -496,7 +497,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "必须提供package_name参数"
+                error = "Must provide package_name parameter"
             )
         }
 
@@ -507,7 +508,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 operationType = "stop",
                 packageName = packageName,
                 success = true,
-                details = "已请求停止应用后台进程。"
+                details = context.getString(R.string.sys_op_stop_app_requested)
             )
             ToolResult(toolName = tool.name, success = true, result = resultData, error = "")
         } catch (e: SecurityException) {
@@ -516,7 +517,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "停止应用失败: ${e.message}. 需要 KILL_BACKGROUND_PROCESSES 权限."
+                error = "Failed to stop app: ${e.message}. Requires KILL_BACKGROUND_PROCESSES permission."
             )
         } catch (e: Exception) {
             AppLogger.e(TAG, "停止应用时出错", e)
@@ -524,7 +525,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "停止应用时出错: ${e.message}"
+                error = "Error stopping app: ${e.message}"
             )
         }
     }
@@ -560,7 +561,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "无法读取通知。本应用需要被授权为通知监听服务 (Notification Listener Service)。"
+                error = "Cannot read notifications. This app needs to be authorized as a Notification Listener Service."
             )
         }
 
@@ -580,7 +581,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                 toolName = tool.name,
                 success = false,
                 result = StringResultData(""),
-                error = "获取通知时出错: ${e.message}"
+                error = "Error getting notifications: ${e.message}"
             )
         }
     }
@@ -610,7 +611,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "未授予位置权限，请在应用设置中开启位置权限"
+                        error = context.getString(R.string.sys_op_location_permission_not_granted)
                 )
             }
 
@@ -770,7 +771,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "无法获取位置信息，请确保已启用位置服务"
+                        error = context.getString(R.string.sys_op_cannot_get_location)
                 )
             }
 
@@ -813,7 +814,7 @@ open class StandardSystemOperationTools(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "获取位置信息时出错: ${e.message}"
+                    error = "Error getting location information: ${e.message}"
             )
         }
     }

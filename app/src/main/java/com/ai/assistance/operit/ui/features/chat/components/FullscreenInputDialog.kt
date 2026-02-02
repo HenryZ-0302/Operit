@@ -51,9 +51,9 @@ fun FullscreenInputDialog(
                             contentDescription = stringResource(R.string.workflow_close)
                         )
                     }
-                    
+
                     Text(
-                        text = "全屏输入", 
+                        text = stringResource(R.string.chat_fullscreen_input),
                         style = MaterialTheme.typography.titleMedium
                     )
 

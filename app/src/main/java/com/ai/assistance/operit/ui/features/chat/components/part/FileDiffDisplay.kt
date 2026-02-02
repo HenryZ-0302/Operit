@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -22,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ai.assistance.operit.R
 
 // Define a local data class for UI purposes to avoid dependency on the core tools package.
 data class FileDiff(
@@ -70,7 +72,7 @@ fun FileDiffDisplay(diff: FileDiff) {
             // 子目录箭头图标，表示这是上个工具的执行结果
             Icon(
                     imageVector = Icons.Default.SubdirectoryArrowRight,
-                    contentDescription = "工具执行结果",
+                    contentDescription = stringResource(R.string.filediff_tool_result),
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     modifier = Modifier.size(18.dp)
             )

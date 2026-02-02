@@ -17,7 +17,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.mcp.MCPLocalServer
+import androidx.compose.ui.res.stringResource
 
 /**
  * Content component for the MCP server details diaAppLogger.
@@ -61,7 +63,7 @@ fun MCPServerDetailsContent(
             } else {
                 // Fallback to basic description
                 Text(
-                    text = server.description.takeIf { it.isNotBlank() } ?: "暂无描述",
+                    text = server.description.takeIf { it.isNotBlank() } ?: stringResource(R.string.mcp_no_description),
                     style = MaterialTheme.typography.bodyMedium.copy(fontSize = mdFontSize),
                     modifier = Modifier.padding(vertical = 4.dp)
                 )

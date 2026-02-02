@@ -2,6 +2,7 @@ package com.ai.assistance.operit.data.repository
 
 import android.content.Context
 import android.os.Environment
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.workflow.NodeExecutionState
 import com.ai.assistance.operit.core.workflow.WorkflowExecutor
@@ -198,15 +199,15 @@ class WorkflowRepository(private val context: Context) {
         try {
             val workflowResult = getWorkflowById(id)
             val workflow = workflowResult.getOrNull()
-            
+
             if (workflow == null) {
-                return@withContext Result.failure(Exception("工作流不存在: $id"))
+                return@withContext Result.failure(Exception(context.getString(R.string.workflow_not_exist, id)))
             }
-            
+
             if (!workflow.enabled) {
-                return@withContext Result.failure(Exception("工作流已禁用: ${workflow.name}"))
+                return@withContext Result.failure(Exception(context.getString(R.string.workflow_disabled, workflow.name)))
             }
-            
+
             AppLogger.d(TAG, "Triggering workflow: ${workflow.name} (${workflow.id})")
             if (triggerNodeId != null) {
                 AppLogger.d(TAG, "With specific trigger node: $triggerNodeId")
@@ -227,7 +228,7 @@ class WorkflowRepository(private val context: Context) {
             updateExecutionStatistics(id, executionStatus, result.executionTime)
             
             if (result.success) {
-                Result.success("工作流 '${workflow.name}' 执行成功")
+                Result.success(context.getString(R.string.workflow_execute_success, workflow.name))
             } else {
                 Result.failure(Exception(result.message))
             }
@@ -254,15 +255,15 @@ class WorkflowRepository(private val context: Context) {
         try {
             val workflowResult = getWorkflowById(id)
             val workflow = workflowResult.getOrNull()
-            
+
             if (workflow == null) {
-                return@withContext Result.failure(Exception("工作流不存在: $id"))
+                return@withContext Result.failure(Exception(context.getString(R.string.workflow_not_exist, id)))
             }
-            
+
             if (!workflow.enabled) {
-                return@withContext Result.failure(Exception("工作流已禁用: ${workflow.name}"))
+                return@withContext Result.failure(Exception(context.getString(R.string.workflow_disabled, workflow.name)))
             }
-            
+
             AppLogger.d(TAG, "Triggering workflow with callback: ${workflow.name} (${workflow.id})")
             if (triggerNodeId != null) {
                 AppLogger.d(TAG, "With specific trigger node: $triggerNodeId")
@@ -280,7 +281,7 @@ class WorkflowRepository(private val context: Context) {
             updateExecutionStatistics(id, executionStatus, result.executionTime)
             
             if (result.success) {
-                Result.success("工作流 '${workflow.name}' 执行成功")
+                Result.success(context.getString(R.string.workflow_execute_success, workflow.name))
             } else {
                 Result.failure(Exception(result.message))
             }

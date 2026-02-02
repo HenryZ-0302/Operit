@@ -3,6 +3,7 @@ package com.ai.assistance.operit.core.subpack
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import java.io.File
 import java.io.InputStream
@@ -238,7 +239,7 @@ private constructor(
 
         // 重新打包
         if (!apkReverseEngineer.repackageApk(extractedDir!!, unsignedOutputFile)) {
-            throw RuntimeException("APK重新打包失败")
+            throw RuntimeException(context.getString(R.string.apk_editor_repack_failed))
         }
 
         return unsignedOutputFile
@@ -257,7 +258,7 @@ private constructor(
 
         // 确保文件确实存在
         if (!unsignedApk.exists() || unsignedApk.length() == 0L) {
-            throw RuntimeException("未签名的APK文件不存在或为空: ${unsignedApk.absolutePath}")
+            throw RuntimeException(context.getString(R.string.apk_editor_unsigned_apk_not_found, unsignedApk.absolutePath))
         }
 
         // 检查签名信息
@@ -266,7 +267,7 @@ private constructor(
                         keyAlias == null ||
                         keyPassword == null
         ) {
-            throw IllegalStateException("签名信息不完整，请先调用withSignature方法设置签名信息")
+            throw IllegalStateException(context.getString(R.string.apk_editor_signature_incomplete))
         }
 
         // 确定签名后的输出文件
@@ -288,10 +289,10 @@ private constructor(
                 keyPassword!!,
                 signedOutputFile
         )
-        
+
         if (!signResult.first) {
-            val errorMessage = signResult.second ?: "未知签名错误"
-            throw RuntimeException("APK签名失败: $errorMessage")
+            val errorMessage = signResult.second ?: context.getString(R.string.apk_editor_unknown_sign_error)
+            throw RuntimeException(context.getString(R.string.apk_editor_sign_failed, errorMessage))
         }
 
         // 如果指定了输出路径且签名成功，将签名后的文件移动到指定位置
@@ -325,14 +326,14 @@ private constructor(
     /** 应用所有修改 */
     private fun applyChanges() {
         if (extractedDir == null) {
-            throw IllegalStateException("请先调用extract方法解压APK")
+            throw IllegalStateException(context.getString(R.string.apk_editor_extract_first))
         }
 
         // 修改包名
         if (newPackageName != null) {
             AppLogger.d(TAG, "修改包名为: $newPackageName")
             if (!apkReverseEngineer.modifyPackageName(extractedDir!!, newPackageName!!)) {
-                throw RuntimeException("修改包名失败")
+                throw RuntimeException(context.getString(R.string.apk_editor_change_package_failed))
             }
         }
 
@@ -340,7 +341,7 @@ private constructor(
         if (newAppName != null) {
             AppLogger.d(TAG, "修改应用名称为: $newAppName")
             if (!apkReverseEngineer.modifyAppName(extractedDir!!, newAppName!!)) {
-                throw RuntimeException("修改应用名称失败")
+                throw RuntimeException(context.getString(R.string.apk_editor_change_app_name_failed))
             }
         }
 
@@ -348,7 +349,7 @@ private constructor(
         if (newVersionName != null && newVersionCode != null) {
             AppLogger.d(TAG, "修改版本为: $newVersionName ($newVersionCode)")
             if (!apkReverseEngineer.modifyVersion(extractedDir!!, newVersionName!!, newVersionCode!!)) {
-                throw RuntimeException("修改版本失败")
+                throw RuntimeException(context.getString(R.string.apk_editor_change_version_failed))
             }
         }
 
@@ -356,7 +357,7 @@ private constructor(
         if (newIconBitmap != null) {
             AppLogger.d(TAG, "更换应用图标")
             if (!apkReverseEngineer.changeAppIcon(extractedDir!!, newIconBitmap!!)) {
-                throw RuntimeException("更换应用图标失败")
+                throw RuntimeException(context.getString(R.string.apk_editor_change_icon_failed))
             }
         }
     }

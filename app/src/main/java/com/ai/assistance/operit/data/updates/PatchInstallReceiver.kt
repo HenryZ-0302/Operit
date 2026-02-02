@@ -18,13 +18,6 @@ class PatchInstallReceiver : BroadcastReceiver() {
             return
         }
 
-        val overlay = PatchInstallConfirmOverlay.getInstance(context)
-        if (overlay.hasOverlayPermission()) {
-            overlay.show(apkFile = file, version = version) {
-                PatchUpdateInstaller.installApk(context, file)
-            }
-        } else {
-            PatchUpdateInstaller.installApk(context, file)
-        }
+        PatchUpdateInstaller.installApk(context, file)
     }
 }

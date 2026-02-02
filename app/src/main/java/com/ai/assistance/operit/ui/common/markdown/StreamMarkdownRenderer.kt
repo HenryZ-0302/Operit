@@ -121,7 +121,7 @@ class DefaultXmlRenderer : XmlContentRenderer {
                                     .padding(8.dp)
             ) {
                 Text(
-                        text = "XML内容",
+                        text = stringResource(R.string.xml_content),
                         style = MaterialTheme.typography.titleSmall,
                         color = textColor,
                         fontWeight = FontWeight.Bold

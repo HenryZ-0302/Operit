@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.ui.features.settings.screens
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.*
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.BorderStroke
@@ -50,6 +51,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+@SuppressLint("LocalContextGetResourceValueCall")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ModelConfigScreen(
@@ -302,7 +304,7 @@ fun ModelConfigScreen(
                                                         modelConfigManager = configManager,
                                                         context = context
                                                     )
-                                                testResult = service.testConnection()
+                                                testResult = service.testConnection(context)
                                             } ?: run {
                                                 testResult =
                                                     Result.failure(
@@ -688,6 +690,12 @@ private fun ContextSummarySettingsSection(
     var contextExpanded by rememberSaveable { mutableStateOf(false) }
     var summaryExpanded by rememberSaveable { mutableStateOf(false) }
 
+    val errorValidContextLength = stringResource(id = R.string.model_config_error_valid_context_length)
+    val errorValidMaxContextLength = stringResource(id = R.string.model_config_error_valid_max_context_length)
+    val errorSaveFailed = stringResource(id = R.string.model_config_error_save_failed)
+    val errorSummaryThresholdRange = stringResource(id = R.string.model_config_error_summary_threshold_range)
+    val errorValidMessageCount = stringResource(id = R.string.model_config_error_valid_message_count)
+
     LaunchedEffect(config.id, config.contextLength) {
         contextLengthInput = formatFloatValue(config.contextLength)
     }
@@ -718,11 +726,11 @@ private fun ContextSummarySettingsSection(
 
                 when {
                     contextValue == null || contextValue <= 0f -> {
-                        contextError = "请输入有效的上下文长度"
+                        contextError = errorValidContextLength
                     }
 
                     maxValue == null || maxValue <= 0f -> {
-                        contextError = "请输入有效的最大上下文长度"
+                        contextError = errorValidMaxContextLength
                     }
 
                     else -> {
@@ -744,7 +752,7 @@ private fun ContextSummarySettingsSection(
                             )
                             contextError = null
                         } catch (e: Exception) {
-                            contextError = e.message ?: "保存失败"
+                            contextError = e.message ?: errorSaveFailed
                         }
                     }
                 }
@@ -777,7 +785,7 @@ private fun ContextSummarySettingsSection(
                             )
                             summaryError = null
                         } catch (e: Exception) {
-                            summaryError = e.message ?: "保存失败"
+                            summaryError = e.message ?: errorSaveFailed
                         }
                     }
                     return@collectLatest
@@ -788,11 +796,11 @@ private fun ContextSummarySettingsSection(
 
                 when {
                     threshold == null || threshold <= 0f || threshold >= 1f -> {
-                        summaryError = "请输入0-1之间的总结触发阈值"
+                        summaryError = errorSummaryThresholdRange
                     }
 
                     enableSummaryByMessageCount && (messageCount == null || messageCount <= 0) -> {
-                        summaryError = "请输入有效的消息数量阈值"
+                        summaryError = errorValidMessageCount
                     }
 
                     else -> {
@@ -821,7 +829,7 @@ private fun ContextSummarySettingsSection(
                             )
                             summaryError = null
                         } catch (e: Exception) {
-                            summaryError = e.message ?: "保存失败"
+                            summaryError = e.message ?: errorSaveFailed
                         }
                     }
                 }
@@ -864,7 +872,7 @@ private fun ContextSummarySettingsSection(
                     Spacer(modifier = Modifier.weight(1f))
                     Icon(
                         imageVector = if (contextExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (contextExpanded) "收起" else "展开",
+                        contentDescription = if (contextExpanded) stringResource(id = R.string.model_config_collapse) else stringResource(id = R.string.model_config_expand),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -951,7 +959,7 @@ private fun ContextSummarySettingsSection(
                     Spacer(modifier = Modifier.weight(1f))
                     Icon(
                         imageVector = if (summaryExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (summaryExpanded) "收起" else "展开",
+                        contentDescription = if (summaryExpanded) stringResource(id = R.string.model_config_collapse) else stringResource(id = R.string.model_config_expand),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -1000,7 +1008,7 @@ private fun ContextSummarySettingsSection(
                                 summaryMessageCountThresholdInput = it
                                 summaryError = null
                             },
-                            unitText = "条",
+                            unitText = stringResource(id = R.string.model_config_unit_items),
                             enabled = enableSummary && enableSummaryByMessageCount,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Number,

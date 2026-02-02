@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.data.exporter
 
+import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
 import java.time.format.DateTimeFormatter
@@ -14,7 +16,7 @@ object TextExporter {
     /**
      * 导出单个对话为纯文本
      */
-    fun exportSingle(chatHistory: ChatHistory): String {
+    fun exportSingle(context: Context, chatHistory: ChatHistory): String {
         val sb = StringBuilder()
         
         // 标题
@@ -24,12 +26,22 @@ object TextExporter {
         sb.appendLine()
         
         // 元信息
-        sb.appendLine("创建时间: ${chatHistory.createdAt.format(dateFormatter)}")
-        sb.appendLine("更新时间: ${chatHistory.updatedAt.format(dateFormatter)}")
+        sb.appendLine(
+            context.getString(
+                R.string.export_created_time,
+                chatHistory.createdAt.format(dateFormatter)
+            )
+        )
+        sb.appendLine(
+            context.getString(
+                R.string.export_updated_time,
+                chatHistory.updatedAt.format(dateFormatter)
+            )
+        )
         if (chatHistory.group != null) {
-            sb.appendLine("分组: ${chatHistory.group}")
+            sb.appendLine(context.getString(R.string.export_group, chatHistory.group))
         }
-        sb.appendLine("消息数: ${chatHistory.messages.size}")
+        sb.appendLine(context.getString(R.string.export_message_count, chatHistory.messages.size))
         sb.appendLine()
         sb.appendLine("-".repeat(60))
         sb.appendLine()
@@ -39,7 +51,7 @@ object TextExporter {
             if (index > 0) {
                 sb.appendLine()
             }
-            appendMessage(sb, message)
+            appendMessage(context, sb, message)
         }
         
         sb.appendLine()
@@ -51,17 +63,27 @@ object TextExporter {
     /**
      * 导出多个对话为纯文本
      */
-    fun exportMultiple(chatHistories: List<ChatHistory>): String {
+    fun exportMultiple(context: Context, chatHistories: List<ChatHistory>): String {
         val sb = StringBuilder()
         
         // 总览信息
         sb.appendLine("=" .repeat(60))
-        sb.appendLine("聊天记录导出".center(60))
+        sb.appendLine(context.getString(R.string.export_chat_history).center(60))
         sb.appendLine("=".repeat(60))
         sb.appendLine()
-        sb.appendLine("导出时间: ${java.time.LocalDateTime.now().format(dateFormatter)}")
-        sb.appendLine("对话数量: ${chatHistories.size}")
-        sb.appendLine("总消息数: ${chatHistories.sumOf { it.messages.size }}")
+        sb.appendLine(
+            context.getString(
+                R.string.export_export_time,
+                java.time.LocalDateTime.now().format(dateFormatter)
+            )
+        )
+        sb.appendLine(context.getString(R.string.export_conversation_count, chatHistories.size))
+        sb.appendLine(
+            context.getString(
+                R.string.export_total_message_count,
+                chatHistories.sumOf { it.messages.size }
+            )
+        )
         sb.appendLine()
         sb.appendLine("=".repeat(60))
         sb.appendLine()
@@ -73,12 +95,12 @@ object TextExporter {
                 sb.appendLine()
             }
             
-            sb.append(exportSingle(chatHistory))
+            sb.append(exportSingle(context, chatHistory))
         }
         
         sb.appendLine()
         sb.appendLine()
-        sb.appendLine("导出完成 - Operit AI Assistant")
+        sb.appendLine(context.getString(R.string.export_completed))
         
         return sb.toString()
     }
@@ -86,14 +108,19 @@ object TextExporter {
     /**
      * 添加单条消息
      */
-    private fun appendMessage(sb: StringBuilder, message: ChatMessage) {
+    private fun appendMessage(context: Context, sb: StringBuilder, message: ChatMessage) {
         val roleIcon = if (message.sender == "user") "👤" else "🤖"
-        val roleText = if (message.sender == "user") "用户" else "助手"
+        val roleText =
+            if (message.sender == "user") {
+                context.getString(R.string.export_user)
+            } else {
+                context.getString(R.string.export_assistant)
+            }
         
         sb.appendLine("[$roleIcon $roleText]")
         
         if (message.modelName.isNotEmpty() && message.modelName != "markdown" && message.modelName != "unknown") {
-            sb.appendLine("(模型: ${message.modelName})")
+            sb.appendLine(context.getString(R.string.export_model, message.modelName))
         }
         
         sb.appendLine()

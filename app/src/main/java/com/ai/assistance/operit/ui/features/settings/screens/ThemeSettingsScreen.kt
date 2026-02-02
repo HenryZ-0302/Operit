@@ -95,7 +95,7 @@ fun ThemeSettingsScreen() {
     val activeCharacterCard = characterCardManager.activeCharacterCardFlow.collectAsState(
         initial = CharacterCard(
             id = "default_character",
-            name = "默认角色卡",
+            name = stringResource(R.string.theme_default_character_card),
             description = "",
             characterSetting = "",
             otherContent = "",
@@ -190,6 +190,8 @@ fun ThemeSettingsScreen() {
     // Collect chat style setting
     val chatStyle = preferencesManager.chatStyle.collectAsState(initial = UserPreferencesManager.CHAT_STYLE_CURSOR).value
 
+    val bubbleShowAvatar = preferencesManager.bubbleShowAvatar.collectAsState(initial = true).value
+
     // Collect new display settings
     val showThinkingProcess = preferencesManager.showThinkingProcess.collectAsState(initial = true).value
     val showStatusTags = preferencesManager.showStatusTags.collectAsState(initial = true).value
@@ -283,6 +285,8 @@ fun ThemeSettingsScreen() {
 
     // Chat style state
     var chatStyleInput by remember { mutableStateOf(chatStyle) }
+
+    var bubbleShowAvatarInput by remember { mutableStateOf(bubbleShowAvatar) }
 
     // New display settings state
     var showThinkingProcessInput by remember { mutableStateOf(showThinkingProcess) }
@@ -661,6 +665,7 @@ fun ThemeSettingsScreen() {
             useBackgroundBlur,
             backgroundBlurRadius,
             chatStyle,
+            bubbleShowAvatar,
             showThinkingProcess,
             showStatusTags,
             showInputProcessingStatus,
@@ -707,6 +712,7 @@ fun ThemeSettingsScreen() {
         useBackgroundBlurInput = useBackgroundBlur
         backgroundBlurRadiusInput = backgroundBlurRadius
         chatStyleInput = chatStyle
+        bubbleShowAvatarInput = bubbleShowAvatar
         showThinkingProcessInput = showThinkingProcess
         showStatusTagsInput = showStatusTags
         showInputProcessingStatusInput = showInputProcessingStatus
@@ -819,7 +825,7 @@ fun ThemeSettingsScreen() {
                 aspectRatioX = 1
                 aspectRatioY = 1
                 cropMenuCropButtonTitle = context.getString(R.string.theme_crop_done)
-                activityTitle = "裁剪头像"
+                activityTitle = context.getString(R.string.crop_avatar)
                 // Basic theming, can be expanded later
                 toolbarColor = Color.Gray.toArgb()
                 toolbarTitleColor = Color.White.toArgb()
@@ -878,14 +884,14 @@ fun ThemeSettingsScreen() {
                     if (aiAvatarUri != null) {
                         Image(
                             painter = rememberAsyncImagePainter(Uri.parse(aiAvatarUri)),
-                            contentDescription = "角色头像",
+                            contentDescription = stringResource(R.string.character_avatar),
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
                     } else {
                         Icon(
                             Icons.Default.Person,
-                            contentDescription = "默认头像",
+                            contentDescription = stringResource(R.string.character_card_default_avatar),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(24.dp)
                         )
@@ -908,7 +914,7 @@ fun ThemeSettingsScreen() {
 
                 Icon(
                     Icons.Default.Link,
-                    contentDescription = "绑定",
+                    contentDescription = stringResource(R.string.bind),
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(20.dp)
                 )
@@ -1662,6 +1668,37 @@ fun ThemeSettingsScreen() {
                         }
                     }
                 }
+
+                if (chatStyleInput == UserPreferencesManager.CHAT_STYLE_BUBBLE) {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(id = R.string.chat_style_bubble_show_avatar),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = stringResource(id = R.string.chat_style_bubble_show_avatar_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = bubbleShowAvatarInput,
+                            onCheckedChange = {
+                                bubbleShowAvatarInput = it
+                                saveThemeSettingsWithCharacterCard {
+                                    preferencesManager.saveThemeSettings(bubbleShowAvatar = it)
+                                }
+                            }
+                        )
+                    }
+                }
             }
         }
 
@@ -1755,7 +1792,7 @@ fun ThemeSettingsScreen() {
 
         // ======= SECTION: FONT SETTINGS =======
         ThemeSectionTitle(
-            title = "字体设置",
+            title = stringResource(R.string.theme_font_settings),
             icon = Icons.Default.TextFields
         )
 
@@ -1850,11 +1887,11 @@ fun ThemeSettingsScreen() {
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 listOf(
-                                    UserPreferencesManager.SYSTEM_FONT_DEFAULT to "默认字体",
-                                    UserPreferencesManager.SYSTEM_FONT_SERIF to "衬线体 (Serif)",
-                                    UserPreferencesManager.SYSTEM_FONT_SANS_SERIF to "无衬线体 (Sans Serif)",
-                                    UserPreferencesManager.SYSTEM_FONT_MONOSPACE to "等宽字体 (Monospace)",
-                                    UserPreferencesManager.SYSTEM_FONT_CURSIVE to "手写体 (Cursive)"
+                                    UserPreferencesManager.SYSTEM_FONT_DEFAULT to stringResource(R.string.theme_font_default),
+                                    UserPreferencesManager.SYSTEM_FONT_SERIF to stringResource(R.string.theme_font_serif),
+                                    UserPreferencesManager.SYSTEM_FONT_SANS_SERIF to stringResource(R.string.theme_font_sans_serif),
+                                    UserPreferencesManager.SYSTEM_FONT_MONOSPACE to stringResource(R.string.theme_font_monospace),
+                                    UserPreferencesManager.SYSTEM_FONT_CURSIVE to stringResource(R.string.theme_font_cursive)
                                 ).forEach { (fontName, displayName) ->
                                     Row(
                                         modifier = Modifier
@@ -2022,7 +2059,7 @@ fun ThemeSettingsScreen() {
 
                 // 添加说明文字
                 Text(
-                    text = "说明：左侧的用户头像是角色卡专属设置，为空时将使用右侧的全局用户头像。全局用户头像在所有角色卡中共享使用。",
+                    text = stringResource(R.string.theme_avatar_description),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
@@ -2295,7 +2332,7 @@ fun ThemeSettingsScreen() {
                                                 rememberAsyncImagePainter(
                                                         Uri.parse(backgroundImageUriInput)
                                                 ),
-                                        contentDescription = "背景图片预览",
+                                        contentDescription = stringResource(R.string.theme_background_preview),
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                 )
@@ -2318,7 +2355,7 @@ fun ThemeSettingsScreen() {
                                 ) {
                                     Icon(
                                             imageVector = Icons.Default.Crop,
-                                            contentDescription = "重新裁剪",
+                                            contentDescription = stringResource(R.string.theme_recrop),
                                             tint = MaterialTheme.colorScheme.primary
                                     )
                                 }
@@ -2741,6 +2778,7 @@ fun ThemeSettingsScreen() {
                         useBackgroundBlurInput = false
                         backgroundBlurRadiusInput = 10f
                         chatStyleInput = UserPreferencesManager.CHAT_STYLE_CURSOR
+                        bubbleShowAvatarInput = true
                         showThinkingProcessInput = true
                         showStatusTagsInput = true
                         showInputProcessingStatusInput = true

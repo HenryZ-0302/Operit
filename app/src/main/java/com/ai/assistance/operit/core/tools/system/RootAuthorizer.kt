@@ -2,6 +2,7 @@ package com.ai.assistance.operit.core.tools.system
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.system.shell.RootShellExecutor
 import com.ai.assistance.operit.core.tools.system.ShellIdentity
 import com.topjohnwu.superuser.Shell
@@ -321,15 +322,16 @@ object RootAuthorizer {
     /**
      * 执行Root命令
      * @param command 要执行的命令
+     * @param context 应用上下文
      * @return 命令执行结果
      */
-    suspend fun executeRootCommand(command: String): Pair<Boolean, String> {
+    suspend fun executeRootCommand(command: String, context: Context): Pair<Boolean, String> {
         try {
             AppLogger.d(TAG, "执行Root命令: $command")
 
             // 检查Root执行器是否可用
             if (rootShellExecutor == null || !_hasRootAccess.value) {
-                return Pair(false, "Root执行器未初始化或无Root权限")
+                return Pair(false, context.getString(R.string.root_authorizer_not_initialized))
             }
 
             // 使用Root执行器执行命令（以ROOT身份）
@@ -337,7 +339,7 @@ object RootAuthorizer {
             return Pair(result.success, if (result.success) result.stdout else result.stderr)
         } catch (e: Exception) {
             AppLogger.e(TAG, "执行Root命令时出错", e)
-            return Pair(false, "执行出错: ${e.message}")
+            return Pair(false, context.getString(R.string.root_authorizer_execute_error, e.message ?: ""))
         }
     }
 

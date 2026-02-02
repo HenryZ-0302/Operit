@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -15,8 +16,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.ai.assistance.operit.R
@@ -37,6 +40,8 @@ fun ErrorDialog(
 ) {
     // 创建滚动状态
     val scrollState = rememberScrollState()
+    val clipboardManager = LocalClipboardManager.current
+    val displayMessage = errorMessage.ifBlank { stringResource(R.string.unknown_error) }
 
     AlertDialog(
             onDismissRequest = onDismiss,
@@ -48,14 +53,23 @@ fun ErrorDialog(
                                         .heightIn(max = 350.dp) // 恢复适当的最大高度
                                         .verticalScroll(scrollState) // 添加垂直滚动功能
                 ) {
-                    Text(
-                            text = errorMessage.ifBlank { stringResource(R.string.unknown_error) },
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = FontFamily.Monospace // 保留等宽字体，便于阅读堆栈信息
-                            ),
-                            textAlign = TextAlign.Start,
-                            color = MaterialTheme.colorScheme.onSurface
-                    )
+                    SelectionContainer {
+                        Text(
+                                text = displayMessage,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontFamily = FontFamily.Monospace // 保留等宽字体，便于阅读堆栈信息
+                                ),
+                                textAlign = TextAlign.Start,
+                                color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { clipboardManager.setText(AnnotatedString(displayMessage)) }
+                ) {
+                    Text(stringResource(android.R.string.copy))
                 }
             },
             confirmButton = {

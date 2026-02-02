@@ -43,7 +43,8 @@ fun ConfigurationScreen(
         isUsingDefault: Boolean = false,
         onNavigateToChat: () -> Unit = {},
         onNavigateToTokenConfig: () -> Unit = {},
-        onNavigateToSettings: () -> Unit = {}
+        onNavigateToSettings: () -> Unit = {},
+        onNavigateToModelConfig: () -> Unit = {}
 ) {
         // 获取Context
         val context = LocalContext.current
@@ -231,7 +232,7 @@ fun ConfigurationScreen(
                         ) {
                                 // 右侧 - 自定义
                                 TextButton(
-                                        onClick = { onNavigateToSettings() }
+                                        onClick = { onNavigateToModelConfig() }
                                 ) {
                                         Text(
                                                 stringResource(id = R.string.config_custom),

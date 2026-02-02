@@ -2,6 +2,8 @@ package com.ai.assistance.operit.data.converter
 
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.R
+import com.ai.assistance.operit.core.application.OperitApplication
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import java.time.LocalDateTime
@@ -25,10 +27,10 @@ class GenericJsonConverter : ChatFormatConverter {
             when (element) {
                 is JsonArray -> parseArrayFormat(element)
                 is JsonObject -> parseObjectFormat(element)
-                else -> throw ConversionException("不支持的 JSON 格式")
+                else -> throw ConversionException(OperitApplication.instance.getString(R.string.generic_json_unsupported_format))
             }
         } catch (e: Exception) {
-            throw ConversionException("解析通用 JSON 格式失败: ${e.message}", e)
+            throw ConversionException(OperitApplication.instance.getString(R.string.generic_json_parse_failed, e.message ?: ""), e)
         }
     }
     
@@ -65,7 +67,7 @@ class GenericJsonConverter : ChatFormatConverter {
                         messages = messages,
                         createdAt = LocalDateTime.now(),
                         updatedAt = LocalDateTime.now(),
-                        group = "从通用格式导入"
+                        group = OperitApplication.instance.getString(R.string.generic_json_import_from)
                     ))
                 } else {
                     emptyList()
@@ -153,7 +155,7 @@ class GenericJsonConverter : ChatFormatConverter {
                 messages = messages,
                 createdAt = LocalDateTime.now(),
                 updatedAt = LocalDateTime.now(),
-                group = "从通用格式导入"
+                group = OperitApplication.instance.getString(R.string.generic_json_import_from)
             )
         } catch (e: Exception) {
             return null

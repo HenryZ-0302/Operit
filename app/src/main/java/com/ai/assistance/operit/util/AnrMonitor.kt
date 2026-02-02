@@ -5,6 +5,7 @@ import android.os.Debug
 import android.os.Handler
 import android.os.Looper
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.R
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import kotlinx.coroutines.CoroutineScope
@@ -200,7 +201,7 @@ class AnrMonitor(
         
         if (timeSinceLastResponse > WARNING_THRESHOLD_MS) {
             // 主线程可能被阻塞
-            val message = "主线程未响应: ${timeSinceLastResponse}ms"
+            val message = context.getString(R.string.anr_main_thread_not_responding, timeSinceLastResponse)
             
             if (timeSinceLastResponse > ANR_THRESHOLD_MS) {
                 // 已超过ANR阈值
@@ -281,21 +282,21 @@ class AnrMonitor(
             val sbDump = StringBuilder()
             val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
             
-            sbDump.append("=== 线程转储 (${dateFormat.format(Date())}) ===\n")
+            sbDump.append(context.getString(R.string.anr_thread_dump_header, dateFormat.format(Date())))
             
             // 首先获取主线程信息
             val mainThreadStack: String = mainThread?.let {
                 try {
                     val stackTraceElements = it.stackTrace
                     val stackStr = stackTraceElements.joinToString("\n") { element -> "    at $element" }
-                    "Main Thread '${it.name}' (状态: ${it.state}):\n$stackStr"
+                    context.getString(R.string.anr_main_thread_with_state, it.name, it.state, stackStr)
                 } catch (e: Exception) {
-                    "无法获取主线程堆栈: ${e.message}"
+                    context.getString(R.string.anr_cannot_get_main_thread_stack, e.message ?: "")
                 }
-            } ?: "无法获取主线程引用"
+            } ?: context.getString(R.string.anr_cannot_get_main_thread_ref)
             
             // 添加主线程信息
-            sbDump.append("【主线程】\n$mainThreadStack\n\n")
+            sbDump.append(context.getString(R.string.anr_main_thread_section, mainThreadStack))
             
             // 添加主线程分析
             val analysis = analyzeStackTrace(mainThreadStack)
@@ -308,12 +309,12 @@ class AnrMonitor(
             
             // 更新上次ANR分析结果
             lastAnrAnalysis = analysis
-            
-            sbDump.append("【分析】\n$analysis\n\n")
-            
+
+            sbDump.append(context.getString(R.string.anr_analysis_section, analysis))
+
             // 获取并添加调用者信息
             if (callerInfo.isNotEmpty()) {
-                sbDump.append("【最近调用信息】\n")
+                sbDump.append(context.getString(R.string.anr_recent_call_info))
                 callerInfo.forEach { (_, info) -> sbDump.append("$info\n") }
                 sbDump.append("\n")
             }
@@ -362,12 +363,12 @@ class AnrMonitor(
         
         // 输出捕捉到的堆栈行
         if (lines.isNotEmpty()) {
-            analysis.append("【$targetPackage (${lines.size}次调用)】\n")
+            analysis.append(context.getString(R.string.anr_package_calls, targetPackage, lines.size))
             lines.forEach { line ->
                 analysis.append("$line\n")
             }
         } else {
-            analysis.append("未能提取到$targetPackage 包信息")
+            analysis.append(context.getString(R.string.anr_cannot_extract_package_info, targetPackage))
         }
         
         return analysis.toString()
@@ -387,31 +388,31 @@ class AnrMonitor(
             
             FileOutputStream(file).use { fos ->
                 OutputStreamWriter(fos).use { writer ->
-                    writer.write("===== ANR监控报告 =====\n")
-                    writer.write("时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n")
-                    writer.write("ANR次数: ${anrCount.get()}\n")
-                    writer.write("警告次数: ${warningCount.get()}\n")
-                    writer.write("最长阻塞时间: ${maxBlockDuration.get()}ms\n\n")
-                    
-                    writer.write("===== 系统信息 =====\n")
-                    writer.write("Android版本: ${android.os.Build.VERSION.SDK_INT}\n")
-                    writer.write("设备: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n")
-                    writer.write("内存情况: \n")
+                    writer.write(context.getString(R.string.anr_report_header))
+                    writer.write(context.getString(R.string.anr_report_time, SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())))
+                    writer.write(context.getString(R.string.anr_report_anr_count, anrCount.get()))
+                    writer.write(context.getString(R.string.anr_report_warning_count, warningCount.get()))
+                    writer.write(context.getString(R.string.anr_report_max_block, maxBlockDuration.get()))
+
+                    writer.write(context.getString(R.string.anr_system_info_header))
+                    writer.write(context.getString(R.string.anr_android_version, android.os.Build.VERSION.SDK_INT))
+                    writer.write(context.getString(R.string.anr_device, android.os.Build.MANUFACTURER, android.os.Build.MODEL))
+                    writer.write(context.getString(R.string.anr_memory_info))
                     val rt = Runtime.getRuntime()
-                    writer.write("  最大内存: ${rt.maxMemory() / 1024 / 1024}MB\n")
-                    writer.write("  已分配内存: ${rt.totalMemory() / 1024 / 1024}MB\n")
-                    writer.write("  空闲内存: ${rt.freeMemory() / 1024 / 1024}MB\n\n")
-                    
-                    writer.write("===== 堆栈跟踪历史 =====\n")
+                    writer.write(context.getString(R.string.anr_max_memory, rt.maxMemory() / 1024 / 1024))
+                    writer.write(context.getString(R.string.anr_allocated_memory, rt.totalMemory() / 1024 / 1024))
+                    writer.write(context.getString(R.string.anr_free_memory, rt.freeMemory() / 1024 / 1024))
+
+                    writer.write(context.getString(R.string.anr_stack_trace_history_header))
                     synchronized(stackTraces) {
                         stackTraces.forEach { (time, stack) ->
                             val timeStr = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date(time))
-                            writer.write("时间: $timeStr\n")
+                            writer.write(context.getString(R.string.anr_time, timeStr))
                             writer.write("$stack\n\n")
                         }
                     }
-                    
-                    writer.write("===== 调用者信息 =====\n")
+
+                    writer.write(context.getString(R.string.anr_caller_info_header))
                     callerInfo.forEach { (_, info) -> 
                         writer.write("$info\n") 
                     }

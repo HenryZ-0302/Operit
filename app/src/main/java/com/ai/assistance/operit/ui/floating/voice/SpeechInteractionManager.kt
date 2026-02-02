@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.Context
 import android.content.Context.INPUT_METHOD_SERVICE
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.R
 import android.view.View
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.runtime.getValue
@@ -118,7 +119,7 @@ class SpeechInteractionManager(
 
     fun startListening(onStartFailure: ((String) -> Unit)? = null) {
         if (!hasFocus) {
-            onStartFailure?.invoke("无法获取焦点")
+            onStartFailure?.invoke(context.getString(R.string.floating_cannot_get_focus))
             return
         }
 
@@ -132,7 +133,7 @@ class SpeechInteractionManager(
         accumulatedText = ""
         latestPartialText = ""
         wakePhraseSnapshot = SpeechPrerollStore.consumePendingWakePhrase()
-        onStateChange("正在聆听...")
+        onStateChange(context.getString(R.string.floating_listening))
 
         // 启动监听
         coroutineScope.launch {
@@ -171,14 +172,14 @@ class SpeechInteractionManager(
                 if (!ok) {
                     isRecording = false
                     isProcessingSpeech = false
-                    onStateChange("长按麦克风")
-                    onStartFailure?.invoke("启动录音失败")
+                    onStateChange(context.getString(R.string.floating_hold_microphone))
+                    onStartFailure?.invoke(context.getString(R.string.floating_start_recording_failed))
                 }
             } catch (e: Exception) {
                 isRecording = false
                 isProcessingSpeech = false
-                onStateChange("长按麦克风")
-                onStartFailure?.invoke(e.message ?: "启动录音失败")
+                onStateChange(context.getString(R.string.floating_hold_microphone))
+                onStartFailure?.invoke(e.message ?: context.getString(R.string.floating_start_recording_failed))
             }
         }
 
@@ -199,10 +200,10 @@ class SpeechInteractionManager(
                 speechService.cancelRecognition()
                 isProcessingSpeech = false
                 resetState()
-                onStateChange("长按麦克风")
+                onStateChange(context.getString(R.string.floating_hold_microphone))
             } else {
                 isProcessingSpeech = true
-                onStateChange("识别中...")
+                onStateChange(context.getString(R.string.floating_recognizing))
                 speechService.stopRecognition()
                 startFallbackTimeout()
             }
@@ -293,9 +294,9 @@ class SpeechInteractionManager(
         
         if (text.isNotBlank()) {
             onSpeechResult(text, true)
-            onStateChange("思考中...")
+            onStateChange(context.getString(R.string.floating_thinking_2))
         } else {
-            onStateChange("没有听清")
+            onStateChange(context.getString(R.string.floating_didnt_hear_clearly))
         }
 
         // 如果不是静默超时触发的，重置文本（静默超时可能意味着这一句结束，准备下一句，或者直接发送）

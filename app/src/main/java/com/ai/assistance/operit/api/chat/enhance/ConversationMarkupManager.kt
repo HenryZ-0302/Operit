@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.api.chat.enhance
 
+import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.data.model.ToolResult
 
@@ -72,12 +74,13 @@ class ConversationMarkupManager {
          * Formats a message indicating multiple tool invocations were found but only one will be
          * processed.
          *
+         * @param context The context to access string resources
          * @param toolName The name of the tool that will be processed
          * @return The formatted warning message
          */
-        fun createMultipleToolsWarning(toolName: String): String {
+        fun createMultipleToolsWarning(context: Context, toolName: String): String {
             return createWarningStatus(
-                    "检测到多个工具调用。系统将只执行第一个工具 `$toolName`，忽略其它工具调用。请避免在单个消息中同时调用多个工具。"
+                    context.getString(R.string.conversation_markup_multiple_tools_warning, toolName)
             )
         }
 
@@ -96,21 +99,22 @@ class ConversationMarkupManager {
         /**
          * Creates a warning when tools and task completion are reported together.
          *
+         * @param context The context to access string resources
          * @param toolNames The names of the tools involved
          * @return The formatted warning message
          */
-        fun createToolsSkippedByCompletionWarning(toolNames: List<String>): String {
+        fun createToolsSkippedByCompletionWarning(context: Context, toolNames: List<String>): String {
             val uniqueNames =
                     toolNames.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
             val toolDescription =
                     if (uniqueNames.isEmpty()) {
-                        "工具调用"
+                        context.getString(R.string.conversation_markup_tool_calls)
                     } else {
-                        "工具 `${uniqueNames.joinToString("`, `")}` 调用"
+                        context.getString(R.string.conversation_markup_tools_call, uniqueNames.joinToString("`, `"))
                     }
             val message =
-                    "警告：检测到任务完成标记的同时存在$toolDescription，系统仍会执行这些工具，但这是高风险组合。" +
-                            "请勿在发送任务完成状态的同时调用工具，以避免重复或矛盾的响应。"
+                    context.getString(R.string.conversation_markup_completion_with_tools_warning, toolDescription) +
+                            context.getString(R.string.conversation_markup_completion_with_tools_hint)
             return createWarningStatus(message)
         }
 

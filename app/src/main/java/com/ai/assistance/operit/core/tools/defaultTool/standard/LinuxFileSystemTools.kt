@@ -18,8 +18,12 @@ import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.util.FileUtils
 import com.ai.assistance.operit.core.tools.defaultTool.PathValidator
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Linux文件系统工具类，专门处理Linux环境下的文件操作
@@ -584,21 +588,6 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                     details = "Path parameter is required"
                 ),
                 error = "Path parameter is required"
-            )
-        }
-
-        if (base64Content.isBlank()) {
-            return ToolResult(
-                toolName = tool.name,
-                success = false,
-                result = FileOperationData(
-                    operation = "write_binary",
-                    env = "linux",
-                    path = path,
-                    successful = false,
-                    details = "base64Content parameter is required"
-                ),
-                error = "base64Content parameter is required"
             )
         }
 
@@ -1180,6 +1169,8 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
             )
         }
 
+        ToolProgressBus.update(tool.name, 0.02f, "Finding files...")
+
         val mergeNearbyMatches =
             { matchedLines: List<Int>, ctx: Int ->
                 if (matchedLines.isEmpty()) {
@@ -1228,6 +1219,7 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
 
                 val foundFiles = (findFilesResult.result as FindFilesResultData).files
                 if (foundFiles.isEmpty()) {
+                    ToolProgressBus.update(tool.name, 1f, "Search completed")
                     return@withContext ToolResult(
                         toolName = tool.name,
                         success = true,
@@ -1251,84 +1243,133 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                 }
 
                 val fileMatches = mutableListOf<GrepResultData.FileMatch>()
-                var totalMatches = 0
-                var filesSearched = 0
+                val fileMatchesLock = Mutex()
+                val totalMatches = AtomicInteger(0)
+                val filesSearched = AtomicInteger(0)
 
-                for (filePath in foundFiles) {
-                    if (totalMatches >= maxResults) break
-                    filesSearched++
+                val cores = runCatching { Runtime.getRuntime().availableProcessors() }.getOrNull() ?: 2
+                val concurrency = minOf(6, maxOf(1, cores))
+                val semaphore = Semaphore(concurrency)
+                val batchSize = concurrency * 4
 
-                    val readResult =
-                        readFileFull(
-                            AITool(
-                                name = "read_file_full",
-                                parameters =
-                                    listOf(
-                                        ToolParameter("path", filePath),
-                                        ToolParameter("text_only", "true")
-                                    )
+                suspend fun processOneFile(filePath: String) {
+                    semaphore.withPermit {
+                        if (totalMatches.get() >= maxResults) return@withPermit
+
+                        fun clip(raw: String, maxChars: Int): String {
+                            val t = raw.trim()
+                            if (t.length <= maxChars) return t
+                            return t.take(maxChars) + "...(truncated)"
+                        }
+
+                        val done = filesSearched.incrementAndGet()
+                        if (done == 1 || done % 5 == 0) {
+                            val fraction = done.toFloat() / foundFiles.size.toFloat()
+                            val p = 0.10f + 0.85f * fraction
+                            ToolProgressBus.update(tool.name, p.coerceIn(0f, 0.95f), "Searching files ($done/${foundFiles.size})")
+                        }
+
+                        val readResult =
+                            readFileFull(
+                                AITool(
+                                    name = "read_file_full",
+                                    parameters =
+                                        listOf(
+                                            ToolParameter("path", filePath),
+                                            ToolParameter("text_only", "true")
+                                        )
+                                )
                             )
-                        )
 
-                    if (!readResult.success) {
-                        continue
-                    }
+                        if (!readResult.success) return@withPermit
 
-                    val fileContent = (readResult.result as FileContentData).content
-                    val lines = fileContent.lines()
+                        val fileContent = (readResult.result as FileContentData).content
+                        val lines = fileContent.lines()
 
-                    val matches = if (fileContent.length > 10_000_000) {
-                        val limitedContent = fileContent.take(10_000_000)
-                        regex.findAll(limitedContent)
-                    } else {
-                        regex.findAll(fileContent)
-                    }
+                        val matches = if (fileContent.length > 10_000_000) {
+                            val limitedContent = fileContent.take(10_000_000)
+                            regex.findAll(limitedContent)
+                        } else {
+                            regex.findAll(fileContent)
+                        }
 
-                    val matchedLineNumbers =
-                        matches
-                            .map { match -> fileContent.substring(0, match.range.first).count { it == '\n' } }
-                            .distinct()
-                            .sorted()
-                            .toList()
+                        val matchedLineNumbers =
+                            matches
+                                .map { match -> fileContent.substring(0, match.range.first).count { it == '\n' } }
+                                .distinct()
+                                .sorted()
+                                .toList()
 
-                    if (matchedLineNumbers.isEmpty()) continue
+                        if (matchedLineNumbers.isEmpty()) return@withPermit
 
-                    val mergedMatches = mergeNearbyMatches(matchedLineNumbers, contextLines)
-                    val lineMatches = mutableListOf<GrepResultData.LineMatch>()
+                        val mergedMatches = mergeNearbyMatches(matchedLineNumbers, contextLines)
+                        val lineMatches = mutableListOf<GrepResultData.LineMatch>()
 
-                    for (matchGroup in mergedMatches) {
-                        if (totalMatches >= maxResults) break
-                        val firstLine = matchGroup.first()
-                        val lastLine = matchGroup.last()
-                        val startIdx = maxOf(0, firstLine - contextLines)
-                        val endIdx = minOf(lines.size - 1, lastLine + contextLines)
-                        val context = lines.subList(startIdx, endIdx + 1).joinToString("\n")
-                        val matchedLinesContent = matchGroup.map { lines[it].trim() }.joinToString(" | ")
+                        val remaining = maxResults - totalMatches.get()
+                        if (remaining <= 0) return@withPermit
 
-                        lineMatches.add(
-                            GrepResultData.LineMatch(
-                                lineNumber = firstLine + 1,
-                                lineContent =
-                                    if (matchGroup.size == 1) {
-                                        lines[firstLine].trim()
-                                    } else {
-                                        "${matchGroup.size} matches: ${matchedLinesContent.take(200)}..."
-                                    },
-                                matchContext = context
+                        for (matchGroup in mergedMatches) {
+                            if (lineMatches.size >= remaining) break
+                            val firstLine = matchGroup.first()
+                            val lastLine = matchGroup.last()
+                            val startIdx = maxOf(0, firstLine - contextLines)
+                            val endIdx = minOf(lines.size - 1, lastLine + contextLines)
+                            val context =
+                                lines.subList(startIdx, endIdx + 1)
+                                    .joinToString("\n") { clip(it, 400) }
+                                    .let { clip(it, 4000) }
+                            val matchedLinesContent =
+                                matchGroup
+                                    .asSequence()
+                                    .take(5)
+                                    .map { clip(lines[it], 80) }
+                                    .joinToString(" | ")
+
+                            lineMatches.add(
+                                GrepResultData.LineMatch(
+                                    lineNumber = firstLine + 1,
+                                    lineContent =
+                                        if (matchGroup.size == 1) {
+                                            clip(lines[firstLine], 300)
+                                        } else {
+                                            "${matchGroup.size} matches: ${matchedLinesContent.take(200)}..."
+                                        },
+                                    matchContext = context
+                                )
                             )
-                        )
-                        totalMatches++
-                    }
+                        }
 
-                    if (lineMatches.isNotEmpty()) {
-                        fileMatches.add(
-                            GrepResultData.FileMatch(
-                                filePath = filePath,
-                                lineMatches = lineMatches
+                        if (lineMatches.isEmpty()) return@withPermit
+
+                        totalMatches.addAndGet(lineMatches.size)
+                        fileMatchesLock.withLock {
+                            fileMatches.add(
+                                GrepResultData.FileMatch(
+                                    filePath = filePath,
+                                    lineMatches = lineMatches
+                                )
                             )
-                        )
+                        }
                     }
                 }
+
+                coroutineScope {
+                    var idx = 0
+                    while (idx < foundFiles.size && totalMatches.get() < maxResults) {
+                        val end = minOf(foundFiles.size, idx + batchSize)
+                        val batch = foundFiles.subList(idx, end)
+                        val jobs = batch.map { fp ->
+                            async(Dispatchers.IO) { processOneFile(fp) }
+                        }
+                        jobs.awaitAll()
+                        idx = end
+                    }
+                }
+
+                ToolProgressBus.update(tool.name, 1f, "Search completed")
+
+                val totalMatchesValue = totalMatches.get()
+                val filesSearchedValue = filesSearched.get()
 
                 ToolResult(
                     toolName = tool.name,
@@ -1338,14 +1379,15 @@ class LinuxFileSystemTools(context: Context) : StandardFileSystemTools(context) 
                             searchPath = path,
                             pattern = pattern,
                             matches = fileMatches.take(20),
-                            totalMatches = totalMatches,
-                            filesSearched = filesSearched,
+                            totalMatches = totalMatchesValue,
+                            filesSearched = filesSearchedValue,
                             env = "linux"
                         ),
                     error = ""
                 )
             } catch (e: Exception) {
                 AppLogger.e(TAG, "grep_code (linux): Error - ${e.message}", e)
+                ToolProgressBus.update(tool.name, 1f, "Search failed")
                 ToolResult(
                     toolName = tool.name,
                     success = false,

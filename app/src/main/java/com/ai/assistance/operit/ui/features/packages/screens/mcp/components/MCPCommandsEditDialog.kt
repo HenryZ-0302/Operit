@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.ai.assistance.operit.R
 
 /** MCP插件部署命令编辑对话框 允许用户在部署前编辑自动生成的部署命令 */
 @Composable
@@ -66,7 +68,7 @@ fun MCPCommandsEditDialog(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                            text = "编辑部署命令",
+                            text = stringResource(R.string.mcp_edit_deploy_commands),
                             style = MaterialTheme.typography.titleLarge,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -77,7 +79,7 @@ fun MCPCommandsEditDialog(
                     IconButton(onClick = onDismissRequest, modifier = Modifier.size(32.dp)) {
                         Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "关闭",
+                                contentDescription = stringResource(R.string.mcp_close),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -118,7 +120,7 @@ fun MCPCommandsEditDialog(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                                text = "每行一条命令，请确保命令正确性。启动命令会自动跳过执行。",
+                                text = stringResource(R.string.mcp_command_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -133,7 +135,7 @@ fun MCPCommandsEditDialog(
                         modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                            text = "部署命令",
+                            text = stringResource(R.string.mcp_deploy_commands),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.onSurface
                     )
@@ -146,14 +148,14 @@ fun MCPCommandsEditDialog(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                                text = "正在加载命令...",
+                                text = stringResource(R.string.mcp_loading_commands),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else if (commands.isNotEmpty()) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                                text = "(${commands.size}行)",
+                                text = stringResource(R.string.mcp_lines_suffix, commands.size),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -211,7 +213,7 @@ fun MCPCommandsEditDialog(
                                             contentColor = MaterialTheme.colorScheme.onSurface
                                     ),
                             modifier = Modifier.padding(end = 12.dp)
-                    ) { Text("取消") }
+                    ) { Text(stringResource(R.string.mcp_cancel)) }
 
                     Button(
                             onClick = {
@@ -235,7 +237,7 @@ fun MCPCommandsEditDialog(
                                 modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("确认并部署")
+                        Text(stringResource(R.string.mcp_confirm_and_deploy))
                     }
                 }
             }

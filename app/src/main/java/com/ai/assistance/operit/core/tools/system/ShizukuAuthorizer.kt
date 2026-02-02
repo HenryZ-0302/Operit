@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import rikka.shizuku.Shizuku
 
@@ -345,15 +346,16 @@ class ShizukuAuthorizer {
 
         /**
          * 获取Shizuku启动说明
+         * @param context Android上下文
          * @return Shizuku启动指南
          */
-        fun getShizukuStartupInstructions(): String {
-            return "要启动Shizuku服务：\n" +
-                    "1. 确保已安装Shizuku应用\n" +
-                    "2. 使用ADB命令启动Shizuku:\n" +
+        fun getShizukuStartupInstructions(context: Context): String {
+            return context.getString(R.string.shizuku_start_service_intro) +
+                    context.getString(R.string.shizuku_step1_ensure_installed) +
+                    context.getString(R.string.shizuku_step2_adb_command) +
                     "   adb shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh\n" +
-                    "或者\n\n" +
-                    "2. 打开Shizuku应用并按照屏幕上的说明操作"
+                    context.getString(R.string.shizuku_or) +
+                    context.getString(R.string.shizuku_step2_follow_instructions)
         }
     }
 }

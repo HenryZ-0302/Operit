@@ -3,6 +3,7 @@ package com.ai.assistance.operit.api.voice
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.util.AppLogger
 import java.io.File
@@ -104,7 +105,7 @@ class HttpVoiceProvider(
         }
         try {
             if (httpConfig.urlTemplate.isBlank()) {
-                throw TtsException("HTTP TTS 服务配置错误: URL 模板不能为空。")
+                throw TtsException(context.getString(R.string.http_tts_url_template_not_set))
             }
 
             val isPost = httpConfig.httpMethod.uppercase() == "POST"
@@ -116,15 +117,15 @@ class HttpVoiceProvider(
 
             if (!hasTextPlaceholder) {
                 val errorMessage = if (isPost) {
-                    "HTTP TTS 服务配置错误: POST 请求的正文模板必须包含 {text} 占位符。"
+                    context.getString(R.string.http_tts_post_body_missing_placeholder)
                 } else {
-                    "HTTP TTS 服务配置错误: GET 请求的 URL 模板必须包含 {text} 占位符。"
+                    context.getString(R.string.http_tts_get_url_missing_placeholder)
                 }
                 throw TtsException(errorMessage)
             }
 
             if (!httpConfig.urlTemplate.startsWith("http://") && !httpConfig.urlTemplate.startsWith("https://")) {
-                throw TtsException("HTTP TTS 服务配置错误: URL 模板必须以 http:// 或 https:// 开头。")
+                throw TtsException(context.getString(R.string.http_tts_url_invalid_scheme))
             }
 
             _isInitialized.value = true
@@ -133,7 +134,7 @@ class HttpVoiceProvider(
             _isInitialized.value = false
             // 重新抛出异常，以便UI层可以捕获并显示
             if (e is TtsException) throw e
-            else throw TtsException("初始化HTTP TTS服务时发生意外错误", cause = e)
+            else throw TtsException(context.getString(R.string.http_tts_init_failed), cause = e)
         }
 
         return@withContext _isInitialized.value
@@ -438,7 +439,7 @@ class HttpVoiceProvider(
         } catch (e: Exception) {
             AppLogger.e(TAG, "获取HTTP TTS音频失败", e)
             if (e is TtsException) throw e
-            throw TtsException("获取HTTP TTS音频失败", cause = e)
+            throw TtsException(context.getString(R.string.http_tts_fetch_failed), cause = e)
         }
     }
 

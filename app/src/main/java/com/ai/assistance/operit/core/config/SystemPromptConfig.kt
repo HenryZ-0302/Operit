@@ -105,7 +105,8 @@ PACKAGE SYSTEM
         hasAudioRecognition: Boolean,
         hasVideoRecognition: Boolean,
         chatModelHasDirectAudio: Boolean,
-        chatModelHasDirectVideo: Boolean
+        chatModelHasDirectVideo: Boolean,
+        safBookmarkNames: List<String>
     ): String {
         return SystemToolPrompts.generateToolsPromptEn(
             hasBackendImageRecognition = hasImageRecognition,
@@ -114,7 +115,8 @@ PACKAGE SYSTEM
             hasBackendAudioRecognition = hasAudioRecognition,
             hasBackendVideoRecognition = hasVideoRecognition,
             chatModelHasDirectAudio = chatModelHasDirectAudio,
-            chatModelHasDirectVideo = chatModelHasDirectVideo
+            chatModelHasDirectVideo = chatModelHasDirectVideo,
+            safBookmarkNames = safBookmarkNames
         )
     }
     
@@ -127,7 +129,8 @@ PACKAGE SYSTEM
         hasAudioRecognition: Boolean,
         hasVideoRecognition: Boolean,
         chatModelHasDirectAudio: Boolean,
-        chatModelHasDirectVideo: Boolean
+        chatModelHasDirectVideo: Boolean,
+        safBookmarkNames: List<String>
     ): String {
         return SystemToolPrompts.generateToolsPromptCn(
             hasBackendImageRecognition = hasImageRecognition,
@@ -136,7 +139,8 @@ PACKAGE SYSTEM
             hasBackendAudioRecognition = hasAudioRecognition,
             hasBackendVideoRecognition = hasVideoRecognition,
             chatModelHasDirectAudio = chatModelHasDirectAudio,
-            chatModelHasDirectVideo = chatModelHasDirectVideo
+            chatModelHasDirectVideo = chatModelHasDirectVideo,
+            safBookmarkNames = safBookmarkNames
         )
     }
     
@@ -281,6 +285,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
   fun getSystemPrompt(
           packageManager: PackageManager,
           workspacePath: String? = null,
+          workspaceEnv: String? = null,
+          safBookmarkNames: List<String> = emptyList(),
           useEnglish: Boolean = false,
           thinkingGuidance: Boolean = false,
           customSystemPromptTemplate: String = "",
@@ -365,7 +371,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     val thinkingGuidancePromptToUse = if (useEnglish) THINKING_GUIDANCE_PROMPT else THINKING_GUIDANCE_PROMPT_CN
 
     // Generate workspace guidelines
-    val workspaceGuidelines = getWorkspaceGuidelines(workspacePath, useEnglish)
+    val workspaceGuidelines = getWorkspaceGuidelines(workspacePath, workspaceEnv, useEnglish)
 
     // Build prompt with appropriate sections
     var prompt = templateToUse
@@ -391,7 +397,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                     hasAudioRecognition = hasAudioRecognition,
                     hasVideoRecognition = hasVideoRecognition,
                     chatModelHasDirectAudio = chatModelHasDirectAudio,
-                    chatModelHasDirectVideo = chatModelHasDirectVideo
+                    chatModelHasDirectVideo = chatModelHasDirectVideo,
+                    safBookmarkNames = safBookmarkNames
                 )
         } else {
             getAvailableToolsEn(
@@ -400,7 +407,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                 hasAudioRecognition = hasAudioRecognition,
                 hasVideoRecognition = hasVideoRecognition,
                 chatModelHasDirectAudio = chatModelHasDirectAudio,
-                chatModelHasDirectVideo = chatModelHasDirectVideo
+                chatModelHasDirectVideo = chatModelHasDirectVideo,
+                safBookmarkNames = safBookmarkNames
             )
         }
     )
@@ -413,7 +421,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                     hasAudioRecognition = hasAudioRecognition,
                     hasVideoRecognition = hasVideoRecognition,
                     chatModelHasDirectAudio = chatModelHasDirectAudio,
-                    chatModelHasDirectVideo = chatModelHasDirectVideo
+                    chatModelHasDirectVideo = chatModelHasDirectVideo,
+                    safBookmarkNames = safBookmarkNames
                 )
         } else {
             getAvailableToolsCn(
@@ -422,7 +431,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                 hasAudioRecognition = hasAudioRecognition,
                 hasVideoRecognition = hasVideoRecognition,
                 chatModelHasDirectAudio = chatModelHasDirectAudio,
-                chatModelHasDirectVideo = chatModelHasDirectVideo
+                chatModelHasDirectVideo = chatModelHasDirectVideo,
+                safBookmarkNames = safBookmarkNames
             )
         }
     )
@@ -474,29 +484,33 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
    * @param useEnglish Whether to use the English or Chinese version of the guidelines.
    * @return A string containing the appropriate workspace guidelines.
    */
-  private fun getWorkspaceGuidelines(workspacePath: String?, useEnglish: Boolean): String {
+  private fun getWorkspaceGuidelines(workspacePath: String?, workspaceEnv: String?, useEnglish: Boolean): String {
+      val envLabel = workspaceEnv?.trim().orEmpty()
+      val shouldShowEnv = envLabel.isNotBlank() && !envLabel.equals("android", ignoreCase = true)
       return if (workspacePath != null) {
           if (useEnglish) {
               """
               WEB WORKSPACE GUIDELINES:
-              - Your working directory, `$workspacePath`, is automatically set up as a web server root.
+              - Your working directory, `$workspacePath`${if (shouldShowEnv) " (environment=$envLabel)" else ""}, is automatically set up as a web server root.
               - Use the `apply_file` tool to create web files (HTML/CSS/JS).
               - The main file must be `index.html` for user previews.
               - It's recommended to split code into multiple files for better stability and maintainability.
               - For more complex projects, consider creating `js` and `css` folders and organizing files accordingly.
               - Always use relative paths for file references.
-              - **Best Practice for Code Modifications**: Before modifying any file, use `grep_code` to search for relevant code patterns and `read_file_part` to read the specific sections with context. This ensures you understand the surrounding code structure before making changes.
+              ${if (shouldShowEnv) "- When reading/writing workspace files via tools, pass `environment=\"$envLabel\"` and use absolute paths like `/...`." else ""}
+              - **Best Practice for Code Modifications**: Before modifying any file, use `grep_code` and `grep_context` to locate and understand relevant code with surrounding context. This ensures you understand the codebase structure before making changes.
               """.trimIndent()
           } else {
               """
               Web工作区指南：
-              - 你的工作目录，$workspacePath，已被自动配置为Web服务器的根目录。
+              - 你的工作目录，$workspacePath${if (shouldShowEnv) "（environment=$envLabel）" else ""}，已被自动配置为Web服务器的根目录。
               - 使用 apply_file 工具创建网页文件 (HTML/CSS/JS)。
               - 主文件必须是 index.html，用户可直接预览。
               - 建议将代码拆分到不同文件，以提高稳定性和可维护性。
               - 如果项目较为复杂，可以考虑新建js文件夹和css文件夹并创建多个文件。
               - 文件引用请使用相对路径。
-              - **代码修改最佳实践**：修改任何文件之前，建议组合使用 `grep_code` 搜索相关代码模式和 `read_file_part` 读取对应部分的上下文。这样可以确保你在修改前充分理解周围的代码结构。
+              ${if (shouldShowEnv) "- 通过工具读写工作区文件时，请带上 `environment=\"$envLabel\"`，并使用 `/...` 形式的绝对路径。" else ""}
+              - **代码修改最佳实践**：修改任何文件之前，建议组合使用 `grep_code` 与 `grep_context` 定位并理解相关代码及其上下文，避免在未理解项目结构时盲改。
               """.trimIndent()
           }
       } else {
@@ -531,6 +545,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
   fun getSystemPromptWithCustomPrompts(
           packageManager: PackageManager,
           workspacePath: String?,
+          workspaceEnv: String? = null,
+          safBookmarkNames: List<String> = emptyList(),
           customIntroPrompt: String,
           useEnglish: Boolean = false,
           thinkingGuidance: Boolean = false,
@@ -549,6 +565,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     val basePrompt = getSystemPrompt(
         packageManager = packageManager,
         workspacePath = workspacePath,
+        workspaceEnv = workspaceEnv,
+        safBookmarkNames = safBookmarkNames,
         useEnglish = useEnglish,
         thinkingGuidance = thinkingGuidance,
         customSystemPromptTemplate = customSystemPromptTemplate,
@@ -572,6 +590,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     return getSystemPrompt(
         packageManager = packageManager,
         workspacePath = null,
+        workspaceEnv = null,
+        safBookmarkNames = emptyList(),
         useEnglish = false,
         thinkingGuidance = false,
         customSystemPromptTemplate = "",

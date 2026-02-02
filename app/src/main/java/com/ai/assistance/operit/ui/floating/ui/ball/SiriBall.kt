@@ -27,6 +27,7 @@ import com.ai.assistance.operit.ui.floating.FloatContext
 import kotlin.math.*
 
 import androidx.compose.ui.platform.LocalContext
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.ui.floating.voice.SpeechInteractionManager
@@ -72,7 +73,7 @@ fun SiriBall(
             },
             onStateChange = { msg ->
                 // 根据状态消息判断是否需要重置状态
-                if (msg == "没有听清") {
+                if (msg == context.getString(R.string.floating_didnt_hear_clearly)) {
                     ballState = StateIdle
                 }
             }

@@ -64,6 +64,19 @@ object GitIgnoreFilter {
         
         return false
     }
+
+    fun shouldIgnore(relativePath: String, fileName: String, isDirectory: Boolean, rules: List<String>): Boolean {
+        val rel = relativePath.trimStart('/').replace('\\', '/').trimStart('/')
+        val name = fileName
+
+        for (rule in rules) {
+            if (matchesRule(rel, name, isDirectory, rule)) {
+                return true
+            }
+        }
+
+        return false
+    }
     
     /**
      * 匹配单个 gitignore 规则

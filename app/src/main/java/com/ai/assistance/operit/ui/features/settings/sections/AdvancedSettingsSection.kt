@@ -100,7 +100,7 @@ fun AdvancedSettingsSection(
                     val newKeys = keys.mapIndexed { _, key ->
                         ApiKeyInfo(
                             id = UUID.randomUUID().toString(),
-                            name = "导入密钥 ${key.takeLast(4)}",
+                            name = context.getString(R.string.advanced_import_key, key.takeLast(4)),
                             key = key,
                             isEnabled = true
                         )

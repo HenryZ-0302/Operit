@@ -81,7 +81,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import com.ai.assistance.operit.R
 
 @Composable
 fun MemorySearchBar(
@@ -110,7 +112,7 @@ fun MemorySearchBar(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.weight(1f),
-            placeholder = { Text("搜索记忆...") },
+            placeholder = { Text(stringResource(R.string.memory_search_hint)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = {

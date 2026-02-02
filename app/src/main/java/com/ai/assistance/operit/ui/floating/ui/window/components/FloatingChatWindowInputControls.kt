@@ -56,8 +56,10 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.AIForegroundService
 import com.ai.assistance.operit.data.model.PromptFunctionType
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
@@ -135,9 +137,9 @@ private fun BottomInputBar(
             OutlinedTextField(
                 value = floatContext.userMessage,
                 onValueChange = { floatContext.userMessage = it },
-                placeholder = { 
+                placeholder = {
                     Text(
-                        text = "输入消息...",
+                        text = stringResource(R.string.chat_input_hint),
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                     )
                 },
@@ -196,7 +198,7 @@ private fun BottomInputBar(
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "添加附件",
+                    contentDescription = stringResource(R.string.floating_add_attachment),
                     tint = if (floatContext.showAttachmentPanel)
                         MaterialTheme.colorScheme.onPrimary
                     else
@@ -241,7 +243,7 @@ private fun BottomInputBar(
             ) {
                 Icon(
                     imageVector = if (isProcessing) Icons.Default.Close else Icons.Default.Send,
-                    contentDescription = if (isProcessing) "取消" else "发送",
+                    contentDescription = if (isProcessing) stringResource(R.string.floating_cancel) else stringResource(R.string.floating_send),
                     tint = when {
                         isProcessing -> MaterialTheme.colorScheme.onError
                         hasContent || floatContext.attachments.isNotEmpty() -> MaterialTheme.colorScheme.onPrimary

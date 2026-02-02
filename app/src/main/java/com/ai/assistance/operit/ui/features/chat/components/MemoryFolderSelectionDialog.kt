@@ -85,7 +85,7 @@ fun MemoryFolderSelectionDialog(
                 val folders = loadFolderPaths(context)
                 folderPaths = folders
                 // 构建树结构
-                folderTree = buildFolderTree(folders)
+                folderTree = buildFolderTree(context, folders)
                 isLoading = false
             } catch (e: Exception) {
                 AppLogger.e("MemoryFolderDialog", "Failed to load folders", e)
@@ -333,22 +333,23 @@ private fun FolderTreeItem(
  * 构建文件夹树结构
  * 使用与 FolderNavigator 相同的逻辑，自动创建缺失的父节点
  */
-private fun buildFolderTree(folderPaths: List<String>): List<FolderNode> {
+private fun buildFolderTree(context: Context, folderPaths: List<String>): List<FolderNode> {
     val rootNodes = mutableListOf<FolderNode>()
     val nodeMap = mutableMapOf<String, FolderNode>()
-    
+
     // 过滤掉空路径和"未分类"
-    val validPaths = folderPaths.filter { it.isNotBlank() && it != "未分类" }
-    
+    val uncategorized = context.getString(R.string.uncategorized)
+    val validPaths = folderPaths.filter { it.isNotBlank() && it != uncategorized }
+
     // 遍历每个路径，自动创建所有中间节点
     validPaths.forEach { path ->
         val parts = path.split("/").filter { it.isNotBlank() }
         var currentPath = ""
-        
+
         parts.forEachIndexed { index, part ->
             currentPath = if (currentPath.isEmpty()) part else "$currentPath/$part"
             val level = index
-            
+
             // 如果节点不存在，创建它
             if (!nodeMap.containsKey(currentPath)) {
                 val node = FolderNode(
@@ -357,7 +358,7 @@ private fun buildFolderTree(folderPaths: List<String>): List<FolderNode> {
                     level = level
                 )
                 nodeMap[currentPath] = node
-                
+
                 if (level == 0) {
                     // 顶层节点
                     rootNodes.add(node)
@@ -369,16 +370,16 @@ private fun buildFolderTree(folderPaths: List<String>): List<FolderNode> {
             }
         }
     }
-    
+
     // 如果有"未分类"，将其添加到最前面
-    if ("未分类" in folderPaths) {
+    if (uncategorized in folderPaths) {
         rootNodes.add(0, FolderNode(
-            path = "未分类",
-            name = "未分类",
+            path = uncategorized,
+            name = uncategorized,
             level = 0
         ))
     }
-    
+
     return rootNodes
 }
 

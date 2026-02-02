@@ -24,7 +24,7 @@ object SkillRepoZipPoolManager {
 
     @Synchronized
     fun initialize(baseDir: File) {
-        cacheDir = File(baseDir, "skill_repo_zip_pool")
+        cacheDir = OperitPaths.skillRepoZipPoolDir(baseDir)
         if (cacheDir?.exists() != true) {
             runCatching { cacheDir?.mkdirs() }
         }

@@ -21,7 +21,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.window.Dialog
+import com.ai.assistance.operit.R
 import androidx.compose.ui.window.DialogProperties
 
 /**
@@ -139,7 +141,7 @@ fun ContentDetailDialog(
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
-                ) { Text("关闭") }
+                ) { Text(stringResource(R.string.common_close)) }
             }
         }
     }

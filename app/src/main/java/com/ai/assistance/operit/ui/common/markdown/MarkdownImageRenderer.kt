@@ -310,7 +310,7 @@ private fun FullScreenImageDialog(imageUrl: String, imageAlt: String, onDismiss:
                                     contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                        "加载失败",
+                                        stringResource(R.string.common_load_failed),
                                         color = Color.Red,
                                         style = MaterialTheme.typography.titleMedium
                                 )
@@ -329,7 +329,7 @@ private fun FullScreenImageDialog(imageUrl: String, imageAlt: String, onDismiss:
                     IconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.TopStart)) {
                         Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "关闭",
+                                contentDescription = stringResource(R.string.common_close),
                                 tint = Color.White
                         )
                     }
@@ -402,7 +402,7 @@ private fun FullScreenImageDialog(imageUrl: String, imageAlt: String, onDismiss:
                     ) {
                         Icon(
                                 imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "重置缩放",
+                                contentDescription = stringResource(R.string.common_reset_zoom),
                                 tint = Color.White
                         )
                     }

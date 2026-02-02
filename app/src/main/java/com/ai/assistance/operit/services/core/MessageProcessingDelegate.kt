@@ -53,7 +53,7 @@ class MessageProcessingDelegate(
         private val onTokenLimitExceeded: suspend (chatId: String?) -> Unit, // 新增：Token超限回调
         // 添加自动朗读相关的回调
         private val getIsAutoReadEnabled: () -> Boolean,
-        private val speakMessage: (String) -> Unit
+        private val speakMessage: (String, Boolean) -> Unit
 ) {
     companion object {
         private const val TAG = "MessageProcessingDelegate"
@@ -218,6 +218,7 @@ class MessageProcessingDelegate(
             attachments: List<AttachmentInfo> = emptyList(),
             chatId: String,
             workspacePath: String? = null,
+            workspaceEnv: String? = null,
             promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT,
             enableThinking: Boolean = false,
             thinkingGuidance: Boolean = false,
@@ -241,7 +242,7 @@ class MessageProcessingDelegate(
         _userMessage.value = TextFieldValue("")
         chatRuntime.isLoading.value = true
         updateGlobalLoadingState()
-        setChatInputProcessingState(chatId, EnhancedInputProcessingState.Processing("正在处理消息..."))
+        setChatInputProcessingState(chatId, EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing)))
 
         coroutineScope.launch(Dispatchers.IO) {
             // 检查这是否是聊天中的第一条用户消息（忽略AI的开场白）
@@ -274,6 +275,7 @@ class MessageProcessingDelegate(
                 enableMemoryQuery,
                 enableWorkspaceAttachment,
                 workspacePath,
+                workspaceEnv,
                 replyToMessage,
                 enableDirectImageProcessing,
                 enableDirectAudioProcessing,
@@ -289,18 +291,27 @@ class MessageProcessingDelegate(
             val userMessage = ChatMessage(
                 sender = "user",
                 content = finalMessageContent,
-                roleName = "用户" // 用户消息的角色名固定为"用户"
+                roleName = context.getString(R.string.message_role_user) // 用户消息的角色名固定为"用户"
             )
 
             // 在发送消息前，同步工作区状态
             if (!workspacePath.isNullOrBlank()) {
+                setChatInputProcessingState(
+                    chatId,
+                    EnhancedInputProcessingState.Processing(context.getString(R.string.message_workspace_backing_up))
+                )
                 try {
                     AppLogger.d(TAG, "Syncing workspace state for timestamp ${userMessage.timestamp}")
-                    WorkspaceBackupManager.getInstance(context).syncState(workspacePath, userMessage.timestamp)
+                    WorkspaceBackupManager.getInstance(context).syncState(workspacePath, userMessage.timestamp, workspaceEnv)
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "Workspace sync failed", e)
                     // 报告一个非致命错误，不会中断消息流程
-                    _nonFatalErrorEvent.emit("工作区状态同步失败: ${e.message}")
+                    _nonFatalErrorEvent.emit(context.getString(R.string.message_workspace_sync_failed, e.message))
+                } finally {
+                    setChatInputProcessingState(
+                        chatId,
+                        EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing))
+                    )
                 }
             }
 
@@ -314,6 +325,8 @@ class MessageProcessingDelegate(
             val activeChatId = chatId
             var serviceForTurnComplete: EnhancedAIService? = null
             var shouldNotifyTurnComplete = false
+            var isWaifuModeEnabled = false
+            var didStreamAutoRead = false
             try {
                 // if (!NetworkUtils.isNetworkAvailable(context)) {
                 //     withContext(Dispatchers.Main) { showErrorMessage("网络连接不可用") }
@@ -326,7 +339,7 @@ class MessageProcessingDelegate(
                     (EnhancedAIService.getChatInstance(context, activeChatId)
                         ?: getEnhancedAiService())
                         ?: run {
-                            withContext(Dispatchers.Main) { showErrorMessage("AI服务未初始化") }
+                            withContext(Dispatchers.Main) { showErrorMessage(context.getString(R.string.message_ai_service_not_initialized)) }
                             chatRuntime.isLoading.value = false
                             updateGlobalLoadingState()
                             setChatInputProcessingState(activeChatId, EnhancedInputProcessingState.Idle)
@@ -335,7 +348,7 @@ class MessageProcessingDelegate(
                 serviceForTurnComplete = service
 
                 // 清除上一次可能残留的 Error 状态，避免 StateFlow 重放导致新一轮发送立即再次触发弹窗
-                service.setInputProcessingState(EnhancedInputProcessingState.Processing("正在处理消息..."))
+                service.setInputProcessingState(EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing)))
 
                 // 监听此 chat 对应的 EnhancedAIService 状态，映射到 per-chat state
                 chatRuntime.stateCollectionJob?.cancel()
@@ -460,7 +473,7 @@ class MessageProcessingDelegate(
 
                 // 检查是否启用waifu模式来决定是否显示流式过程
                 val waifuPreferences = WaifuPreferences.getInstance(context)
-                val isWaifuModeEnabled = waifuPreferences.enableWaifuModeFlow.first()
+                isWaifuModeEnabled = waifuPreferences.enableWaifuModeFlow.first()
                 
                 // 只有在非waifu模式下才添加初始的AI消息
                 if (!isWaifuModeEnabled) {
@@ -475,12 +488,52 @@ class MessageProcessingDelegate(
                 chatRuntime.streamCollectionJob =
                     coroutineScope.launch(Dispatchers.IO) {
                         val contentBuilder = StringBuilder()
+                        val autoReadBuffer = StringBuilder()
+                        var isFirstAutoReadSegment = true
+                        val endChars = ".,!?;:，。！？；：\n"
+
+                        fun flushAutoReadSegment(segment: String, interrupt: Boolean) {
+                            val trimmed = segment.trim()
+                            if (trimmed.isNotEmpty()) {
+                                didStreamAutoRead = true
+                                speakMessage(trimmed, interrupt)
+                            }
+                        }
+
+                        fun findFirstEndCharIndex(text: CharSequence): Int {
+                            for (i in 0 until text.length) {
+                                val c = text[i]
+                                if (endChars.indexOf(c) >= 0) return i
+                            }
+                            return -1
+                        }
+
+                        fun tryFlushAutoRead() {
+                            if (!getIsAutoReadEnabled()) return
+                            if (isWaifuModeEnabled) return
+                            while (true) {
+                                val endIdx = findFirstEndCharIndex(autoReadBuffer)
+                                val shouldFlushByLen = endIdx < 0 && autoReadBuffer.length >= 50
+                                if (endIdx < 0 && !shouldFlushByLen) return
+
+                                val cutIdx = if (endIdx >= 0) endIdx + 1 else autoReadBuffer.length
+                                val seg = autoReadBuffer.substring(0, cutIdx)
+                                autoReadBuffer.delete(0, cutIdx)
+
+                                flushAutoReadSegment(seg, interrupt = isFirstAutoReadSegment)
+                                isFirstAutoReadSegment = false
+                            }
+                        }
+
                         sharedCharStream.collect { chunk ->
                             contentBuilder.append(chunk)
                             val content = contentBuilder.toString()
                             val updatedMessage = aiMessage.copy(content = content)
                             // 防止后续读取不到
                             aiMessage.content = content
+
+                            autoReadBuffer.append(chunk)
+                            tryFlushAutoRead()
                             
                             // 只有在非waifu模式下才显示流式更新
                             if (!isWaifuModeEnabled) {
@@ -489,6 +542,12 @@ class MessageProcessingDelegate(
                                 }
                                 tryEmitScrollToBottomThrottled(chatId)
                             }
+                        }
+
+                        if (getIsAutoReadEnabled() && !isWaifuModeEnabled) {
+                            val remaining = autoReadBuffer.toString()
+                            autoReadBuffer.clear()
+                            flushAutoReadSegment(remaining, interrupt = isFirstAutoReadSegment)
                         }
                     }
 
@@ -506,7 +565,7 @@ class MessageProcessingDelegate(
                     setSuppressIdleCompletedStateForChat(chatId, true)
                     setChatInputProcessingState(
                         chatId,
-                        EnhancedInputProcessingState.Summarizing("正在总结记忆...")
+                        EnhancedInputProcessingState.Summarizing(context.getString(R.string.message_summarizing))
                     )
                 }
 
@@ -521,16 +580,17 @@ class MessageProcessingDelegate(
                 AppLogger.e(TAG, "发送消息时出错", e)
                 setChatInputProcessingState(
                     chatId,
-                    EnhancedInputProcessingState.Error("发送消息失败: ${e.message}")
+                    EnhancedInputProcessingState.Error(context.getString(R.string.message_send_failed, e.message))
                 )
-                withContext(Dispatchers.Main) { showErrorMessage("发送消息失败: ${e.message}") }
+                withContext(Dispatchers.Main) { showErrorMessage(context.getString(R.string.message_send_failed, e.message)) }
             } finally {
                 finalizeMessageAndNotify(
                     chatId = chatId,
                     activeChatId = activeChatId,
                     aiMessageProvider = { aiMessage },
                     shouldNotifyTurnComplete = shouldNotifyTurnComplete,
-                    serviceForTurnComplete = serviceForTurnComplete
+                    serviceForTurnComplete = serviceForTurnComplete,
+                    skipFinalAutoRead = didStreamAutoRead && !isWaifuModeEnabled
                 )
                 cleanupRuntimeAfterSend(chatRuntime)
             }
@@ -542,7 +602,8 @@ class MessageProcessingDelegate(
         activeChatId: String?,
         aiMessageProvider: () -> ChatMessage,
         shouldNotifyTurnComplete: Boolean,
-        serviceForTurnComplete: EnhancedAIService?
+        serviceForTurnComplete: EnhancedAIService?,
+        skipFinalAutoRead: Boolean
     ) {
         // 修改为使用 try-catch 来检查变量是否已初始化，而不是使用 ::var.isInitialized
         try {
@@ -625,7 +686,7 @@ class MessageProcessingDelegate(
                                 }
                                 // 如果启用了自动朗读，则朗读当前句子
                                 if (getIsAutoReadEnabled()) {
-                                    speakMessage(sentence)
+                                    speakMessage(sentence, true)
                                 }
                                 if (index == sentences.lastIndex) {
                                     forceEmitScrollToBottom(chatId)
@@ -652,8 +713,8 @@ class MessageProcessingDelegate(
                             addMessageToChat(chatId, finalMessage)
                         }
                         // 如果启用了自动朗读，则朗读完整消息
-                        if (getIsAutoReadEnabled()) {
-                            speakMessage(finalContent)
+                        if (getIsAutoReadEnabled() && !skipFinalAutoRead) {
+                            speakMessage(finalContent, true)
                         }
                         forceEmitScrollToBottom(chatId)
                     }

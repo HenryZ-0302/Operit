@@ -3,6 +3,7 @@ package com.ai.assistance.operit.api.chat.llmprovider
 import android.content.Context
 import android.os.Environment
 import android.util.Base64
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.util.FFmpegUtil
 import com.ai.assistance.operit.util.ImagePoolManager
@@ -112,7 +113,7 @@ class MNNProvider(
                 val modelDirFile = File(modelDir)
                 if (!modelDirFile.exists() || !modelDirFile.isDirectory) {
                     return@withContext Result.failure(
-                        Exception("模型目录不存在: $modelDir\n请确保模型已下载")
+                        Exception(context.getString(R.string.mnn_model_dir_not_exist, modelDir))
                     )
                 }
 
@@ -120,7 +121,7 @@ class MNNProvider(
                 val configFile = File(modelDir, "llm_config.json")
                 if (!configFile.exists()) {
                     return@withContext Result.failure(
-                        Exception("配置文件不存在: ${configFile.absolutePath}\n请确保模型完整下载")
+                        Exception(context.getString(R.string.mnn_config_not_exist, configFile.absolutePath))
                     )
                 }
 
@@ -170,7 +171,7 @@ class MNNProvider(
                 
                 if (llmSession == null) {
                     return@withContext Result.failure(
-                        Exception("无法创建MNN LLM会话，请检查模型文件和配置")
+                        Exception(context.getString(R.string.mnn_cannot_create_session))
                     )
                 }
 
@@ -501,21 +502,22 @@ class MNNProvider(
         // 添加历史记录
         for ((role, content) in chatHistory) {
             when (role.lowercase()) {
-                "user" -> promptBuilder.append("用户: $content\n")
-                "assistant" -> promptBuilder.append("助手: $content\n")
-                "system" -> promptBuilder.append("系统: $content\n")
+                "user" -> promptBuilder.append(context.getString(R.string.mnn_user_prompt, content))
+                "assistant" -> promptBuilder.append(context.getString(R.string.mnn_assistant_prompt, content))
+                "system" -> promptBuilder.append(context.getString(R.string.mnn_system_prompt, content))
                 else -> promptBuilder.append("$role: $content\n")
             }
         }
-        
+
         // 添加当前消息
-        promptBuilder.append("用户: $message\n")
-        promptBuilder.append("助手: ")
+        promptBuilder.append(context.getString(R.string.mnn_message_format, message))
+        promptBuilder.append(context.getString(R.string.mnn_assistant))
         
         return promptBuilder.toString()
     }
 
     override suspend fun sendMessage(
+        context: Context,
         message: String,
         chatHistory: List<Pair<String, String>>,
         modelParameters: List<ModelParameter<*>>,
@@ -534,12 +536,12 @@ class MNNProvider(
             // 初始化模型
             val initResult = initModel()
             if (initResult.isFailure) {
-                emit("错误: ${initResult.exceptionOrNull()?.message ?: "未知错误"}")
+                emit(context.getString(R.string.mnn_generic_error, initResult.exceptionOrNull()?.message ?: ""))
                 return@stream
             }
 
             val session = llmSession ?: run {
-                emit("错误: LLM会话未初始化")
+                emit(context.getString(R.string.mnn_session_not_initialized))
                 return@stream
             }
 
@@ -612,14 +614,14 @@ class MNNProvider(
             }
 
             if (!success && !isCancelled) {
-                emit("\n\n[推理过程出现错误]")
+                emit(context.getString(R.string.mnn_reasoning_error))
             }
 
             AppLogger.i(TAG, "MNN LLM推理完成，输出token数: $_outputTokenCount")
 
         } catch (e: Exception) {
             AppLogger.e(TAG, "发送消息时出错", e)
-            emit("错误: ${e.message}")
+            emit(context.getString(R.string.mnn_generic_error, e.message ?: ""))
         } finally {
             requestTempFiles.forEach { file ->
                 runCatching { file.delete() }
@@ -627,34 +629,34 @@ class MNNProvider(
         }
     }
 
-    override suspend fun testConnection(): Result<String> = withContext(Dispatchers.IO) {
+    override suspend fun testConnection(context: Context): Result<String> = withContext(Dispatchers.IO) {
         try {
             // 检查模型名称
             if (modelName.isEmpty()) {
-                return@withContext Result.failure(Exception("未配置模型名称"))
+                return@withContext Result.failure(Exception(context.getString(R.string.mnn_model_not_configured)))
             }
 
             // 获取模型目录
             val modelDir = getModelDir(context, modelName)
             val modelDirFile = File(modelDir)
-            
+
             if (!modelDirFile.exists() || !modelDirFile.isDirectory) {
                 return@withContext Result.failure(
-                    Exception("模型目录不存在: $modelDir\n请先下载模型")
+                    Exception(context.getString(R.string.mnn_model_dir_missing, modelDir))
                 )
             }
 
             // 计算模型总大小
             val totalSize = modelDirFile.listFiles()?.sumOf { it.length() } ?: 0L
-            
+
             // 检查关键文件是否存在
             val modelFile = File(modelDir, "llm.mnn")
             val weightFile = File(modelDir, "llm.mnn.weight")
             val configFile = File(modelDir, "llm_config.json")
             val tokenizerFile = File(modelDir, "tokenizer.txt")
-            
+
             val fileStatus = buildString {
-                appendLine("文件状态:")
+                appendLine(context.getString(R.string.mnn_file_status))
                 appendLine("- llm.mnn: ${if (modelFile.exists()) "✓" else "✗"}")
                 appendLine("- llm.mnn.weight: ${if (weightFile.exists()) "✓" else "✗"}")
                 appendLine("- llm_config.json: ${if (configFile.exists()) "✓" else "✗"}")
@@ -665,11 +667,11 @@ class MNNProvider(
             val initResult = initModel()
             if (initResult.isFailure) {
                 return@withContext Result.failure(
-                    initResult.exceptionOrNull() ?: Exception("模型初始化失败")
+                    initResult.exceptionOrNull() ?: Exception(context.getString(R.string.mnn_init_failed))
                 )
             }
 
-            Result.success("MNN LLM模型连接成功！\n\n模型: $modelName\n目录: $modelDir\n总大小: ${formatFileSize(totalSize)}\n\n$fileStatus")
+            Result.success(context.getString(R.string.mnn_connection_success, modelName, modelDir, formatFileSize(totalSize), fileStatus))
         } catch (e: Exception) {
             AppLogger.e(TAG, "测试连接失败", e)
             Result.failure(e)
@@ -886,7 +888,7 @@ class MNNProvider(
             }
     }
 
-    override suspend fun getModelsList(): Result<List<ModelOption>> {
+    override suspend fun getModelsList(context: Context): Result<List<ModelOption>> {
         // MNN使用本地模型，从固定目录读取已下载的模型
         return ModelListFetcher.getMnnLocalModels(context)
     }

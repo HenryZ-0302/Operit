@@ -11,6 +11,7 @@ import android.os.ParcelFileDescriptor
 import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
 import android.util.Log
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.model.Memory
 import com.ai.assistance.operit.data.model.PreferenceProfile
@@ -62,6 +63,10 @@ class MemoryDocumentsProvider : DocumentsProvider() {
     private val repositoryCache: MutableMap<String, MemoryRepository> = mutableMapOf()
     private val writeBackExecutor = Executors.newSingleThreadExecutor()
 
+    private fun requireProviderContext(): Context {
+        return context ?: throw IllegalStateException("Context is null")
+    }
+
     override fun attachInfo(context: Context?, info: ProviderInfo?) {
         Log.e(
             TAG,
@@ -99,6 +104,7 @@ class MemoryDocumentsProvider : DocumentsProvider() {
         )
 
         return try {
+            val ctx = requireProviderContext()
             val source = parseDocumentId(sourceDocumentId)
             val targetParent = parseDocumentId(targetParentDocumentId)
 
@@ -189,7 +195,7 @@ class MemoryDocumentsProvider : DocumentsProvider() {
 
                     val repo = getRepository(sourceProfileId)
                     val existingPaths = runBlocking { repo.getAllFolderPaths() }
-                        .filter { it.isNotBlank() && it != "未分类" }
+                        .filter { it.isNotBlank() && it != ctx.getString(R.string.memory_uncategorized) }
 
                     val conflict = existingPaths.any { p ->
                         (p == newPath || p.startsWith(newPath + "/")) &&
@@ -251,7 +257,8 @@ class MemoryDocumentsProvider : DocumentsProvider() {
             "queryChildDocuments parent=$parentDocumentId projection=${projection?.joinToString()} sortOrder=$sortOrder"
         )
         val result = MatrixCursor(projection ?: DEFAULT_DOCUMENT_PROJECTION)
-        val prefs = UserPreferencesManager.getInstance(context ?: throw IllegalStateException("Context is null"))
+        val ctx = requireProviderContext()
+        val prefs = UserPreferencesManager.getInstance(ctx)
 
         when (val parent = parseDocumentId(parentDocumentId)) {
             is DocRef.Root -> {
@@ -273,8 +280,9 @@ class MemoryDocumentsProvider : DocumentsProvider() {
                     .distinct()
                     .sorted()
 
-                if (folderPaths.contains("未分类")) {
-                    includeDirectory(result, parent.profileId, DOC_ID_UNCATEGORIZED, "未分类")
+                val uncategorized = ctx.getString(R.string.memory_uncategorized)
+                if (folderPaths.contains(uncategorized)) {
+                    includeDirectory(result, parent.profileId, DOC_ID_UNCATEGORIZED, uncategorized)
                 }
 
                 topLevel.forEach { name ->
@@ -735,14 +743,15 @@ class MemoryDocumentsProvider : DocumentsProvider() {
         folderPaths: List<String>,
         folderPath: String?
     ) {
-        val targetFolderPath = folderPath ?: "未分类"
+        val ctx = requireProviderContext()
+        val targetFolderPath = folderPath ?: ctx.getString(R.string.memory_uncategorized)
 
         val memoriesInScope = runBlocking {
             repo.searchMemories(query = "*", folderPath = targetFolderPath, semanticThreshold = 0.0f)
         }
 
         val directMemories = memoriesInScope
-            .filter { it.title != ".folder_placeholder" && it.title != "文件夹说明" }
+            .filter { it.title != ".folder_placeholder" && it.title != ctx.getString(R.string.memory_repository_folder_description_title) }
             .filter {
                 val fp = it.folderPath
                 if (folderPath == null) {
@@ -786,13 +795,14 @@ class MemoryDocumentsProvider : DocumentsProvider() {
     }
 
     private fun countMemoriesWithSameTitleInFolder(repo: MemoryRepository, memory: Memory): Int {
-        val targetFolderPath = if (memory.folderPath.isNullOrEmpty()) "未分类" else memory.folderPath
+        val ctx = requireProviderContext()
+        val targetFolderPath = if (memory.folderPath.isNullOrEmpty()) ctx.getString(R.string.memory_uncategorized) else memory.folderPath
         val memoriesInScope = runBlocking {
             repo.searchMemories(query = "*", folderPath = targetFolderPath, semanticThreshold = 0.0f)
         }
 
         val directMemories = memoriesInScope
-            .filter { it.title != ".folder_placeholder" && it.title != "文件夹说明" }
+            .filter { it.title != ".folder_placeholder" && it.title != ctx.getString(R.string.memory_repository_folder_description_title) }
             .filter {
                 val fp = it.folderPath
                 if (memory.folderPath.isNullOrEmpty()) {
@@ -809,6 +819,7 @@ class MemoryDocumentsProvider : DocumentsProvider() {
         runBlocking {
             val memory = repo.findMemoryByUuid(uuid) ?: return@runBlocking
             try {
+                val ctx = requireProviderContext()
                 val json = JSONObject(writtenText)
                 val newTitle = json.optString("title", memory.title)
                 val newContent = json.optString("content", memory.content)
@@ -825,7 +836,7 @@ class MemoryDocumentsProvider : DocumentsProvider() {
                 }
                 val newFolderPath = when {
                     folderPathStr.isNullOrBlank() -> null
-                    folderPathStr == "未分类" -> null
+                    folderPathStr == ctx.getString(R.string.memory_uncategorized) -> null
                     else -> folderPathStr
                 }
 
@@ -857,8 +868,10 @@ class MemoryDocumentsProvider : DocumentsProvider() {
     }
 
     private fun normalizeFolders(folderPaths: List<String>): List<String> {
+        val ctx = requireProviderContext()
+        val uncategorized = ctx.getString(R.string.memory_uncategorized)
         val paths = folderPaths
-            .filter { it.isNotBlank() && it != "未分类" }
+            .filter { it.isNotBlank() && it != uncategorized }
             .flatMap { full ->
                 val parts = full.split('/').filter { it.isNotBlank() }
                 val prefixes = mutableListOf<String>()
@@ -930,7 +943,7 @@ class MemoryDocumentsProvider : DocumentsProvider() {
                 val profileId = parts[0]
                 val path = parts[1]
                 val displayName = if (path == DOC_ID_UNCATEGORIZED) {
-                    "未分类"
+                    requireProviderContext().getString(R.string.memory_uncategorized)
                 } else {
                     path.split('/').lastOrNull().orEmpty().ifBlank { path }
                 }
@@ -947,9 +960,9 @@ class MemoryDocumentsProvider : DocumentsProvider() {
     }
 
     private fun getRepository(profileId: String): MemoryRepository {
-        val context = context ?: throw IllegalStateException("Context is null")
+        val ctx = requireProviderContext()
         return synchronized(repositoryCache) {
-            repositoryCache.getOrPut(profileId) { MemoryRepository(context, profileId) }
+            repositoryCache.getOrPut(profileId) { MemoryRepository(ctx, profileId) }
         }
     }
 

@@ -16,6 +16,10 @@ interface ChatDao {
     @Query("SELECT * FROM chats ORDER BY displayOrder ASC")
     fun getAllChats(): Flow<List<ChatEntity>>
 
+    /** 获取聊天总数 */
+    @Query("SELECT COUNT(*) FROM chats")
+    suspend fun getTotalChatCount(): Int
+
     /** 获取所有聊天（挂起函数版本） */
     @Query("SELECT * FROM chats ORDER BY displayOrder ASC")
     suspend fun getAllChatsDirectly(): List<ChatEntity>
@@ -48,8 +52,8 @@ interface ChatDao {
     suspend fun updateChatTitle(chatId: String, title: String, timestamp: Long = System.currentTimeMillis())
 
     /** 更新聊天工作区 */
-    @Query("UPDATE chats SET `workspace` = :workspace, updatedAt = :timestamp WHERE id = :chatId")
-    suspend fun updateChatWorkspace(chatId: String, workspace: String?, timestamp: Long = System.currentTimeMillis())
+    @Query("UPDATE chats SET `workspace` = :workspace, `workspaceEnv` = :workspaceEnv, updatedAt = :timestamp WHERE id = :chatId")
+    suspend fun updateChatWorkspace(chatId: String, workspace: String?, workspaceEnv: String?, timestamp: Long = System.currentTimeMillis())
 
     /** 更新聊天分组 */
     @Query("UPDATE chats SET `group` = :group, updatedAt = :timestamp WHERE id = :chatId")

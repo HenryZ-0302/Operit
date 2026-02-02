@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.data.preferences
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
@@ -30,11 +31,6 @@ class PromptTagManager private constructor(private val context: Context) {
         const val SYSTEM_CHAT_TAG_ID = "system_chat_tag"
         const val SYSTEM_VOICE_TAG_ID = "system_voice_tag"
         const val SYSTEM_DESKTOP_PET_TAG_ID = "system_desktop_pet_tag"
-        
-        private const val SYSTEM_CHAT_TAG_PROMPT_V1 = "使用问题库根据用户的风格、偏好和过去的信息个性化响应。"
-        private const val SYSTEM_VOICE_TAG_LEGACY_PROMPT_V1 = "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。你的回答就是纯文本的、可以直接朗读的对话。总是直接回答问题，不要有多余的客套话和引导语。"
-        private const val SYSTEM_VOICE_TAG_PROMPT_V2 = "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。你的回答就是纯文本的、可以直接朗读的对话。总是直接回答问题，不要有多余的客套话和引导语。用户输入可能来自语音识别，可能包含错别字、同音字、漏词、断句。你的回答应该简单，不能盯着字眼去执着搜索用户提到的东西，应该用你的知识储备快速回答问题/完成任务。"
-        private const val SYSTEM_DESKTOP_PET_TAG_PROMPT_V1 = "你的回答必须非常简短、口语化，像日常聊天一样。严禁使用任何形式的列表、分点（例如'第一'、'第二'或'首先'、'其次'）和Markdown标记（例如`*`、`#`、`**`）。使用可爱、亲切、活泼的语气，经常使用表情符号增加互动感。表现得像一个真正的朋友，而不仅仅是工具。可以适当撒娇、卖萌，让用户感受到温暖和陪伴。"
         
         @Volatile
         private var INSTANCE: PromptTagManager? = null
@@ -78,7 +74,7 @@ class PromptTagManager private constructor(private val context: Context) {
         
         return PromptTag(
             id = id,
-            name = preferences[nameKey] ?: "未命名标签",
+            name = preferences[nameKey] ?: context.getString(R.string.prompt_tag_unnamed),
             description = preferences[descriptionKey] ?: "",
             promptContent = preferences[promptContentKey] ?: "",
             tagType = try {
@@ -249,25 +245,27 @@ class PromptTagManager private constructor(private val context: Context) {
         
         promptVersionManager.setVersions(mapOf(
             SYSTEM_CHAT_TAG_ID to SystemTagSpec(
-                name = "通用聊天",
-                description = "适用于聊天功能的通用提示词",
+                name = context.getString(R.string.prompt_tag_general_chat),
+                description = context.getString(R.string.prompt_tag_general_chat_desc),
                 key = "prompt_tag_$SYSTEM_CHAT_TAG_ID",
-                defaultsByVersion = PromptVersionManager.defaults(SYSTEM_CHAT_TAG_PROMPT_V1)
+                defaultsByVersion = PromptVersionManager.defaults(
+                    context.getString(R.string.prompt_tag_system_chat_prompt)
+                )
             ),
             SYSTEM_VOICE_TAG_ID to SystemTagSpec(
-                name = "通用语音",
-                description = "适用于语音功能的通用提示词",
+                name = context.getString(R.string.prompt_tag_general_voice),
+                description = context.getString(R.string.prompt_tag_general_voice_desc),
                 key = "prompt_tag_$SYSTEM_VOICE_TAG_ID",
                 defaultsByVersion = PromptVersionManager.defaults(
-                    SYSTEM_VOICE_TAG_LEGACY_PROMPT_V1,
-                    SYSTEM_VOICE_TAG_PROMPT_V2
+                    PromptBilingualData.getDefaultTone(context, "default_voice"),
+                    PromptBilingualData.getVoiceToneV2(context)
                 )
             ),
             SYSTEM_DESKTOP_PET_TAG_ID to SystemTagSpec(
-                name = "通用桌宠",
-                description = "适用于桌宠功能的通用提示词",
+                name = context.getString(R.string.prompt_tag_general_desktop_pet),
+                description = context.getString(R.string.prompt_tag_general_desktop_pet_desc),
                 key = "prompt_tag_$SYSTEM_DESKTOP_PET_TAG_ID",
-                defaultsByVersion = PromptVersionManager.defaults(SYSTEM_DESKTOP_PET_TAG_PROMPT_V1)
+                defaultsByVersion = PromptVersionManager.defaults(PromptBilingualData.getDefaultTone(context, "default_desktop_pet"))
             )
         ))
 

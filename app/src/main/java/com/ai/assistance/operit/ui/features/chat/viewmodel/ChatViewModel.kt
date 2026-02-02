@@ -176,6 +176,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     // 思考模式和思考引导状态现在由ApiConfigDelegate管理
     val enableThinkingMode: StateFlow<Boolean> by lazy { apiConfigDelegate.enableThinkingMode }
     val enableThinkingGuidance: StateFlow<Boolean> by lazy { apiConfigDelegate.enableThinkingGuidance }
+    val thinkingQualityLevel: StateFlow<Int> by lazy { apiConfigDelegate.thinkingQualityLevel }
     val enableMemoryQuery: StateFlow<Boolean> by lazy { apiConfigDelegate.enableMemoryQuery }
     val enableTools: StateFlow<Boolean> by lazy { apiConfigDelegate.enableTools }
     val disableStreamOutput: StateFlow<Boolean> by lazy { apiConfigDelegate.disableStreamOutput }
@@ -486,7 +487,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         },
                         // 传递自动朗读状态和方法
                         getIsAutoReadEnabled = { isAutoReadEnabled.value },
-                        speakMessage = ::speakMessage,
+                        speakMessage = { text, interrupt -> speakMessage(text, interrupt) },
                         onTokenLimitExceeded = { chatId ->
                             messageCoordinationDelegate.handleTokenLimitExceeded(chatId)
                         }
@@ -495,6 +496,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         // Initialize message coordination delegate
         messageCoordinationDelegate = 
                 MessageCoordinationDelegate(
+                        context = context,
                         coroutineScope = viewModelScope,
                         chatHistoryDelegate = chatHistoryDelegate,
                         messageProcessingDelegate = messageProcessingDelegate,
@@ -633,6 +635,10 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     // 切换思考引导的方法现在委托给ApiConfigDelegate
     fun toggleThinkingGuidance() {
         apiConfigDelegate.toggleThinkingGuidance()
+    }
+
+    fun updateThinkingQualityLevel(level: Int) {
+        apiConfigDelegate.updateThinkingQualityLevel(level)
     }
 
     // 切换记忆附着的方法现在委托给ApiConfigDelegate
@@ -1026,6 +1032,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 val chatId = currentChatId.value
                 val currentChat = chatHistories.value.find { it.id == chatId }
                 val workspacePath = currentChat?.workspace
+                val workspaceEnv = currentChat?.workspaceEnv
 
                 AppLogger.d(TAG, "[Rewind] Target message timestamp: ${targetMessage.timestamp}")
                 if (index > 0) {
@@ -1040,7 +1047,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     AppLogger.d(TAG, "Rewinding workspace to timestamp: $rewindTimestamp")
                     withContext(Dispatchers.IO) {
                         WorkspaceBackupManager.getInstance(context)
-                            .syncState(workspacePath, rewindTimestamp)
+                            .syncState(workspacePath, rewindTimestamp, workspaceEnv)
                     }
                     AppLogger.d(TAG, "Workspace rewind complete.")
                 }
@@ -1087,26 +1094,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     val chatId = currentChatId.value
                     val currentChat = chatHistories.value.find { it.id == chatId }
                     val workspacePath = currentChat?.workspace
+                    val workspaceEnv = currentChat?.workspaceEnv
 
                     if (workspacePath.isNullOrBlank()) {
                         emptyList()
                     } else {
-                        val workspaceDir = File(workspacePath)
-                        val backupDir = File(workspaceDir, ".backup")
-                        val existingBackups = backupDir.listFiles { file ->
-                            file.isFile && file.name.endsWith(".json")
-                        }?.mapNotNull {
-                            it.nameWithoutExtension.toLongOrNull()
-                        }?.sorted() ?: emptyList()
-
-                        val newerBackups = existingBackups.filter { it > rewindTimestamp }
-                        if (newerBackups.isEmpty()) {
-                            emptyList()
-                        } else {
-                            val restoreTimestamp = newerBackups.first()
-                            WorkspaceBackupManager.getInstance(context)
-                                .previewChanges(workspacePath, restoreTimestamp)
-                        }
+                        WorkspaceBackupManager.getInstance(context)
+                            .previewChangesForRewind(workspacePath, workspaceEnv, rewindTimestamp)
                     }
                 }
             } catch (e: Exception) {
@@ -1143,12 +1137,13 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 val chatId = currentChatId.value
                 val currentChat = chatHistories.value.find { it.id == chatId }
                 val workspacePath = currentChat?.workspace
+                val workspaceEnv = currentChat?.workspaceEnv
 
                 if (!workspacePath.isNullOrBlank()) {
                     AppLogger.d(TAG, "[Rollback] Rewinding workspace to timestamp: $rewindTimestamp")
                     withContext(Dispatchers.IO) {
                         WorkspaceBackupManager.getInstance(context)
-                            .syncState(workspacePath, rewindTimestamp)
+                            .syncState(workspacePath, rewindTimestamp, workspaceEnv)
                     }
                     AppLogger.d(TAG, "[Rollback] Workspace rewind complete.")
                 }
@@ -1650,6 +1645,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             // Find the chat and its workspace
             val chat = chatHistories.value.find { it.id == chatId }
             val workspacePath = chat?.workspace
+            val workspaceEnv = chat?.workspaceEnv
 
             if (workspacePath == null) {
                 AppLogger.w(TAG, "Chat $chatId has no workspace bound. Web server not updated.")
@@ -1662,8 +1658,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
             if (!webServer.isRunning()) {
                 webServer.start()
             }
-            webServer.updateChatWorkspace(workspacePath)
-            AppLogger.d(TAG, "Web服务器工作空间已更新为: $workspacePath for chat $chatId")
+            webServer.updateChatWorkspace(workspacePath, workspaceEnv)
+            AppLogger.d(TAG, "Web服务器工作空间已更新为: $workspacePath env=$workspaceEnv for chat $chatId")
         } catch (e: Exception) {
             AppLogger.e(TAG, "更新Web服务器工作空间失败", e)
             uiStateDelegate.showErrorMessage(context.getString(R.string.chat_update_workspace_server_failed, e.message ?: ""))
@@ -1808,9 +1804,9 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     }
 
     /** 更新指定聊天的标题 */
-    fun bindChatToWorkspace(chatId: String, workspace: String) {
+    fun bindChatToWorkspace(chatId: String, workspace: String, workspaceEnv: String? = null) {
         // 1. Persist the change
-        chatHistoryDelegate.bindChatToWorkspace(chatId, workspace)
+        chatHistoryDelegate.bindChatToWorkspace(chatId, workspace, workspaceEnv)
 
         // 2. Update the web server with the new path and refresh
         viewModelScope.launch {
@@ -1819,8 +1815,8 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 if (!webServer.isRunning()) {
                     webServer.start()
                 }
-                webServer.updateChatWorkspace(workspace)
-                AppLogger.d(TAG, "Web server workspace updated to: $workspace for chat $chatId")
+                webServer.updateChatWorkspace(workspace, workspaceEnv)
+                AppLogger.d(TAG, "Web server workspace updated to: $workspace env=$workspaceEnv for chat $chatId")
 
                 // 3. Trigger a refresh of the WebView
                 refreshWebView()
@@ -2047,6 +2043,10 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
     /** 朗读消息内容 */
     fun speakMessage(message: String) {
+        speakMessage(message, interrupt = true)
+    }
+
+    fun speakMessage(message: String, interrupt: Boolean) {
         viewModelScope.launch {
             try {
                 // 如果服务未初始化，等待一段时间让监听协程完成初始化
@@ -2056,7 +2056,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 }
 
                 if (voiceService == null) {
-                    uiStateDelegate.showToast("语音服务初始化失败，请检查设置")
+                    uiStateDelegate.showToast(context.getString(R.string.chat_voice_service_init_failed))
                     AppLogger.e(TAG, "语音服务初始化超时")
                     return@launch
                 }
@@ -2067,17 +2067,17 @@ class ChatViewModel(private val context: Context) : ViewModel() {
 
                 val success = voiceService?.speak(
                     text = cleanMessage,
-                    interrupt = true, // 中断当前播放
+                    interrupt = interrupt,
                     rate = null,
                     pitch = null
                 ) ?: false
 
                 if (!success) {
-                    uiStateDelegate.showToast("朗读失败")
+                    uiStateDelegate.showToast(context.getString(R.string.chat_speak_failed))
                 }
             } catch (e: Exception) {
                 AppLogger.e(TAG, "朗读消息失败", e)
-                uiStateDelegate.showToast("朗读消息失败: ${e.message}")
+                uiStateDelegate.showToast(context.getString(R.string.chat_speak_message_failed, e.message ?: "Unknown error"))
             }
         }
     }

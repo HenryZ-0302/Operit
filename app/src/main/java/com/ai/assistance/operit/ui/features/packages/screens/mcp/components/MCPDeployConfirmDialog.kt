@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.ui.features.packages.screens.mcp.components
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
@@ -8,10 +9,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.ai.assistance.operit.R
 
 /** MCP插件部署确认对话框 提供直接部署和自定义部署两个选项 */
 @Composable
@@ -44,7 +47,7 @@ fun MCPDeployConfirmDialog(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                            text = "部署确认",
+                            text = stringResource(R.string.mcp_deploy_confirm_title),
                             style = MaterialTheme.typography.titleLarge,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -55,7 +58,7 @@ fun MCPDeployConfirmDialog(
 
                 // 插件名称和提示文本
                 Text(
-                        text = "即将部署插件: $pluginName",
+                        text = stringResource(R.string.mcp_deploying_plugin, pluginName),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurface
                 )
@@ -63,7 +66,7 @@ fun MCPDeployConfirmDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                        text = "您可以选择直接部署或自定义部署命令",
+                        text = stringResource(R.string.mcp_deploy_choice_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -71,11 +74,16 @@ fun MCPDeployConfirmDialog(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // 底部按钮
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
+                ) {
                     // 取消按钮
                     TextButton(
                             onClick = onDismissRequest,
-                    ) { Text("取消") }
+                    ) { Text(stringResource(R.string.mcp_cancel)) }
 
                     // 自定义按钮 - 改为TextButton以节省空间
                     TextButton(
@@ -87,7 +95,7 @@ fun MCPDeployConfirmDialog(
                                     ButtonDefaults.textButtonColors(
                                             contentColor = MaterialTheme.colorScheme.primary
                                     )
-                    ) { Text("自定义命令") }
+                    ) { Text(stringResource(R.string.mcp_custom_command)) }
 
                     // 部署按钮
                     Button(
@@ -99,7 +107,7 @@ fun MCPDeployConfirmDialog(
                                     ButtonDefaults.buttonColors(
                                             containerColor = MaterialTheme.colorScheme.primary
                                     )
-                    ) { Text("直接部署") }
+                    ) { Text(stringResource(R.string.mcp_direct_deploy)) }
                 }
             }
         }

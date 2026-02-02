@@ -13,6 +13,10 @@ object OperitBackupDirs {
         return ensureDir(File(operitRootDir(), "backup"))
     }
 
+    fun rawSnapshotDir(): File {
+        return ensureDir(File(backupRootDir(), "raw_snapshot"))
+    }
+
     fun roomDbDir(): File {
         return ensureDir(File(backupRootDir(), "room_db"))
     }

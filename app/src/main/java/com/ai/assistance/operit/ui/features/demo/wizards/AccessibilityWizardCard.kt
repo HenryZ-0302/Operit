@@ -271,6 +271,14 @@ fun AccessibilityWizardCard(
     
     // 警告对话框
     if (showWarningDialog) {
+        val warningTitle = stringResource(R.string.accessibility_risk_warning_title)
+        val warningMessage = stringResource(R.string.accessibility_risk_warning_message) + "\n\n" +
+                stringResource(R.string.accessibility_risk_warning_additional)
+        val warningInputError = stringResource(R.string.accessibility_risk_warning_input_error)
+        val warningConfirm = stringResource(R.string.accessibility_risk_warning_confirm)
+        val expectedText = stringResource(R.string.a11y_wizard_risk_acknowledgment)
+        val expectedTextEn = "I understand and acknowledge the risks of account bans and restricted account functions caused by accessibility permissions, and I bear the consequences myself"
+
         AlertDialog(
             onDismissRequest = { showWarningDialog = false },
             icon = {
@@ -282,7 +290,7 @@ fun AccessibilityWizardCard(
             },
             title = {
                 Text(
-                    text = stringResource(R.string.accessibility_risk_warning_title),
+                    text = warningTitle,
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.titleMedium.copy(
                         fontWeight = FontWeight.Bold
@@ -292,8 +300,7 @@ fun AccessibilityWizardCard(
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = stringResource(R.string.accessibility_risk_warning_message) + "\n\n" +
-                               stringResource(R.string.accessibility_risk_warning_additional),
+                        text = warningMessage,
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center
                     )
@@ -309,7 +316,7 @@ fun AccessibilityWizardCard(
                         label = { Text(stringResource(R.string.accessibility_risk_warning_input)) },
                         isError = isError,
                         supportingText = if (isError) {
-                            { Text(stringResource(R.string.accessibility_risk_warning_input_error)) }
+                            { Text(warningInputError) }
                         } else null,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
@@ -319,10 +326,7 @@ fun AccessibilityWizardCard(
             confirmButton = {
                 Button(
                     onClick = {
-                        val expectedTextCn = "我已明确并知晓无障碍权限导致的其他应用封号、限制账号功能风险，并后果自己承担"
-                        val expectedTextEn = "I understand and acknowledge the risks of account bans and restricted account functions caused by accessibility permissions, and I bear the consequences myself"
-                        
-                        if (confirmText.trim().equals(expectedTextCn, ignoreCase = true) || 
+                        if (confirmText.trim().equals(expectedText, ignoreCase = true) ||
                             confirmText.trim().equals(expectedTextEn, ignoreCase = true)) {
                             showWarningDialog = false
                             onInstallProvider()
@@ -331,7 +335,7 @@ fun AccessibilityWizardCard(
                         }
                     }
                 ) {
-                    Text(stringResource(R.string.accessibility_risk_warning_confirm))
+                    Text(warningConfirm)
                 }
             },
             dismissButton = {
@@ -364,13 +368,17 @@ private fun UpdateAvailableInfo(
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                "检测到新版本",
+                stringResource(R.string.a11y_wizard_new_version_detected),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "已安装: ${installedVersion ?: "N/A"} -> 内置: $bundledVersion",
+                stringResource(
+                    R.string.a11y_wizard_installed_version,
+                    installedVersion ?: "N/A",
+                    bundledVersion
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer
             )
@@ -380,7 +388,7 @@ private fun UpdateAvailableInfo(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text("立即更新")
+                Text(stringResource(R.string.a11y_update_now))
             }
         }
     }

@@ -8,8 +8,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.FileProvider
@@ -549,7 +547,7 @@ object PatchUpdateInstaller {
                 manager.createNotificationChannel(
                     NotificationChannel(
                         INSTALL_CHANNEL_ID,
-                        INSTALL_CHANNEL_NAME,
+                        context.getString(com.ai.assistance.operit.R.string.patch_update),
                         NotificationManager.IMPORTANCE_HIGH
                     )
                 )
@@ -580,23 +578,14 @@ object PatchUpdateInstaller {
 
             val builder = NotificationCompat.Builder(context, INSTALL_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                .setContentTitle("Patch ready")
-                .setContentText("$version")
+                .setContentTitle(context.getString(com.ai.assistance.operit.R.string.patch_install_confirm_title))
+                .setContentText(version)
                 .setContentIntent(pi)
                 .setAutoCancel(true)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
 
             NotificationManagerCompat.from(context)
                 .notify(INSTALL_NOTIFICATION_ID, builder.build())
-
-            Handler(Looper.getMainLooper()).post {
-                val overlay = PatchInstallConfirmOverlay.getInstance(context)
-                if (overlay.hasOverlayPermission()) {
-                    overlay.show(apkFile = apkFile, version = version) {
-                        installApk(context, apkFile)
-                    }
-                }
-            }
         } catch (_: SecurityException) {
         } catch (_: Exception) {
         }

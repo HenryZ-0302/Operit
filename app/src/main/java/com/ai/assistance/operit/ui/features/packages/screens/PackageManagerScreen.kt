@@ -5,14 +5,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.ChevronRight
@@ -102,6 +105,9 @@ fun PackageManagerScreen(
     var showEnvDialog by remember { mutableStateOf(false) }
     var envVariables by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
+    val packageLoadErrors = remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var showPackageLoadErrorsDialog by remember { mutableStateOf(false) }
+
     val requiredEnvByPackage by remember {
         derivedStateOf {
             val packagesMap = availablePackages.value
@@ -174,14 +180,16 @@ fun PackageManagerScreen(
 
                                         val available = packageManager.getAvailablePackages()
                                         val imported = packageManager.getImportedPackages()
+                                        val errors = packageManager.getPackageLoadErrors()
 
                                         tempFile.delete()
 
-                                        available to imported
+                                        Triple(available, imported, errors)
                                     }
 
                                 availablePackages.value = loadResult.first
                                 importedPackages.value = loadResult.second
+                                packageLoadErrors.value = loadResult.third
                                 visibleImportedPackages.value = importedPackages.value.toList()
                                 isLoading = false
 
@@ -214,11 +222,13 @@ fun PackageManagerScreen(
                 withContext(Dispatchers.IO) {
                     val available = packageManager.getAvailablePackages()
                     val imported = packageManager.getImportedPackages()
-                    available to imported
+                    val errors = packageManager.getPackageLoadErrors()
+                    Triple(available, imported, errors)
                 }
 
             availablePackages.value = loadResult.first
             importedPackages.value = loadResult.second
+            packageLoadErrors.value = loadResult.third
             // 初始化UI显示状态
             visibleImportedPackages.value = importedPackages.value.toList()
         } catch (e: Exception) {
@@ -245,6 +255,19 @@ fun PackageManagerScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalAlignment = Alignment.End
                 ) {
+                    if (packageLoadErrors.value.isNotEmpty()) {
+                        SmallFloatingActionButton(
+                            onClick = { showPackageLoadErrorsDialog = true },
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Error,
+                                contentDescription = context.getString(R.string.error_occurred_simple)
+                            )
+                        }
+                    }
+
                     // Environment variables management button
                     SmallFloatingActionButton(
                         onClick = {
@@ -259,7 +282,7 @@ fun PackageManagerScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
-                            contentDescription = "管理环境变量"
+                            contentDescription = stringResource(R.string.pkg_manage_env_vars)
                         )
                     }
 
@@ -662,8 +685,56 @@ fun PackageManagerScreen(
                     }
                 )
             }
+
+            if (showPackageLoadErrorsDialog) {
+                PackageLoadErrorsDialog(
+                    errors = packageLoadErrors.value,
+                    onDismiss = { showPackageLoadErrorsDialog = false }
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun PackageLoadErrorsDialog(
+    errors: Map<String, String>,
+    onDismiss: () -> Unit
+) {
+    val scrollState = rememberScrollState()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.error_occurred_simple)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(scrollState)
+            ) {
+                errors.toSortedMap().forEach { (packageName, errorText) ->
+                    Text(
+                        text = packageName,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = errorText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.ok))
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -695,11 +766,11 @@ private fun PackageEnvironmentVariablesDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = "配置环境变量") },
+        title = { Text(text = stringResource(R.string.pkg_config_env_vars)) },
         text = {
             if (requiredEnvKeys.isEmpty()) {
                 Text(
-                    text = "当前已导入的工具包没有声明需要的环境变量。",
+                    text = stringResource(R.string.pkg_no_env_vars),
                     style = MaterialTheme.typography.bodyMedium
                 )
             } else {
@@ -819,7 +890,7 @@ private fun PackageEnvironmentVariablesDialog(
                                 // 显示默认值（如果有）
                                 if (envVar.defaultValue != null) {
                                     Text(
-                                        text = "默认: ${envVar.defaultValue}",
+                                        text = stringResource(R.string.pkg_default, envVar.defaultValue),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.padding(start = 8.dp)
@@ -839,7 +910,7 @@ private fun PackageEnvironmentVariablesDialog(
                                 modifier = Modifier.fillMaxWidth(),
                                 placeholder = {
                                     Text(
-                                        text = if (envVar.required) "输入值（必需）" else "输入值（可选）",
+                                        text = if (envVar.required) stringResource(R.string.pkg_input_required) else stringResource(R.string.pkg_input_optional),
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 },
@@ -853,12 +924,12 @@ private fun PackageEnvironmentVariablesDialog(
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(editableValues) }) {
-                Text(text = "保存")
+                Text(text = stringResource(R.string.pkg_save))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "取消")
+                Text(text = stringResource(R.string.pkg_cancel))
             }
         }
     )

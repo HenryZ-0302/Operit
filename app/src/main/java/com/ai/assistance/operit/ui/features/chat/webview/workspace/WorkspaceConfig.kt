@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.ui.features.chat.webview.workspace
 
+import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -33,8 +35,16 @@ data class PreviewConfig(
     val type: String = "browser", // "browser" | "terminal" | "none"
     val url: String = "",
     val showPreviewButton: Boolean = false, // 是否显示"切换到浏览器预览"按钮
-    val previewButtonLabel: String = "浏览器预览" // 预览按钮的文字
-)
+    val previewButtonLabel: String = "", // 预览按钮的文字，空字符串时使用默认值
+) {
+    fun getLocalizedLabel(context: Context): String {
+        return if (previewButtonLabel.isBlank()) {
+            context.getString(R.string.workspace_browser_preview)
+        } else {
+            previewButtonLabel
+        }
+    }
+}
 
 @Serializable
 data class CommandConfig(

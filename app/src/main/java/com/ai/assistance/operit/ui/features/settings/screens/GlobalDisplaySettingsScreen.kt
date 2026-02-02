@@ -230,7 +230,7 @@ fun GlobalDisplaySettingsScreen(
 
             // ======= 自动化状态指示样式 =======
             SectionTitle(
-                text = "自动化显示与行为",
+                text = stringResource(id = R.string.global_display_automation_behavior),
                 icon = Icons.Default.AutoAwesome
             )
 
@@ -271,7 +271,7 @@ fun GlobalDisplaySettingsScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "虚拟屏幕码率",
+                    text = stringResource(id = R.string.global_display_virtual_screen_bitrate),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium
                 )
@@ -342,7 +342,7 @@ fun GlobalDisplaySettingsScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "自动化状态指示样式",
+                    text = stringResource(id = R.string.global_display_status_indicator_style),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium
                 )
@@ -363,7 +363,7 @@ fun GlobalDisplaySettingsScreen(
                                 .apply()
                             showSaveSuccessMessage = true
                         },
-                        label = { Text("全屏彩虹边框") }
+                        label = { Text(stringResource(R.string.display_rainbow_border)) }
                     )
                     FilterChip(
                         selected = statusIndicatorStyle == StatusIndicatorStyle.TOP_BAR,
@@ -377,7 +377,7 @@ fun GlobalDisplaySettingsScreen(
                                 .apply()
                             showSaveSuccessMessage = true
                         },
-                        label = { Text("顶部提示条") }
+                        label = { Text(stringResource(R.string.display_top_hint)) }
                     )
                 }
             }
@@ -391,7 +391,7 @@ fun GlobalDisplaySettingsScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "自动化截图设置",
+                    text = stringResource(id = R.string.global_display_screenshot_settings),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Medium
                 )
@@ -399,7 +399,7 @@ fun GlobalDisplaySettingsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "图片格式",
+                    text = stringResource(id = R.string.global_display_image_format),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Normal
                 )
@@ -416,7 +416,7 @@ fun GlobalDisplaySettingsScreen(
                                 showSaveSuccessMessage = true
                             }
                         },
-                        label = { Text("PNG（无损，默认）") }
+                        label = { Text(stringResource(R.string.display_png_default)) }
                     )
                     FilterChip(
                         selected = screenshotFormat.equals("JPG", ignoreCase = true) ||
@@ -427,7 +427,7 @@ fun GlobalDisplaySettingsScreen(
                                 showSaveSuccessMessage = true
                             }
                         },
-                        label = { Text("JPG（有损，体积更小）") }
+                        label = { Text(stringResource(R.string.display_jpg_smaller)) }
                     )
                 }
 
@@ -439,7 +439,7 @@ fun GlobalDisplaySettingsScreen(
                 }
 
                 Text(
-                    text = "画质（仅对 JPG 生效）",
+                    text = stringResource(id = R.string.global_display_image_quality),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Normal
                 )
@@ -475,7 +475,7 @@ fun GlobalDisplaySettingsScreen(
                 }
 
                 Text(
-                    text = "分辨率缩放（发送前缩小截图）",
+                    text = stringResource(id = R.string.global_display_resolution_scale),
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Normal
                 )

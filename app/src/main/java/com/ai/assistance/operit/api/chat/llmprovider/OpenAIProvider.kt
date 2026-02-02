@@ -1,8 +1,10 @@
 package com.ai.assistance.operit.api.chat.llmprovider
 
+import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.util.Base64
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
 import com.ai.assistance.operit.data.model.ModelParameter
@@ -88,7 +90,7 @@ open class OpenAIProvider(
 ) : AIService {
     // private val client: OkHttpClient = HttpClientFactory.instance
 
-    protected val JSON = "application/json; charset=utf-8".toMediaType()
+    protected val JSON = "application/json".toMediaType()
 
     // 当前活跃的Call对象，用于取消流式传输
     private var activeCall: Call? = null
@@ -137,19 +139,21 @@ open class OpenAIProvider(
          activeCall = null
      }
 
-     override suspend fun getModelsList(): Result<List<ModelOption>> {
+     override suspend fun getModelsList(context: Context): Result<List<ModelOption>> {
          return ModelListFetcher.getModelsList(
+             context = context,
              apiKey = apiKeyProvider.getApiKey(),
              apiEndpoint = apiEndpoint,
              apiProviderType = providerType
          )
      }
 
-     override suspend fun testConnection(): Result<String> {
+     override suspend fun testConnection(context: Context): Result<String> {
          return try {
              val testHistory = listOf("system" to "You are a helpful assistant.")
              val stream =
                  sendMessage(
+                     context,
                      "Hi",
                      testHistory,
                      emptyList(),
@@ -159,10 +163,10 @@ open class OpenAIProvider(
                  )
 
              stream.collect { _ -> }
-             Result.success("连接成功！")
+             Result.success(context.getString(R.string.openai_connection_success))
          } catch (e: Exception) {
              AppLogger.e("AIService", "连接测试失败", e)
-             Result.failure(IOException("连接测试失败: ${e.message}", e))
+             Result.failure(IOException(context.getString(R.string.openai_connection_test_failed, e.message ?: ""), e))
          }
      }
 
@@ -439,6 +443,7 @@ open class OpenAIProvider(
 
     // 创建请求体
     protected open fun createRequestBody(
+        context: Context,
         message: String,
         chatHistory: List<Pair<String, String>>,
         modelParameters: List<ModelParameter<*>> = emptyList(),
@@ -448,7 +453,7 @@ open class OpenAIProvider(
         preserveThinkInHistory: Boolean = false
     ): RequestBody {
         val jsonString =
-            createRequestBodyInternal(message, chatHistory, modelParameters, stream, availableTools, preserveThinkInHistory)
+            createRequestBodyInternal(context, message, chatHistory, modelParameters, stream, availableTools, preserveThinkInHistory)
         return jsonString.toRequestBody(JSON)
     }
 
@@ -456,6 +461,7 @@ open class OpenAIProvider(
      * 内部方法，用于构建请求体的JSON字符串，以便子类可以重用和扩展。
      */
     protected fun createRequestBodyInternal(
+        context: Context,
         message: String,
         chatHistory: List<Pair<String, String>>,
         modelParameters: List<ModelParameter<*>> = emptyList(),
@@ -525,6 +531,7 @@ open class OpenAIProvider(
 
         // 使用新的核心逻辑构建消息并获取token计数
         val (messagesArray, tokenCount) = buildMessagesAndCountTokens(
+            context,
             message,
             chatHistory,
             effectiveEnableToolCall,
@@ -540,7 +547,7 @@ open class OpenAIProvider(
             logJson.put("tools", "[${toolsArray.length()} tools omitted for brevity]")
         }
         val sanitizedLogJson = sanitizeImageDataForLogging(logJson)
-        logLargeString("AIService", sanitizedLogJson.toString(4), "请求体: ")
+        logLargeString("AIService", sanitizedLogJson.toString(4), "Request body: ")
         return jsonObject.toString()
     }
 
@@ -549,7 +556,7 @@ open class OpenAIProvider(
      * @param text 要处理的文本内容
      * @return 纯文本字符串或包含图片和文本的JSONArray
      */
-    fun buildContentField(text: String): Any {
+    fun buildContentField(context: Context, text: String): Any {
         val hasImages = ImageLinkParser.hasImageLinks(text)
         val hasMedia = MediaLinkParser.hasMediaLinks(text)
 
@@ -586,8 +593,8 @@ open class OpenAIProvider(
             if (textWithoutLinks.isNotEmpty()) return textWithoutLinks
 
             return when {
-                audioLinks.isNotEmpty() || videoLinks.isNotEmpty() -> "[音视频内容已省略，当前模型不支持音视频处理]"
-                imageLinks.isNotEmpty() -> "[图片内容已省略，当前模型不支持图片处理]"
+                audioLinks.isNotEmpty() || videoLinks.isNotEmpty() -> context.getString(R.string.openai_audio_video_omitted)
+                imageLinks.isNotEmpty() -> context.getString(R.string.openai_image_omitted)
                 else -> "[Empty]"
             }
         }
@@ -663,6 +670,7 @@ open class OpenAIProvider(
      * @return Pair(消息列表JSONArray, 输入token计数)
      */
     protected fun buildMessagesAndCountTokens(
+        context: Context,
         message: String,
         chatHistory: List<Pair<String, String>>,
         useToolCall: Boolean = false,
@@ -726,7 +734,7 @@ open class OpenAIProvider(
                         }
 
                         if (effectiveContent != null) {
-                            historyMessage.put("content", buildContentField(effectiveContent))
+                            historyMessage.put("content", buildContentField(context, effectiveContent))
                         } else {
                             historyMessage.put("content", null)
                         }
@@ -788,14 +796,14 @@ open class OpenAIProvider(
                         if (textContent.isNotEmpty()) {
                             val historyMessage = JSONObject()
                             historyMessage.put("role", role)
-                            historyMessage.put("content", buildContentField(textContent))
+                            historyMessage.put("content", buildContentField(context, textContent))
                             messagesArray.put(historyMessage)
                         } else if (!hasHandledToolCalls) {
                             // 如果没有处理任何tool_call（且无剩余文本），说明这是一个普通用户消息或者无法匹配的工具结果
                             // 保留原始content
                             val historyMessage = JSONObject()
                             historyMessage.put("role", role)
-                            historyMessage.put("content", buildContentField(content))
+                            historyMessage.put("content", buildContentField(context, content))
                             messagesArray.put(historyMessage)
                         } else {
                         }
@@ -803,7 +811,7 @@ open class OpenAIProvider(
                         // system等其他角色正常处理
                         val historyMessage = JSONObject()
                         historyMessage.put("role", role)
-                        historyMessage.put("content", buildContentField(content))
+                        historyMessage.put("content", buildContentField(context, content))
                         messagesArray.put(historyMessage)
                     }
                 } else {
@@ -819,7 +827,7 @@ open class OpenAIProvider(
                         content
                     }
 
-                    historyMessage.put("content", buildContentField(effectiveContent))
+                    historyMessage.put("content", buildContentField(context, effectiveContent))
                     messagesArray.put(historyMessage)
                 }
             }
@@ -1104,10 +1112,10 @@ open class OpenAIProvider(
     /**
      * 检查是否已被取消，如果是则抛出异常
      */
-    private fun checkCancellation(exception: Exception? = null) {
+    private fun checkCancellation(context: Context, exception: Exception? = null) {
         if (isManuallyCancelled) {
             AppLogger.d("AIService", "请求被用户取消，停止重试。")
-            throw UserCancellationException("请求已被用户取消", exception)
+            throw UserCancellationException(context.getString(R.string.openai_error_request_cancelled), exception)
         }
     }
 
@@ -1115,6 +1123,7 @@ open class OpenAIProvider(
      * 处理可重试错误的统一逻辑
      */
     private suspend fun handleRetryableError(
+        context: Context,
         exception: Exception,
         retryCount: Int,
         maxRetries: Int,
@@ -1122,7 +1131,7 @@ open class OpenAIProvider(
         errorMessage: String,
         onNonFatalError: suspend (String) -> Unit
     ): Int {
-        checkCancellation(exception)
+        checkCancellation(context, exception)
 
         val newRetryCount = retryCount + 1
         if (newRetryCount >= maxRetries) {
@@ -1131,7 +1140,7 @@ open class OpenAIProvider(
         }
 
         AppLogger.w("AIService", "【发送消息】$errorType，正在进行第 $newRetryCount 次重试...", exception)
-        onNonFatalError("【$errorType，正在进行第 $newRetryCount 次重试...】")
+        onNonFatalError("【${context.getString(R.string.openai_retry_with_count, errorType, newRetryCount)}】")
         delay(1000L * (1 shl (newRetryCount - 1)))
 
         return newRetryCount
@@ -1240,7 +1249,7 @@ open class OpenAIProvider(
         }
 
         val request = builder.post(requestBody).build()
-        logLargeString("AIService", "请求头: \n${request.headers}")
+        logLargeString("AIService", "Request headers: \n${request.headers}")
         return request
     }
 
@@ -1495,7 +1504,8 @@ open class OpenAIProvider(
     private suspend fun processStreamingResponse(
         reader: java.io.BufferedReader,
         emitter: StreamEmitter,
-        onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit
+        onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
+        context: Context
     ) {
         val state = StreamingState()
 
@@ -1538,7 +1548,7 @@ open class OpenAIProvider(
                     processResponseChunk(jsonResponse, state, emitter, onTokensUpdated)
                 } catch (e: Exception) {
                     AppLogger.w("AIService", "【发送消息】JSON解析错误: ${e.message}")
-                    logLargeString("AIService", data, "【发送消息】JSON解析失败时的原始data: ")
+                    logLargeString("AIService", data, "[Send message] Original data when JSON parsing failed: ")
                 }
             }
             
@@ -1554,7 +1564,7 @@ open class OpenAIProvider(
             // 捕获IO异常，可能是由于 response.close() 导致的取消，也可能是网络中断
             if (isManuallyCancelled) {
                 AppLogger.d("AIService", "【发送消息】流式传输已被用户取消")
-                throw UserCancellationException("请求已被用户取消", e)
+                throw UserCancellationException(context.getString(R.string.openai_error_request_cancelled), e)
             } else {
                 // 网络中断，准备重试
                 AppLogger.e("AIService", "【发送消息】流式读取时发生IO异常，准备重试", e)
@@ -1571,6 +1581,7 @@ open class OpenAIProvider(
     }
 
     override suspend fun sendMessage(
+        context: Context,
         message: String,
         chatHistory: List<Pair<String, String>>,
         modelParameters: List<ModelParameter<*>>,
@@ -1604,7 +1615,7 @@ open class OpenAIProvider(
 
         while (retryCount < maxRetries) {
             // 在循环开始时检查是否已被取消
-            checkCancellation()
+            checkCancellation(context)
 
             try {
                 // 如果是重试，我们需要构建一个新的请求
@@ -1635,6 +1646,7 @@ open class OpenAIProvider(
                 )
                 // 直接传递原始历史记录给createRequestBody，让具体的Provider决定如何处理（例如Deepseek需要保留<think>标签）
                 val requestBody = createRequestBody(
+                    context,
                     currentMessage,
                     currentHistory,
                     modelParameters,
@@ -1671,24 +1683,24 @@ open class OpenAIProvider(
 
                 try {
                     if (!response.isSuccessful) {
-                        val errorBody = response.body?.string() ?: "No error details"
+                        val errorBody = response.body?.string() ?: context.getString(R.string.openai_error_no_error_details)
                         AppLogger.e(
                             "AIService",
                             "【发送消息】API请求失败，状态码: ${response.code}，错误信息: $errorBody"
                         )
                         // 对于4xx这类明确的客户端错误，直接抛出，不进行重试
                         if (response.code in 400..499) {
-                            throw NonRetriableException("API请求失败，状态码: ${response.code}，错误信息: $errorBody")
+                            throw NonRetriableException(context.getString(R.string.openai_error_api_request_failed_with_status, response.code, errorBody))
                         }
                         // 对于5xx等服务端错误，允许重试
-                        throw IOException("API请求失败，状态码: ${response.code}，错误信息: $errorBody")
+                        throw IOException(context.getString(R.string.openai_error_api_request_failed_with_status, response.code, errorBody))
                     }
 
                     AppLogger.d(
                         "AIService",
                         "【发送消息】连接成功(状态码: ${response.code})，准备处理响应..."
                     )
-                    val responseBody = response.body ?: throw IOException("API响应为空")
+                    val responseBody = response.body ?: throw IOException(context.getString(R.string.openai_error_response_empty))
 
                     // 根据stream参数处理响应
                     if (stream) {
@@ -1699,7 +1711,8 @@ open class OpenAIProvider(
                             processStreamingResponse(
                                 reader,
                                 StreamEmitter(receivedContent, ::emit, onTokensUpdated),
-                                onTokensUpdated
+                                onTokensUpdated,
+                                context
                             )
                         }
                     } else {
@@ -1766,7 +1779,7 @@ open class OpenAIProvider(
                                 AppLogger.d("AIService", "【发送消息】非流式响应处理完成")
                             } catch (e: Exception) {
                                 AppLogger.e("AIService", "【发送消息】解析非流式响应失败", e)
-                                throw IOException("解析响应失败: ${e.message}", e)
+                                throw IOException(context.getString(R.string.openai_error_parse_response_failed, e.message ?: ""), e)
                             }
                         }
                     }
@@ -1792,32 +1805,32 @@ open class OpenAIProvider(
             } catch (e: SocketTimeoutException) {
                 lastException = e
                 retryCount = handleRetryableError(
-                    e, retryCount, maxRetries,
-                    "连接超时",
-                    "AI响应获取失败，连接超时且已达最大重试次数: ${e.message}",
+                    context, e, retryCount, maxRetries,
+                    context.getString(R.string.openai_error_timeout),
+                    context.getString(R.string.openai_error_timeout_max_retries, e.message ?: ""),
                     onNonFatalError
                 )
             } catch (e: UnknownHostException) {
                 lastException = e
                 retryCount = handleRetryableError(
-                    e, retryCount, maxRetries,
-                    "无法解析主机",
-                    "无法连接到服务器，请检查网络连接或API地址是否正确",
+                    context, e, retryCount, maxRetries,
+                    context.getString(R.string.openai_error_cannot_resolve_host),
+                    context.getString(R.string.openai_error_cannot_connect),
                     onNonFatalError
                 )
             } catch (e: IOException) {
                 lastException = e
                 retryCount = handleRetryableError(
-                    e, retryCount, maxRetries,
-                    "网络中断",
-                    "AI响应获取失败，已达最大重试次数: ${e.message}",
+                    context, e, retryCount, maxRetries,
+                    context.getString(R.string.openai_error_network_interrupted),
+                    context.getString(R.string.openai_error_max_retries, e.message ?: ""),
                     onNonFatalError
                 )
             } catch (e: Exception) {
-                checkCancellation(e)
+                checkCancellation(context, e)
                 // 其他未知异常，不应重试
                 AppLogger.e("AIService", "【发送消息】发生未知异常，停止重试", e)
-                throw IOException("AI响应获取失败: ${e.message}", e)
+                throw IOException(context.getString(R.string.openai_error_response_failed, e.message ?: ""), e)
             }
         }
 
@@ -1832,6 +1845,6 @@ open class OpenAIProvider(
             "AIService",
             "【发送消息】重试失败，请检查网络连接，最大重试次数: $maxRetries"
         )
-        throw IOException("连接超时或中断，已重试 $maxRetries 次: ${lastException?.message}")
+        throw IOException(context.getString(R.string.openai_error_connection_timeout, maxRetries, lastException?.message ?: ""))
     }
 }

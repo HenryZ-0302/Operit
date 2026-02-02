@@ -43,8 +43,8 @@ class DebuggerShellExecutor(private val context: Context) : ShellExecutor {
         }
 
         /** 获取Shizuku启动说明 */
-        fun getShizukuStartupInstructions(): String {
-            return ShizukuAuthorizer.getShizukuStartupInstructions()
+        fun getShizukuStartupInstructions(context: Context): String {
+            return ShizukuAuthorizer.getShizukuStartupInstructions(context)
         }
     }
 

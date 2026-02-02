@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.api.voice
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import android.os.Build
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
@@ -72,7 +73,7 @@ class SimpleVoiceProvider(private val context: Context) : VoiceService {
                                         AppLogger.e(TAG, "语言不支持: $locale")
                                         _isInitialized.value = false
                                         continuation.resumeWith(Result.failure(
-                                            TtsException("系统TTS语言不支持: $locale")
+                                            TtsException(context.getString(R.string.accessibility_tts_locale_not_supported, locale))
                                         ))
                                     } else {
                                         // 设置默认语速和音调
@@ -117,7 +118,7 @@ class SimpleVoiceProvider(private val context: Context) : VoiceService {
                                     AppLogger.e(TAG, "TTS初始化失败: $status")
                                     _isInitialized.value = false
                                     continuation.resumeWith(Result.failure(
-                                        TtsException("系统TTS初始化失败，状态码: $status")
+                                        TtsException(context.getString(R.string.accessibility_tts_init_failed, status))
                                     ))
                                 }
                             }

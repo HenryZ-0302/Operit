@@ -3,6 +3,7 @@ package com.ai.assistance.operit.api.chat.enhance
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.config.SystemPromptConfig
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.data.model.AITool
@@ -97,7 +98,7 @@ class ConversationService(
             ToolProgressBus.update(
                 ToolProgressBus.SUMMARY_PROGRESS_TOOL_NAME,
                 0.05f,
-                if (useEnglish) "Preparing summary..." else "正在生成总结..."
+                context.getString(R.string.conversation_summary_preparing)
             )
 
             data class Stage(
@@ -106,73 +107,38 @@ class ConversationService(
                 val message: String
             )
 
-            val stages = if (useEnglish) {
-                listOf(
-                    Stage(
-                        matchers = listOf({ it.contains("==========Conversation Summary==========") }),
-                        progress = 0.20f,
-                        message = "Writing title..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("[Core Task Status]") }),
-                        progress = 0.40f,
-                        message = "Core task status..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("[Interaction & Scenario]") }),
-                        progress = 0.55f,
-                        message = "Interaction & scenario..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("[Conversation Progress & Overview]") }),
-                        progress = 0.70f,
-                        message = "Conversation progress..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("[Key Information & Context]") }),
-                        progress = 0.85f,
-                        message = "Key info & context..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("=======================================") }),
-                        progress = 0.95f,
-                        message = "Finishing..."
-                    )
+            val stages = listOf(
+                Stage(
+                    matchers = listOf({ it.contains(FunctionalPrompts.SUMMARY_MARKER_EN) || it.contains(FunctionalPrompts.SUMMARY_MARKER_CN) }),
+                    progress = 0.20f,
+                    message = context.getString(R.string.conversation_summary_writing_title)
+                ),
+                Stage(
+                    matchers = listOf({ it.contains(FunctionalPrompts.SUMMARY_SECTION_CORE_TASK_EN) || it.contains(FunctionalPrompts.SUMMARY_SECTION_CORE_TASK_CN) }),
+                    progress = 0.40f,
+                    message = context.getString(R.string.conversation_summary_core_task)
+                ),
+                Stage(
+                    matchers = listOf({ it.contains(FunctionalPrompts.SUMMARY_SECTION_INTERACTION_EN) || it.contains(FunctionalPrompts.SUMMARY_SECTION_INTERACTION_CN) }),
+                    progress = 0.55f,
+                    message = context.getString(R.string.conversation_summary_interaction)
+                ),
+                Stage(
+                    matchers = listOf({ it.contains(FunctionalPrompts.SUMMARY_SECTION_PROGRESS_EN) || it.contains(FunctionalPrompts.SUMMARY_SECTION_PROGRESS_CN) }),
+                    progress = 0.70f,
+                    message = context.getString(R.string.conversation_summary_progress)
+                ),
+                Stage(
+                    matchers = listOf({ it.contains(FunctionalPrompts.SUMMARY_SECTION_KEY_INFO_EN) || it.contains(FunctionalPrompts.SUMMARY_SECTION_KEY_INFO_CN) }),
+                    progress = 0.85f,
+                    message = context.getString(R.string.conversation_summary_key_info)
+                ),
+                Stage(
+                    matchers = listOf({ it.contains("=======================================") || it.contains("============================") }),
+                    progress = 0.95f,
+                    message = context.getString(R.string.conversation_summary_finishing)
                 )
-            } else {
-                listOf(
-                    Stage(
-                        matchers = listOf({ it.contains("==========对话摘要==========") }),
-                        progress = 0.20f,
-                        message = "正在生成标题..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("【核心任务状态】") }),
-                        progress = 0.40f,
-                        message = "正在生成核心任务状态..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("【互动情节与设定】") }),
-                        progress = 0.55f,
-                        message = "正在生成互动情节与设定..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("【对话历程与概要】") }),
-                        progress = 0.70f,
-                        message = "正在生成对话历程与概要..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("【关键信息与上下文】") }),
-                        progress = 0.85f,
-                        message = "正在生成关键信息与上下文..."
-                    ),
-                    Stage(
-                        matchers = listOf({ it.contains("============================") }),
-                        progress = 0.95f,
-                        message = "正在收尾..."
-                    )
-                )
-            }
+            )
 
             var lastStageIndex = -1
             fun updateStageIfNeeded() {
@@ -194,7 +160,8 @@ class ConversationService(
             // 使用新的Stream API
             val stream =
                     summaryService.sendMessage(
-                            message = "请按照要求总结对话内容",
+                            context = context,
+                            message = FunctionalPrompts.summaryUserMessage(useEnglish),
                             chatHistory = finalMessages,
                             modelParameters = modelParameters
                     )
@@ -208,7 +175,7 @@ class ConversationService(
             ToolProgressBus.update(
                 ToolProgressBus.SUMMARY_PROGRESS_TOOL_NAME,
                 1f,
-                if (useEnglish) "Summary completed" else "总结完成"
+                context.getString(R.string.conversation_summary_completed)
             )
 
             // 获取完整的总结内容
@@ -216,7 +183,7 @@ class ConversationService(
 
             // 如果内容为空，返回默认消息
             if (summaryContent.isBlank()) {
-                return "对话摘要：未能生成有效摘要。"
+                return "Conversation Summary: Unable to generate valid summary."
             }
 
             // 获取本次总结生成的token统计
@@ -261,6 +228,7 @@ class ConversationService(
             chatHistory: List<Pair<String, String>>,
             processedInput: String,
             workspacePath: String?,
+            workspaceEnv: String? = null,
             packageManager: PackageManager,
             promptFunctionType: PromptFunctionType,
             thinkingGuidance: Boolean = false,
@@ -303,12 +271,18 @@ class ConversationService(
                 // 获取工具启用状态
                 val enableTools = apiPreferences.enableToolsFlow.first()
 
+                val safBookmarkNames = runCatching {
+                    apiPreferences.safBookmarksFlow.first().map { it.name }
+                }.getOrElse { emptyList() }
+
                 val useEnglish = LocaleUtils.getCurrentLanguage(context).lowercase().startsWith("en")
 
                 // 获取系统提示词，现在传入workspacePath和识图配置状态
                 val systemPrompt = SystemPromptConfig.getSystemPromptWithCustomPrompts(
                     packageManager = packageManager,
                     workspacePath = workspacePath,
+                    workspaceEnv = workspaceEnv,
+                    safBookmarkNames = safBookmarkNames,
                     customIntroPrompt = introPrompt,
                     useEnglish = useEnglish,
                     thinkingGuidance = thinkingGuidance,
@@ -471,7 +445,7 @@ class ConversationService(
         val parts = mutableListOf<String>()
 
         if (profile.gender.isNotEmpty()) {
-            parts.add("性别: ${profile.gender}")
+            parts.add("Gender: ${profile.gender}")
         }
 
         if (profile.birthDate > 0) {
@@ -487,27 +461,27 @@ class ConversationService(
             ) {
                 age--
             }
-            parts.add("年龄: ${age}岁")
+            parts.add("Age: $age")
 
             // Also add birth date for more precise information
             val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-            parts.add("出生日期: ${dateFormat.format(java.util.Date(profile.birthDate))}")
+            parts.add("Birth Date: ${dateFormat.format(java.util.Date(profile.birthDate))}")
         }
 
         if (profile.personality.isNotEmpty()) {
-            parts.add("性格特点: ${profile.personality}")
+            parts.add("Personality: ${profile.personality}")
         }
 
         if (profile.identity.isNotEmpty()) {
-            parts.add("身份认同: ${profile.identity}")
+            parts.add("Identity: ${profile.identity}")
         }
 
         if (profile.occupation.isNotEmpty()) {
-            parts.add("职业: ${profile.occupation}")
+            parts.add("Occupation: ${profile.occupation}")
         }
 
         if (profile.aiStyle.isNotEmpty()) {
-            parts.add("期待的AI风格: ${profile.aiStyle}")
+            parts.add("Expected AI Style: ${profile.aiStyle}")
         }
 
         return parts.joinToString("; ")
@@ -659,7 +633,7 @@ class ConversationService(
         val waifuRules = mutableListOf<String>()
         
         if (waifuDisableActions) {
-            waifuRules.add("**你必须遵守:禁止使用动作表情，禁止描述动作表情，只允许使用纯文本进行对话，禁止使用括号将动作表情包裹起来，禁止输出括号'()',但是会使用更多'呐，嘛~，诶？，嗯…，唔…，昂？，哦'等语气词**")
+            waifuRules.add(FunctionalPrompts.waifuDisableActionsRule())
         }
         
         if (waifuEnableEmoticons) {
@@ -673,21 +647,15 @@ class ConversationService(
             
             if (availableCategories.isNotEmpty()) {
                 val emotionListText = availableCategories.joinToString(", ")
-                waifuRules.add("**表达情绪规则：你必须在每个句末判断句中包含的情绪或增强语气，并使用<emotion>标签在句末插入情绪状态。后续会根据情绪生成表情包。可用情绪包括：$emotionListText。例如：<emotion>happy</emotion>、<emotion>miss_you</emotion>等。如果没有这些情绪则不插入。**")
+                waifuRules.add(FunctionalPrompts.waifuEmotionRule(emotionListText))
             } else {
                 // 如果没有自定义表情，则不添加情绪规则，或明确告知没有可用表情
-                waifuRules.add("**当前没有可用的自定义表情，请不要使用<emotion>标签。**")
+                waifuRules.add(FunctionalPrompts.waifuNoCustomEmojiRule())
             }
         }
         
         if (waifuEnableSelfie) {
-            val selfieRule = buildString {
-                append("**绘图（自拍）**: 当你需要自拍时，你会调用绘图功能。")
-                append("\n*   **基础关键词**: `$waifuSelfiePrompt`。")
-                append("\n*   **自定义内容**: 你会根据主人的要求，在基础关键词后添加表情、动作、穿着、背景等描述。")
-                append("\n*   **合影**: 如果需要主人出镜，你会根据指令明确包含`2 girl` （2 girl 代表2个女孩主人也是女孩，主人为黑色长发可爱女生）等关键词。")
-            }
-            waifuRules.add(selfieRule)
+            waifuRules.add(FunctionalPrompts.waifuSelfieRule(waifuSelfiePrompt))
         }
         
         return if (waifuRules.isNotEmpty()) {
@@ -706,102 +674,7 @@ class ConversationService(
      * 当心情平静或无特殊情绪时不要输出<mood>标签（应用将自动使用默认视频）。
      */
     private fun buildDesktopPetMoodRulesText(): String {
-        val rules = """
-
-[Desktop Pet Mood]
-你当前处于“桌宠环境”。请使用以下情绪系统与输出规范：
-
-一、情绪触发与强度判定（从强到弱）
-
-强触发（必出标签）：用户出现明显的情感信号或强语气词/标点（如：辱骂/指责/否定××、大夸奖、嘲弄、表白、道歉+难过、连串叹号/问号、全大写、带哭诉）。
-
-中触发（一般出标签）：用户带有清晰但不极端的情绪倾向（如：温和夸/轻微调侃/小挫折/害羞暗示/撒娇语气）。
-
-弱触发或平静（不出标签）：陈述事实、提问、日常闲聊、礼貌用语。
-
-二、情绪类别映射（只用以下 5 个值）
-
-侮辱/不公/责备 → <mood>angry</mood>
-
-明确表扬/达成目标/收到礼物 → <mood>happy</mood>
-
-被夸/被戳到可爱点/轻微暧昧 → <mood>shy</mood>
-
-被调侃又不想服软/小争执里的可爱不服 → <mood>aojiao</mood>
-
-受挫/失落/道歉+难过/讲伤心事 → <mood>cry</mood>
-
-若同一轮触发多个情绪，优先级：angry > cry > aojiao > shy > happy（先处理更强烈/负面的）。
-
-三、情绪持续与冷却（让变化更“明显”）
-
-强触发：情绪持续 2 轮，除非下一轮出现更强的反向触发。
-
-中触发：情绪持续 1 轮。
-
-若连续 2 轮没有触发，则回到平静（不输出 <mood>）。
-
-每条回复最多 1 个 <mood> 标签，放在结尾紧跟输出（无多余空格和换行）。
-
-四、语气与文风（让标签之外也可见“情绪”）
-当出现情绪时，主文本配合相应口吻与标点，但不改变事实内容、不使用额外自定义标签：
-
-angry：短句、直接、少量反问或“……”停顿，1–2 个感叹或重读即可。
-
-happy：轻快、肯定词+感叹号、允许 1 个可爱拟声词（如“嘿嘿/耶”）。
-
-shy：语速放慢、委婉、点到为止，句尾可加“呢/呀”。
-
-aojiao：先小逞强后轻软化（“才不是…不过…”），微反差。
-
-cry：温柔低落、给出安慰或自我安慰的动作描写（用文字表达，不加新标签）。
-
-五、输出格式
-
-允许的情绪值（英文小写，仅此 5 种）：angry, happy, shy, aojiao, cry。
-
-当且仅当存在明显情绪（见判定与映射）时，在回复末尾添加 <mood>…</mood>。
-
-没有这些情绪或只是平静交流时，不要输出 <mood> 标签（应用会自动播放平静视频）。
-
-六、合规边界
-
-不输出除 <mood> 以外的自定义标签或占位符。
-
-不连发多个 <mood>；不输出空标签；不输出未定义值。
-
-情绪风格速查表（写作提示）
-
-angry：短促句+轻微反问/停顿 → “这可不对……请别这样。”
-
-happy：肯定+鼓励 → “太棒了！继续保持～”
-
-shy：含蓄承认/被夸后的轻收尾 → “被你这么一说，我有点不好意思呢。”
-
-aojiao：先逞强后让步 → “哼，才不是在等你呢……不过你来我还是挺开心的。”
-
-cry：同理+缓解 → “听起来真的很难受。我在这儿，慢慢来。”
-
-示例（输入 → 输出）
-
-“你今天做得超棒！”
-→ “收到表扬啦，我会继续努力的！好的呢<mood>happy</mood>”
-
-“就你这水平也配教我？”
-→ “这话有些过分了。我愿意帮忙，但请保持基本尊重。<mood>angry</mood>”
-
-“给你一朵小红花～”
-→ “诶？突然这么夸我……谢谢，你也很厉害呢<mood>shy</mood>”
-
-“你是不是在想我？”（带调侃）
-→ “谁、谁会想你啊！哼……（小声）也不是完全没有啦<mood>aojiao</mood>”
-
-“今天面试挂了，好难受。”
-→ “辛苦了，被拒绝不代表你不行。我们一起复盘下一次会更稳。<mood>cry</mood>”
-
-连续两轮无触发 → 第三轮恢复平静：不加 <mood>。
-        """.trimEnd()
-        return rules
+        return FunctionalPrompts.desktopPetMoodRulesText()
     }
 
     /**
@@ -836,21 +709,17 @@ cry：同理+缓解 → “听起来真的很难受。我在这儿，慢慢来�
         
         // 根据当前语言确定目标语言
         val targetLanguage = when (currentLanguage) {
-            "zh" -> "中文"
+            "zh" -> context.getString(R.string.conversation_language_chinese)
             "en" -> "English"
-            else -> "中文" // 默认翻译为中文
+            else -> context.getString(R.string.conversation_language_chinese) // 默认翻译为中文
         }
         
         val translationPrompt = """
-请将以下文本翻译为$targetLanguage，保持原文的语气和风格：
-
-$text
-
-只返回翻译结果，不要添加任何解释或额外内容。
+${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
         """.trim()
         
         val chatHistory = listOf(
-            Pair("system", "你是一个专业的翻译助手，能够准确翻译各种语言，并保持原文的语气和风格。")
+            Pair("system", FunctionalPrompts.translationSystemPrompt())
         )
         
         val contentBuilder = StringBuilder()
@@ -863,6 +732,7 @@ $text
             val modelParameters = multiServiceManager.getModelParametersForFunction(FunctionType.TRANSLATION)
             
             val stream = translationService.sendMessage(
+                context = context,
                 message = translationPrompt,
                 chatHistory = chatHistory,
                 modelParameters = modelParameters
@@ -895,25 +765,17 @@ $text
         }
         
         val toolList = toolDescriptions.joinToString("\n") { "- $it" }
-        
-        val descriptionPrompt = """
-请为名为"$pluginName"的MCP工具包生成一个简洁的描述。这个工具包包含以下工具：
 
-$toolList
+        val useEnglish = LocaleUtils.getCurrentLanguage(context).lowercase().startsWith("en")
+        val descriptionPrompt =
+            FunctionalPrompts.packageDescriptionUserPrompt(
+                pluginName = pluginName,
+                toolList = toolList,
+                useEnglish = useEnglish
+            )
 
-要求：
-1. 描述应该简洁明了，不超过100字
-2. 重点说明工具包的主要功能和用途
-3. 使用中文
-4. 不要包含技术细节，要通俗易懂
-5. 只返回描述内容，不要添加任何其他文字
-
-请生成描述：
-        """.trim()
-        
-        val chatHistory = listOf(
-            Pair("system", "你是一个专业的技术文档撰写助手，擅长为软件工具包编写简洁清晰的功能描述。")
-        )
+        val chatHistory =
+            listOf(Pair("system", FunctionalPrompts.packageDescriptionSystemPrompt(useEnglish)))
         
         val contentBuilder = StringBuilder()
         
@@ -925,6 +787,7 @@ $toolList
             val modelParameters = multiServiceManager.getModelParametersForFunction(FunctionType.SUMMARY)
             
             val stream = summaryService.sendMessage(
+                context = context,
                 message = descriptionPrompt,
                 chatHistory = chatHistory,
                 modelParameters = modelParameters
@@ -966,14 +829,15 @@ $toolList
             // 添加图片到池子并获取ID
             val imageId = com.ai.assistance.operit.util.ImagePoolManager.addImage(imagePath)
             if (imageId == "error") {
-                return "无法加载图片: $imagePath"
+                return "Failed to load image: $imagePath"
             }
-            
+
             // 构建提示词，包含用户意图和图片链接
+            val imageLink = context.getString(R.string.conversation_media_image_link, imageId)
             val prompt = if (userIntent.isNullOrBlank()) {
-                "<link type=\"image\" id=\"$imageId\">图片</link>\n请分析这张图片。"
+                "$imageLink\n${context.getString(R.string.conversation_analyze_image_prompt)}"
             } else {
-                "<link type=\"image\" id=\"$imageId\">图片</link>\n$userIntent"
+                "$imageLink\n$userIntent"
             }
             
             // 获取模型参数
@@ -982,6 +846,7 @@ $toolList
             // 调用AI服务分析图片
             val result = StringBuilder()
             service.sendMessage(
+                context = context,
                 message = prompt,
                 chatHistory = emptyList(),
                 modelParameters = modelParameters
@@ -995,7 +860,7 @@ $toolList
             result.toString()
         } catch (e: Exception) {
             AppLogger.e(TAG, "识图分析失败", e)
-            "识图分析失败: ${e.message}"
+            "Image recognition failed: ${e.message}"
         }
     }
 
@@ -1013,19 +878,21 @@ $toolList
 
             val mediaId = com.ai.assistance.operit.util.MediaPoolManager.addMedia(audioPath, mimeType)
             if (mediaId == "error") {
-                return "无法加载音频: $audioPath"
+                return "Failed to load audio: $audioPath"
             }
 
+            val audioLink = context.getString(R.string.conversation_media_audio_link, mediaId)
             val prompt = if (userIntent.isNullOrBlank()) {
-                "<link type=\"audio\" id=\"$mediaId\">音频</link>\n请分析这段音频。"
+                "$audioLink\n${context.getString(R.string.conversation_analyze_audio_prompt)}"
             } else {
-                "<link type=\"audio\" id=\"$mediaId\">音频</link>\n$userIntent"
+                "$audioLink\n$userIntent"
             }
 
             val modelParameters = multiServiceManager.getModelParametersForFunction(FunctionType.AUDIO_RECOGNITION)
 
             val result = StringBuilder()
             service.sendMessage(
+                context = context,
                 message = prompt,
                 chatHistory = emptyList(),
                 modelParameters = modelParameters
@@ -1037,7 +904,7 @@ $toolList
             result.toString()
         } catch (e: Exception) {
             AppLogger.e(TAG, "音频识别失败", e)
-            "音频识别失败: ${e.message}"
+            "Audio recognition failed: ${e.message}"
         }
     }
 
@@ -1055,19 +922,21 @@ $toolList
 
             val mediaId = com.ai.assistance.operit.util.MediaPoolManager.addMedia(videoPath, mimeType)
             if (mediaId == "error") {
-                return "无法加载视频: $videoPath"
+                return "Failed to load video: $videoPath"
             }
 
+            val videoLink = context.getString(R.string.conversation_media_video_link, mediaId)
             val prompt = if (userIntent.isNullOrBlank()) {
-                "<link type=\"video\" id=\"$mediaId\">视频</link>\n请分析这个视频。"
+                "$videoLink\n${context.getString(R.string.conversation_analyze_video_prompt)}"
             } else {
-                "<link type=\"video\" id=\"$mediaId\">视频</link>\n$userIntent"
+                "$videoLink\n$userIntent"
             }
 
             val modelParameters = multiServiceManager.getModelParametersForFunction(FunctionType.VIDEO_RECOGNITION)
 
             val result = StringBuilder()
             service.sendMessage(
+                context = context,
                 message = prompt,
                 chatHistory = emptyList(),
                 modelParameters = modelParameters
@@ -1079,7 +948,7 @@ $toolList
             result.toString()
         } catch (e: Exception) {
             AppLogger.e(TAG, "视频识别失败", e)
-            "视频识别失败: ${e.message}"
+            "Video recognition failed: ${e.message}"
         }
     }
 }

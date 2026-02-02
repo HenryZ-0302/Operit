@@ -57,7 +57,7 @@ object DetailsTagRenderer {
 
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = if (expanded) "收起" else "展开",
+                    contentDescription = if (expanded) "Collapse" else "Expand",
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     modifier = Modifier
                         .padding(start = 0.dp)

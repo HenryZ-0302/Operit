@@ -5,7 +5,11 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.OperitPaths
 import com.k2fsa.sherpa.ncnn.*
 import com.ai.assistance.operit.api.speech.SpeechPrerollStore
 import java.io.File
@@ -43,6 +47,10 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
     private var recordingJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Default)
 
+    private var aec: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
+    private var agc: AutomaticGainControl? = null
+
     private fun clearAndReleaseAudioRecord() {
         val record = audioRecord
         audioRecord = null
@@ -61,6 +69,53 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
                 AppLogger.w(TAG, "Error releasing AudioRecord", e)
             }
         }
+
+        releaseAudioEffects()
+    }
+
+    private fun setupAudioEffects(audioSessionId: Int) {
+        releaseAudioEffects()
+
+        if (audioSessionId <= 0) return
+
+        if (AcousticEchoCanceler.isAvailable()) {
+            try {
+                aec = AcousticEchoCanceler.create(audioSessionId)?.also { it.enabled = true }
+            } catch (_: Exception) {
+            }
+        }
+        if (NoiseSuppressor.isAvailable()) {
+            try {
+                noiseSuppressor = NoiseSuppressor.create(audioSessionId)?.also { it.enabled = true }
+            } catch (_: Exception) {
+            }
+        }
+        if (AutomaticGainControl.isAvailable()) {
+            try {
+                agc = AutomaticGainControl.create(audioSessionId)?.also { it.enabled = true }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun releaseAudioEffects() {
+        try {
+            aec?.release()
+        } catch (_: Exception) {
+        }
+        aec = null
+
+        try {
+            noiseSuppressor?.release()
+        } catch (_: Exception) {
+        }
+        noiseSuppressor = null
+
+        try {
+            agc?.release()
+        } catch (_: Exception) {
+        }
+        agc = null
     }
 
     private val _recognitionState = MutableStateFlow(SpeechService.RecognitionState.UNINITIALIZED)
@@ -158,7 +213,7 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
         try {
             val modelDirName = "sherpa-ncnn-streaming-zipformer-bilingual-zh-en-2023-02-13"
             val assetModelDir = "models/$modelDirName"
-            localModelDir = copyAssetDirToCache(assetModelDir, context.filesDir)
+            localModelDir = copyAssetDirToCache(assetModelDir, OperitPaths.sherpaNcnnModelsDir(context))
         } catch (e: IOException) {
             AppLogger.e(TAG, "Failed to copy model assets.", e)
             _recognitionState.value = SpeechService.RecognitionState.ERROR
@@ -328,6 +383,11 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
             currentVolume = 0f
             _volumeLevelFlow.value = 0f
             AppLogger.d(TAG, "Started recording")
+
+            try {
+                setupAudioEffects(recordInstance.audioSessionId)
+            } catch (_: Exception) {
+            }
 
             recordingJob =
                     scope.launch {
@@ -548,6 +608,8 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
             _volumeLevelFlow.value = 0f // 重置音量
             _recognitionResult.value = SpeechService.RecognitionResult(text = "", isFinal = false, confidence = 0f)
         }
+
+        releaseAudioEffects()
     }
 
     override suspend fun getSupportedLanguages(): List<String> =

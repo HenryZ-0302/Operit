@@ -16,10 +16,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.mcp.plugins.MCPDeployer.DeploymentStatus
 
 /** MCP插件部署进度对话框 - 简约风格 */
@@ -56,9 +58,9 @@ fun MCPDeployProgressDialog(
                         verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                            text = if (deploymentStatus is DeploymentStatus.Success) "部署成功" 
-                                  else if (deploymentStatus is DeploymentStatus.Error) "部署失败" 
-                                  else "正在部署",
+                            text = if (deploymentStatus is DeploymentStatus.Success) stringResource(R.string.mcp_deploy_success)
+                                  else if (deploymentStatus is DeploymentStatus.Error) stringResource(R.string.mcp_deploy_failed)
+                                  else stringResource(R.string.mcp_deploy_in_progress),
                             style = MaterialTheme.typography.titleLarge,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -74,7 +76,7 @@ fun MCPDeployProgressDialog(
                         ) {
                             Icon(
                                     imageVector = Icons.Default.Settings,
-                                    contentDescription = "环境变量",
+                                    contentDescription = stringResource(R.string.mcp_env_variables),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -88,7 +90,7 @@ fun MCPDeployProgressDialog(
                         ) {
                             Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "关闭",
+                                    contentDescription = stringResource(R.string.mcp_close),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -116,8 +118,8 @@ fun MCPDeployProgressDialog(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                                text = if (deploymentStatus is DeploymentStatus.InProgress) 
-                                       deploymentStatus.message else "准备部署...",
+                                text = if (deploymentStatus is DeploymentStatus.InProgress)
+                                       deploymentStatus.message else stringResource(R.string.mcp_preparing_deploy),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface
                         )
@@ -134,7 +136,7 @@ fun MCPDeployProgressDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                    text = "部署完成",
+                                    text = stringResource(R.string.mcp_deploy_completed),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.primary
                             )
@@ -158,7 +160,7 @@ fun MCPDeployProgressDialog(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                    text = "部署失败",
+                                    text = stringResource(R.string.mcp_deploy_failed),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.error
                             )
@@ -181,15 +183,15 @@ fun MCPDeployProgressDialog(
                             modifier = Modifier.padding(bottom = 8.dp)
                     ) {
                         Text(
-                                text = "部署日志",
+                                text = stringResource(R.string.mcp_deploy_log),
                                 style = MaterialTheme.typography.titleSmall
                         )
-                        
+
                         Spacer(modifier = Modifier.weight(1f))
-                        
+
                         // 显示日志行数
                         Text(
-                                text = "${outputMessages.size} 行",
+                                text = stringResource(R.string.mcp_lines_count, outputMessages.size),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                         )
@@ -240,7 +242,7 @@ fun MCPDeployProgressDialog(
                                     modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("重试")
+                            Text(stringResource(R.string.mcp_retry))
                         }
                     }
 
@@ -257,8 +259,8 @@ fun MCPDeployProgressDialog(
                                         else
                                                 MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                        ) { 
-                            Text("关闭") 
+                        ) {
+                            Text(stringResource(R.string.mcp_close))
                         }
                     }
                 }

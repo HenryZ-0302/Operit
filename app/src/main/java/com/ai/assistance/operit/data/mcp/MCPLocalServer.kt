@@ -2,6 +2,7 @@ package com.ai.assistance.operit.data.mcp
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.DirectoryListingData
@@ -294,7 +295,7 @@ class MCPLocalServer private constructor(private val context: Context) {
                     isInstalled = true,
                     version = "1.0.0",
                     updatedAt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                    longDescription = "通过配置文件自动识别的 MCP 服务器",
+                    longDescription = context.getString(R.string.mcp_local_auto_detected_server),
                     repoUrl = "",
                     type = "local",
                     endpoint = null,
@@ -428,17 +429,17 @@ class MCPLocalServer private constructor(private val context: Context) {
                     gson.fromJson(jsonConfig, MCPConfig::class.java)
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "JSON 解析失败", e)
-                    return@withContext Result.failure(Exception("JSON 格式错误: ${e.message}"))
+                    return@withContext Result.failure(Exception(context.getString(R.string.mcp_local_json_format_error, e.message)))
                 }
                 
                 if (parsedConfig?.mcpServers == null) {
                     AppLogger.e(TAG, "配置解析结果为 null 或 mcpServers 字段为 null")
-                    return@withContext Result.failure(Exception("配置中没有找到 mcpServers 字段"))
+                    return@withContext Result.failure(Exception(context.getString(R.string.mcp_local_no_mcp_servers_field)))
                 }
                 
                 if (parsedConfig.mcpServers.isEmpty()) {
                     AppLogger.e(TAG, "mcpServers 为空")
-                    return@withContext Result.failure(Exception("配置中 mcpServers 为空"))
+                    return@withContext Result.failure(Exception(context.getString(R.string.mcp_local_mcp_servers_empty)))
                 }
                 
                 AppLogger.d(TAG, "解析到 ${parsedConfig.mcpServers.size} 个服务器配置")
@@ -472,7 +473,7 @@ class MCPLocalServer private constructor(private val context: Context) {
             } catch (e: Exception) {
                 AppLogger.e(TAG, "合并配置失败: ${e.message}", e)
                 e.printStackTrace()
-                Result.failure(Exception("合并配置失败: ${e.message}"))
+                Result.failure(Exception(context.getString(R.string.mcp_local_merge_config_failed, e.message)))
             }
         }
     }

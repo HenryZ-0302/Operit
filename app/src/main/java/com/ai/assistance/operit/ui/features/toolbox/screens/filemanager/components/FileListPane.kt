@@ -15,8 +15,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.DirectoryListingData
 import com.ai.assistance.operit.data.model.AITool
@@ -128,7 +130,7 @@ fun FileListPane(
                         ) {
                             Icon(
                                     imageVector = Icons.Default.ArrowBack,
-                                    contentDescription = "返回上级目录",
+                                    contentDescription = stringResource(R.string.filelist_go_back),
                                     tint =
                                             if (isActive)
                                                     MaterialTheme.colorScheme.onPrimaryContainer

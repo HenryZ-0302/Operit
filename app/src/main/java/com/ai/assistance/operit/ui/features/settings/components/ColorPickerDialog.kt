@@ -19,7 +19,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.theme.getTextColorForBackground
 import com.ai.assistance.operit.ui.theme.isHighContrast
 import com.github.skydoves.colorpicker.compose.*
@@ -206,12 +208,12 @@ fun ColorPickerDialog(
             Text(
                     text =
                             when (currentColorPickerMode) {
-                                "primary" -> "选择主色"
-                                "secondary" -> "选择次色"
-                                "statusBar" -> "选择状态栏颜色"
-                                "historyIcon" -> "选择历史记录图标颜色"
-                                "pipIcon" -> "选择悬浮窗图标颜色"
-                                else -> "选择颜色"
+                                "primary" -> stringResource(R.string.colorpicker_select_primary)
+                                "secondary" -> stringResource(R.string.colorpicker_select_secondary)
+                                "statusBar" -> stringResource(R.string.colorpicker_select_statusbar)
+                                "historyIcon" -> stringResource(R.string.colorpicker_select_history_icon)
+                                "pipIcon" -> stringResource(R.string.colorpicker_select_pip_icon)
+                                else -> stringResource(R.string.colorpicker_select_color)
                             },
                     style = MaterialTheme.typography.titleMedium
             )
@@ -261,7 +263,7 @@ fun ColorPickerDialog(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        "示例文本",
+                                        stringResource(R.string.colorpicker_sample_text),
                                         color = textColor,
                                         style = MaterialTheme.typography.bodyMedium
                                     )
@@ -270,7 +272,7 @@ fun ColorPickerDialog(
 
                             // Add contrast rating
                             val contrastRating =
-                                if (isHighContrast(pickedColor)) "高对比度 ✓" else "低对比度 ⚠"
+                                if (isHighContrast(pickedColor)) stringResource(R.string.colorpicker_high_contrast) else stringResource(R.string.colorpicker_low_contrast)
                             val contrastColor =
                                 if (isHighContrast(pickedColor)) Color(0xFF388E3C)
                                 else Color(0xFFD32F2F)
@@ -294,7 +296,7 @@ fun ColorPickerDialog(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(
-                            text = "手动输入颜色",
+                            text = stringResource(R.string.colorpicker_manual_input),
                             style = MaterialTheme.typography.titleSmall,
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
@@ -337,13 +339,13 @@ fun ColorPickerDialog(
                                                     }
                                                 }
                                             ) {
-                                                Icon(Icons.Default.ContentPaste, "粘贴")
+                                                Icon(Icons.Default.ContentPaste, stringResource(R.string.colorpicker_paste))
                                             }
                                         }
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     TextButton(onClick = { applyManualColor() }) {
-                                        Text("应用")
+                                        Text(stringResource(R.string.colorpicker_apply))
                                     }
                                 }
                             }
@@ -385,7 +387,7 @@ fun ColorPickerDialog(
                                         onClick = { applyManualColor() },
                                         modifier = Modifier.align(Alignment.End)
                                     ) {
-                                        Text("应用 RGB")
+                                        Text(stringResource(R.string.colorpicker_apply_rgb))
                                     }
                                 }
                             }
@@ -433,7 +435,7 @@ fun ColorPickerDialog(
                                         onClick = { applyManualColor() },
                                         modifier = Modifier.align(Alignment.End)
                                     ) {
-                                        Text("应用 HSV")
+                                        Text(stringResource(R.string.colorpicker_apply_hsv))
                                     }
                                 }
                             }
@@ -487,7 +489,7 @@ fun ColorPickerDialog(
                 // Recent colors section
                 if (recentColors.isNotEmpty()) {
                     Text(
-                        text = "最近使用",
+                        text = stringResource(R.string.colorpicker_recently_used),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
@@ -526,7 +528,7 @@ fun ColorPickerDialog(
 
                 // Preset colors title
                 Text(
-                    text = "推荐颜色",
+                    text = stringResource(R.string.colorpicker_recommended),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
@@ -570,11 +572,11 @@ fun ColorPickerDialog(
                     onDismiss()
                 },
                 shape = RoundedCornerShape(8.dp)
-            ) { Text("确定") }
+            ) { Text(stringResource(R.string.colorpicker_confirm)) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(stringResource(R.string.colorpicker_cancel))
             }
         }
     )

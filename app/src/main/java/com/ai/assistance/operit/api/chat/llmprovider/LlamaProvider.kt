@@ -3,6 +3,7 @@ package com.ai.assistance.operit.api.chat.llmprovider
 import android.content.Context
 import android.os.Environment
 import com.ai.assistance.llama.LlamaSession
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelOption
 import com.ai.assistance.operit.data.model.ModelParameter
@@ -80,25 +81,25 @@ class LlamaProvider(
         }
     }
 
-    override suspend fun getModelsList(): Result<List<ModelOption>> {
+    override suspend fun getModelsList(context: Context): Result<List<ModelOption>> {
         return ModelListFetcher.getLlamaLocalModels(context)
     }
 
-    override suspend fun testConnection(): Result<String> = withContext(Dispatchers.IO) {
+    override suspend fun testConnection(context: Context): Result<String> = withContext(Dispatchers.IO) {
         if (!LlamaSession.isAvailable()) {
             return@withContext Result.failure(Exception(LlamaSession.getUnavailableReason()))
         }
 
         val modelFile = getModelFile(context, modelName)
         if (!modelFile.exists()) {
-            return@withContext Result.failure(Exception("模型文件不存在: ${modelFile.absolutePath}"))
+            return@withContext Result.failure(Exception(context.getString(R.string.llama_error_model_file_not_exist, modelFile.absolutePath)))
         }
 
         val testSession = LlamaSession.create(
             pathModel = modelFile.absolutePath,
             nThreads = threadCount,
             nCtx = contextSize
-        ) ?: return@withContext Result.failure(Exception("创建 llama.cpp 会话失败（nativeCreateSession 返回 0）"))
+        ) ?: return@withContext Result.failure(Exception(context.getString(R.string.llama_error_create_session_failed)))
 
         testSession.release()
         Result.success("llama.cpp backend is available (native ready).")
@@ -132,6 +133,7 @@ class LlamaProvider(
     }
 
     override suspend fun sendMessage(
+        context: Context,
         message: String,
         chatHistory: List<Pair<String, String>>,
         modelParameters: List<ModelParameter<*>>,
@@ -145,13 +147,13 @@ class LlamaProvider(
         isCancelled = false
 
         if (!LlamaSession.isAvailable()) {
-            emit("错误: ${LlamaSession.getUnavailableReason()}")
+            emit("${context.getString(R.string.llama_error_prefix)}: ${LlamaSession.getUnavailableReason()}")
             return@stream
         }
 
         val modelFile = getModelFile(context, modelName)
         if (!modelFile.exists()) {
-            emit("错误: 模型文件不存在: ${modelFile.absolutePath}")
+            emit("${context.getString(R.string.llama_error_prefix)}: ${context.getString(R.string.llama_error_model_file_not_exist, modelFile.absolutePath)}")
             return@stream
         }
 
@@ -159,7 +161,7 @@ class LlamaProvider(
             ensureSessionLocked()
         }
         if (s == null) {
-            emit("错误: 创建 llama.cpp 会话失败（请检查模型文件与 JNI 编译输出）")
+            emit(context.getString(R.string.llama_error_session_create_failed))
             return@stream
         }
 
@@ -176,7 +178,7 @@ class LlamaProvider(
             s.applyChatTemplate(roles, contents, true)
         }
         if (prompt.isNullOrBlank()) {
-            emit("错误: 无法应用模型对话模板（llama_model_chat_template/llama_chat_apply_template）")
+            emit(context.getString(R.string.llama_error_chat_template_failed))
             return@stream
         }
 
@@ -254,9 +256,9 @@ class LlamaProvider(
 
         if (!success && !isCancelled) {
             kotlin.runCatching {
-                onNonFatalError("llama.cpp 推理过程出现错误")
+                onNonFatalError(context.getString(R.string.llama_error_inference_failed))
             }
-            emit("\n\n[推理过程出现错误]")
+            emit("\n\n${context.getString(R.string.llama_error_inference_tag)}")
         }
 
         AppLogger.i(TAG, "llama.cpp推理完成，输出token数: $_outputTokenCount")

@@ -14,9 +14,11 @@ import com.ai.assistance.operit.util.exceptions.UserCancellationException
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.StreamCollector
 import com.ai.assistance.operit.util.stream.stream
+import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.util.Base64
+import com.ai.assistance.operit.R
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -51,7 +53,7 @@ class GeminiProvider(
     // HTTP客户端
     // private val client: OkHttpClient = HttpClientFactory.instance
 
-    private val JSON = "application/json; charset=utf-8".toMediaType()
+    private val JSON = "application/json".toMediaType()
 
     // 活跃请求，用于取消流式请求
     private var activeCall: Call? = null
@@ -636,6 +638,7 @@ class GeminiProvider(
 
     /** 发送消息到Gemini API */
     override suspend fun sendMessage(
+            context: Context,
             message: String,
             chatHistory: List<Pair<String, String>>,
             modelParameters: List<ModelParameter<*>>,
@@ -676,13 +679,13 @@ class GeminiProvider(
             logDebug("连接状态: $status")
         }
 
-        emitConnectionStatus("连接到Gemini服务...")
+        emitConnectionStatus(context.getString(R.string.gemini_connecting))
 
         while (retryCount < maxRetries) {
             // 在循环开始时检查是否已被取消
             if (isManuallyCancelled) {
                 logError("请求被用户取消，停止重试。")
-                throw UserCancellationException("请求已被用户取消")
+                throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled))
             }
             
             try {
@@ -701,18 +704,18 @@ class GeminiProvider(
                     currentHistory = chatHistory
                 }
 
-                val requestBody = createRequestBody(currentMessage, currentHistory, modelParameters, enableThinking, availableTools, preserveThinkInHistory)
+                val requestBody = createRequestBody(context, currentMessage, currentHistory, modelParameters, enableThinking, availableTools, preserveThinkInHistory)
                 onTokensUpdated(
                         tokenCacheManager.totalInputTokenCount,
                         tokenCacheManager.cachedInputTokenCount,
                         tokenCacheManager.outputTokenCount
                 )
-                val request = createRequest(requestBody, stream, requestId) // 根据stream参数决定使用流式还是非流式
+                val request = createRequest(context, requestBody, stream, requestId) // 根据stream参数决定使用流式还是非流式
 
                 val call = client.newCall(request)
                 activeCall = call
 
-                emitConnectionStatus("建立连接中...")
+                emitConnectionStatus(context.getString(R.string.gemini_connecting))
 
                 val startTime = System.currentTimeMillis()
                 withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -722,26 +725,26 @@ class GeminiProvider(
                         val duration = System.currentTimeMillis() - startTime
                         AppLogger.d(TAG, "收到初始响应, 耗时: ${duration}ms, 状态码: ${response.code}")
 
-                        emitConnectionStatus("连接成功，处理响应...")
+                        emitConnectionStatus(context.getString(R.string.gemini_connected_success))
 
                         if (!response.isSuccessful) {
-                            val errorBody = response.body?.string() ?: "无错误详情"
+                            val errorBody = response.body?.string() ?: context.getString(R.string.gemini_error_no_error_details)
                             logError("API请求失败: ${response.code}, $errorBody")
                             // 对于4xx这类明确的客户端错误，直接抛出，不进行重试
                             if (response.code in 400..499) {
-                                throw NonRetriableException("API请求失败: ${response.code}, $errorBody")
+                                throw NonRetriableException(context.getString(R.string.gemini_error_api_request_failed, response.code, errorBody))
                             }
                             // 对于5xx等服务端错误，允许重试
-                            throw IOException("API请求失败: ${response.code}, $errorBody")
+                            throw IOException(context.getString(R.string.gemini_error_api_request_failed, response.code, errorBody))
                         }
 
                         // 根据stream参数处理响应
                         if (stream) {
                             // 处理流式响应
-                            processStreamingResponse(response, streamCollector, requestId, onTokensUpdated, receivedContent)
+                            processStreamingResponse(context, response, streamCollector, requestId, onTokensUpdated, receivedContent)
                         } else {
                             // 处理非流式响应并转换为Stream
-                            processNonStreamingResponse(response, streamCollector, requestId, onTokensUpdated, receivedContent)
+                            processNonStreamingResponse(context, response, streamCollector, requestId, onTokensUpdated, receivedContent)
                         }
                     } finally {
                         response.close()
@@ -759,63 +762,64 @@ class GeminiProvider(
             } catch (e: SocketTimeoutException) {
                 if (isManuallyCancelled) {
                     logError("请求被用户取消，停止重试。")
-                    throw UserCancellationException("请求已被用户取消", e)
+                    throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled), e)
                 }
                 lastException = e
                 retryCount++
                 if (retryCount >= maxRetries) {
                     logError("连接超时且达到最大重试次数", e)
-                    throw IOException("AI响应获取失败，连接超时且已达最大重试次数: ${e.message}")
+                    throw IOException(context.getString(R.string.gemini_error_timeout_max_retries, e.message ?: ""))
                 }
                 logError("连接超时，尝试重试 $retryCount/$maxRetries", e)
-                onNonFatalError("【网络超时，正在进行第 $retryCount 次重试...】")
+                onNonFatalError(context.getString(R.string.gemini_network_timeout_retry, retryCount))
                 delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: UnknownHostException) {
                 if (isManuallyCancelled) {
                     logError("请求被用户取消，停止重试。")
-                    throw UserCancellationException("请求已被用户取消", e)
+                    throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled), e)
                 }
                 lastException = e
                 retryCount++
                 if (retryCount >= maxRetries) {
                     logError("无法解析主机且达到最大重试次数", e)
-                    throw IOException("无法连接到服务器，请检查网络连接或API地址是否正确")
+                    throw IOException(context.getString(R.string.gemini_error_cannot_connect))
                 }
                 logError("无法解析主机，尝试重试 $retryCount/$maxRetries", e)
-                onNonFatalError("【网络不稳定，正在进行第 $retryCount 次重试...】")
+                onNonFatalError(context.getString(R.string.gemini_network_unstable_retry, retryCount))
                 delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: IOException) {
                 if (isManuallyCancelled) {
                     logError("请求被用户取消，停止重试。")
-                    throw UserCancellationException("请求已被用户取消", e)
+                    throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled), e)
                 }
                 // 捕获所有其他IO异常，包括流读取中断
                 lastException = e
                 retryCount++
                 if (retryCount >= maxRetries) {
                     logError("达到最大重试次数后仍然失败", e)
-                    throw IOException("AI响应获取失败，已达最大重试次数: ${e.message}")
+                    throw IOException(context.getString(R.string.gemini_error_max_retries, e.message ?: ""))
                 }
                 logError("IO异常，尝试重试 $retryCount/$maxRetries", e)
-                onNonFatalError("【网络中断，正在进行第 $retryCount 次重试...】")
+                onNonFatalError(context.getString(R.string.gemini_network_interrupted_retry, retryCount))
                 delay(1000L * (1 shl (retryCount - 1)))
             } catch (e: Exception) {
                 if (isManuallyCancelled) {
                     logError("请求被用户取消，停止重试。")
-                    throw UserCancellationException("请求已被用户取消", e)
+                    throw UserCancellationException(context.getString(R.string.gemini_error_request_cancelled), e)
                 }
                 lastException = e
                 logError("发送消息时发生未知异常，不进行重试", e)
-                throw IOException("AI响应获取失败: ${e.message}", e)
+                throw IOException(context.getString(R.string.gemini_error_response_failed, e.message ?: ""), e)
             }
         }
 
         logError("重试${maxRetries}次后仍然失败", lastException)
-        throw IOException("连接超时或中断，已重试 $maxRetries 次: ${lastException?.message}")
+        throw IOException(context.getString(R.string.gemini_error_connection_timeout, maxRetries, lastException?.message ?: ""))
     }
 
     /** 创建请求体 */
     private fun createRequestBody(
+            context: Context,
             message: String,
             chatHistory: List<Pair<String, String>>,
             modelParameters: List<ModelParameter<*>>,
@@ -936,13 +940,14 @@ class GeminiProvider(
             logJson.put("tools", "[${toolsArray.length()} tools omitted for brevity]")
         }
         sanitizeImageDataForLogging(logJson)
-        logLargeString(TAG, logJson.toString(4), "请求体JSON: ")
+        logLargeString(TAG, logJson.toString(4), context.getString(R.string.gemini_request_body_json))
 
         return jsonString.toRequestBody(JSON)
     }
 
     /** 创建HTTP请求 */
     private suspend fun createRequest(
+            context: Context,
             requestBody: RequestBody,
             isStreaming: Boolean,
             requestId: String
@@ -976,7 +981,7 @@ class GeminiProvider(
                 .addHeader("Content-Type", "application/json")
                 .build()
 
-        logLargeString(TAG, "请求头: \n${request.headers}")
+        logLargeString(TAG, context.getString(R.string.gemini_request_headers, request.headers.toString()))
         return request
     }
 
@@ -994,6 +999,7 @@ class GeminiProvider(
 
     /** 处理API流式响应 */
     private suspend fun processStreamingResponse(
+            context: Context,
             response: Response,
             streamCollector: StreamCollector<String>,
             requestId: String,
@@ -1001,7 +1007,7 @@ class GeminiProvider(
             receivedContent: StringBuilder
     ) {
         AppLogger.d(TAG, "开始处理响应流")
-        val responseBody = response.body ?: throw IOException("响应为空")
+        val responseBody = response.body ?: throw IOException(context.getString(R.string.gemini_response_empty))
         val reader = responseBody.charStream().buffered()
 
         // 注意：不再使用fullContent累积所有内容
@@ -1041,7 +1047,7 @@ class GeminiProvider(
                             val json = JSONObject(data)
                             jsonCount++
 
-                            val content = extractContentFromJson(json, requestId, onTokensUpdated)
+                            val content = extractContentFromJson(context, json, requestId, onTokensUpdated)
                             if (content.isNotEmpty()) {
                                 contentCount++
                                 logDebug("提取SSE内容，长度: ${content.length}")
@@ -1101,6 +1107,7 @@ class GeminiProvider(
                                                     jsonCount++
                                                     val content =
                                                             extractContentFromJson(
+                                                                    context,
                                                                     jsonObject,
                                                                     requestId,
                                                                     onTokensUpdated
@@ -1116,20 +1123,6 @@ class GeminiProvider(
                                                         streamCollector.emit(content)
                                                     }
                                                 }
-                                            }
-                                        }
-                                        is JSONObject -> {
-                                            // 处理JSON对象
-                                            jsonCount++
-                                            val content =
-                                                    extractContentFromJson(jsonContent, requestId, onTokensUpdated)
-                                            if (content.isNotEmpty()) {
-                                                contentCount++
-                                                logDebug("从JSON对象提取内容，长度: ${content.length}")
-                                                receivedContent.append(content)
-
-                                                // 只发送新提取的内容
-                                                streamCollector.emit(content)
                                             }
                                         }
                                     }
@@ -1175,7 +1168,7 @@ class GeminiProvider(
                             for (i in 0 until jsonContent.length()) {
                                 val jsonObject = jsonContent.optJSONObject(i) ?: continue
                                 jsonCount++
-                                val content = extractContentFromJson(jsonObject, requestId, onTokensUpdated)
+                                val content = extractContentFromJson(context, jsonObject, requestId, onTokensUpdated)
                                 if (content.isNotEmpty()) {
                                     contentCount++
                                     logDebug("从最终JSON数组[$i]提取内容，长度: ${content.length}")
@@ -1186,7 +1179,7 @@ class GeminiProvider(
                         }
                         is JSONObject -> {
                             jsonCount++
-                            val content = extractContentFromJson(jsonContent, requestId, onTokensUpdated)
+                            val content = extractContentFromJson(context, jsonContent, requestId, onTokensUpdated)
                             if (content.isNotEmpty()) {
                                 contentCount++
                                 logDebug("从最终JSON对象提取内容，长度: ${content.length}")
@@ -1222,6 +1215,7 @@ class GeminiProvider(
 
     /** 处理API非流式响应 */
     private suspend fun processNonStreamingResponse(
+            context: Context,
             response: Response,
             streamCollector: StreamCollector<String>,
             requestId: String,
@@ -1229,7 +1223,7 @@ class GeminiProvider(
             receivedContent: StringBuilder
     ) {
         AppLogger.d(TAG, "开始处理非流式响应")
-        val responseBody = response.body ?: throw IOException("响应为空")
+        val responseBody = response.body ?: throw IOException(context.getString(R.string.gemini_response_empty))
         
         try {
             val responseText = responseBody.string()
@@ -1239,7 +1233,7 @@ class GeminiProvider(
             val json = JSONObject(responseText)
             
             // 提取内容
-            val content = extractContentFromJson(json, requestId, onTokensUpdated)
+            val content = extractContentFromJson(context, json, requestId, onTokensUpdated)
             
             if (content.isNotEmpty()) {
                 receivedContent.append(content)
@@ -1269,6 +1263,7 @@ class GeminiProvider(
 
     /** 从Gemini响应JSON中提取内容 */
     private suspend fun extractContentFromJson(
+        context: Context,
         json: JSONObject,
         requestId: String,
         onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit
@@ -1280,7 +1275,7 @@ class GeminiProvider(
             // 检查是否有错误信息
             if (json.has("error")) {
                 val error = json.getJSONObject("error")
-                val errorMsg = error.optString("message", "未知错误")
+                val errorMsg = error.optString("message", context.getString(R.string.gemini_unknown_error))
                 logError("API返回错误: $errorMsg")
                 return "" // 有错误时返回空字符串
             }
@@ -1303,18 +1298,18 @@ class GeminiProvider(
                     val webSearchQueries = groundingMetadata.optJSONArray("webSearchQueries")
                     if (webSearchQueries != null && webSearchQueries.length() > 0) {
                         searchSourcesBuilder.append("\n<search>\n\n")
-                        searchSourcesBuilder.append("**🔍 Google 搜索来源：**\n\n")
-                        
+                        searchSourcesBuilder.append(context.getString(R.string.gemini_search_sources_title))
+
                         for (i in 0 until webSearchQueries.length()) {
                             val query = webSearchQueries.optString(i)
-                            searchSourcesBuilder.append("- 查询：`${query}`\n")
+                            searchSourcesBuilder.append(context.getString(R.string.gemini_search_query, query))
                             logDebug("搜索查询 [$i]: $query")
                         }
                         
                         // 提取搜索结果的URL来源
                         val groundingSupports = groundingMetadata.optJSONArray("groundingSupports")
                         if (groundingSupports != null && groundingSupports.length() > 0) {
-                            searchSourcesBuilder.append("\n**📄 参考来源：**\n\n")
+                            searchSourcesBuilder.append(context.getString(R.string.gemini_reference_sources_title))
                             
                             for (i in 0 until groundingSupports.length()) {
                                 val support = groundingSupports.getJSONObject(i)
@@ -1528,21 +1523,22 @@ class GeminiProvider(
     }
 
     /** 获取模型列表 */
-    override suspend fun getModelsList(): Result<List<ModelOption>> {
+    override suspend fun getModelsList(context: Context): Result<List<ModelOption>> {
         return ModelListFetcher.getModelsList(
+            context = context,
             apiKey = apiKeyProvider.getApiKey(),
             apiEndpoint = apiEndpoint,
             apiProviderType = ApiProviderType.GOOGLE
         )
     }
 
-    override suspend fun testConnection(): Result<String> {
+    override suspend fun testConnection(context: Context): Result<String> {
         return try {
             // 通过发送一条短消息来测试完整的连接、认证和API端点。
             // 这比getModelsList更可靠，因为它直接命中了聊天API。
             // 提供一个通用的系统提示，以防止某些需要它的模型出现错误。
             val testHistory = listOf("system" to "You are a helpful assistant.")
-            val stream = sendMessage("Hi", testHistory, emptyList(), false, onTokensUpdated = { _, _, _ -> }, onNonFatalError = {})
+            val stream = sendMessage(context, "Hi", testHistory, emptyList(), false, false, null, onTokensUpdated = { _, _, _ -> }, onNonFatalError = {})
 
             // 消耗流以确保连接有效。
             // 对 "Hi" 的响应应该很短，所以这会很快完成。
@@ -1553,10 +1549,10 @@ class GeminiProvider(
 
             // 某些情况下，即使连接成功，也可能不会返回任何数据（例如，如果模型只处理了提示而没有生成响应）。
             // 因此，只要不抛出异常，我们就认为连接成功。
-            Result.success("连接成功！")
+            Result.success(context.getString(R.string.gemini_connection_success))
         } catch (e: Exception) {
             logError("连接测试失败", e)
-            Result.failure(IOException("连接测试失败: ${e.message}", e))
+            Result.failure(IOException(context.getString(R.string.gemini_connection_test_failed, e.message ?: ""), e))
         }
     }
 }

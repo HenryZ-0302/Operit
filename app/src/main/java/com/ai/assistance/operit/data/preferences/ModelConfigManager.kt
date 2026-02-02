@@ -2,6 +2,7 @@ package com.ai.assistance.operit.data.preferences
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.R
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.core.edit
@@ -46,7 +47,7 @@ class ModelConfigManager(private val context: Context) {
 
         // 默认值
         const val DEFAULT_CONFIG_ID = "default"
-        const val DEFAULT_CONFIG_NAME = "默认配置"
+        const val DEFAULT_CONFIG_NAME = "model_config_default_name"
 
         // Default API provider type
         private val DEFAULT_API_PROVIDER_TYPE = ApiProviderType.DEEPSEEK
@@ -90,7 +91,7 @@ class ModelConfigManager(private val context: Context) {
     private fun createFreshDefaultConfig(): ModelConfigData {
         return ModelConfigData(
                 id = DEFAULT_CONFIG_ID,
-                name = DEFAULT_CONFIG_NAME,
+                name = context.getString(R.string.model_config_default_name),
                 apiKey = ApiPreferences.DEFAULT_API_KEY,
                 apiEndpoint = ApiPreferences.DEFAULT_API_ENDPOINT,
                 modelName = ApiPreferences.DEFAULT_MODEL_NAME,
@@ -135,14 +136,14 @@ class ModelConfigManager(private val context: Context) {
                     if (configId == DEFAULT_CONFIG_ID) {
                         createFreshDefaultConfig()
                     } else {
-                        ModelConfigData(id = configId, name = "配置 $configId")
+                        ModelConfigData(id = configId, name = context.getString(R.string.model_config_config_id, configId))
                     }
                 }
             } else {
                 if (configId == DEFAULT_CONFIG_ID) {
                     createFreshDefaultConfig()
                 } else {
-                    ModelConfigData(id = configId, name = "配置 $configId")
+                    ModelConfigData(id = configId, name = context.getString(R.string.model_config_config_id, configId))
                 }
             }
         }
@@ -173,14 +174,14 @@ class ModelConfigManager(private val context: Context) {
                                 if (configId == DEFAULT_CONFIG_ID) {
                                     createFreshDefaultConfig()
                                 } else {
-                                    ModelConfigData(id = configId, name = "配置 $configId")
+                                    ModelConfigData(id = configId, name = context.getString(R.string.model_config_config_id, configId))
                                 }
                             }
                         } else {
                             if (configId == DEFAULT_CONFIG_ID) {
                                 createFreshDefaultConfig()
                             } else {
-                                ModelConfigData(id = configId, name = "配置 $configId")
+                                ModelConfigData(id = configId, name = context.getString(R.string.model_config_config_id, configId))
                             }
                         }
                     }
@@ -189,13 +190,13 @@ class ModelConfigManager(private val context: Context) {
             preferences[configKey] = json.encodeToString(newConfig)
             updated = newConfig
         }
-        return updated ?: ModelConfigData(id = configId, name = "配置 $configId")
+        return updated ?: ModelConfigData(id = configId, name = context.getString(R.string.model_config_config_id, configId))
     }
 
     // 获取指定ID的配置
     fun getModelConfigFlow(configId: String): Flow<ModelConfigData> {
         return context.modelConfigDataStore.data.map { preferences ->
-            val config = loadConfigFromDataStore(configId) ?: ModelConfigData(id = configId, name = "配置 $configId")
+            val config = loadConfigFromDataStore(configId) ?: ModelConfigData(id = configId, name = context.getString(R.string.model_config_config_id, configId))
             config
         }
     }
@@ -736,7 +737,7 @@ class ModelConfigManager(private val context: Context) {
             return Triple(newCount, updatedCount, skippedCount)
         } catch (e: Exception) {
             AppLogger.e("ModelConfigManager", "导入配置失败", e)
-            throw Exception("导入失败：${e.localizedMessage ?: e.message}")
+            throw Exception(context.getString(R.string.model_config_import_failed, e.localizedMessage ?: e.message))
         }
     }
 }

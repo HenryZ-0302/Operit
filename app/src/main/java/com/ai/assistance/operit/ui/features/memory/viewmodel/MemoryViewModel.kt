@@ -15,6 +15,7 @@ import com.ai.assistance.operit.ui.features.memory.screens.graph.model.Node
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
+import com.ai.assistance.operit.R
 import com.google.gson.Gson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -94,7 +95,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 _uiState.update { it.copy(graph = graphData, isLoading = false) }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to load memory graph: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_load_graph, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -119,7 +120,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 _uiState.update { it.copy(graph = graphData, isLoading = false) }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to search memories: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_search, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -145,7 +146,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                     selectFolder(folders.first())
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to load folders: ${e.message}") }
+                _uiState.update { it.copy(error = context.getString(R.string.memory_error_load_folders, e.message ?: "Unknown error")) }
             }
         }
     }
@@ -158,7 +159,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 val folders = repository.getAllFolderPaths()
                 _uiState.update { it.copy(folderPaths = folders, isLoading = false) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Failed to refresh folders: ${e.message}", isLoading = false) }
+                _uiState.update { it.copy(error = context.getString(R.string.memory_error_refresh_folders, e.message ?: "Unknown error"), isLoading = false) }
             }
         }
     }
@@ -172,7 +173,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 _uiState.update { it.copy(graph = graphData, isLoading = false) }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to load folder graph: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_load_folder_graph, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -204,10 +205,10 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                         )
                     }
                 } else {
-                    _uiState.update { it.copy(isLoading = false, error = "Failed to move memories") }
+                    _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.memory_error_move_memories)) }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Failed to move memories: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.memory_error_move_memories_detail, e.message ?: "Unknown error")) }
             }
         }
     }
@@ -377,7 +378,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 _uiState.update { it.copy(graph = updatedGraph, isLoading = false) }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to import document: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_import_document, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -397,7 +398,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to create memory: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_create_memory, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -438,7 +439,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to update memory: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_update_memory, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -457,7 +458,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to delete memory: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_delete_memory, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -507,7 +508,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
             } catch (e: Exception) {
                 com.ai.assistance.operit.util.AppLogger.e("MemoryViewModel", "Failed to delete selected memories", e)
                 _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to delete selected memories: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_delete_selected, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -552,7 +553,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                     )
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Failed to update link: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.memory_error_update_link, e.message ?: "Unknown error")) }
             }
         }
     }
@@ -566,7 +567,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 val updatedGraph = refreshGraph()
                 _uiState.update { it.copy(isLoading = false, selectedEdge = null, graph = updatedGraph) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Failed to delete link: ${e.message}") }
+                _uiState.update { it.copy(isLoading = false, error = context.getString(R.string.memory_error_delete_link, e.message ?: "Unknown error")) }
             }
         }
     }
@@ -633,7 +634,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = "Failed to link memories: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_link_memories, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -648,7 +649,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 // 创建一个空的占位记忆，确保文件夹路径存在
                 repository.createMemory(
                     title = ".folder_placeholder",
-                    content = "这是一个文件夹占位符，请创建新记忆。",
+                    content = context.getString(R.string.memory_folder_placeholder),
                     contentType = "text",
                     folderPath = folderPath
                 )
@@ -658,7 +659,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 selectFolder(folderPath)
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(error = "创建文件夹失败: ${e.message}")
+                    it.copy(error = context.getString(R.string.memory_error_create_folder, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -682,7 +683,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(isLoading = false, error = "重命名文件夹失败: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_rename_folder, e.message ?: "Unknown error"))
                 }
             }
         }
@@ -709,7 +710,7 @@ class MemoryViewModel(private val repository: MemoryRepository, private val cont
             } catch (e: Exception) {
                 AppLogger.e(TAG, "deleteFolder() 删除文件夹失败: $folderPath", e)
                 _uiState.update {
-                    it.copy(isLoading = false, error = "删除文件夹失败: ${e.message}")
+                    it.copy(isLoading = false, error = context.getString(R.string.memory_error_delete_folder, e.message ?: "Unknown error"))
                 }
             }
         }

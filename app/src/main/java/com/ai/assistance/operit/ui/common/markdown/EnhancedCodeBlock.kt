@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.ui.common.markdown
 
 import com.ai.assistance.operit.util.AppLogger
+import android.view.MotionEvent
 import android.webkit.WebView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -10,11 +11,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,10 +40,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val TAG = "CodeBlock"
+
+private enum class CodeBlockPreviewType {
+    MERMAID,
+    HTML
+}
 
 /**
  * 增强型代码块组件
@@ -72,6 +84,9 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
 
     // HTML预览状态
     var showRenderedHtml by remember { mutableStateOf(false) }
+
+    var showFullscreenPreview by remember { mutableStateOf(false) }
+    var fullscreenPreviewType by remember { mutableStateOf<CodeBlockPreviewType?>(null) }
 
     val configuration = LocalConfiguration.current
     val maxScrollableHeight = remember(configuration.screenHeightDp) {
@@ -193,7 +208,7 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
                                 contentDescription =
-                                    if (showRenderedMermaid) "显示代码" else "渲染Mermaid",
+                                    if (showRenderedMermaid) stringResource(R.string.common_show_code) else stringResource(R.string.common_render_mermaid),
                                 tint =
                                     if (showRenderedMermaid)
                                         MaterialTheme.colorScheme.primary
@@ -208,11 +223,35 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
                         IconButton(onClick = handleToggleHtml, modifier = Modifier.size(28.dp)) {
                             Icon(
                                 imageVector = Icons.Default.PlayArrow,
-                                contentDescription = if (showRenderedHtml) "显示代码" else "预览HTML",
+                                contentDescription = if (showRenderedHtml) stringResource(R.string.common_show_code) else stringResource(R.string.common_preview_html),
                                 tint =
                                     if (showRenderedHtml)
                                         MaterialTheme.colorScheme.primary
                                     else Color(0xFFAAAAAA),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    if (isPreviewMode) {
+                        IconButton(
+                            onClick = {
+                                fullscreenPreviewType =
+                                    when {
+                                        isMermaid && showRenderedMermaid -> CodeBlockPreviewType.MERMAID
+                                        isHtml && showRenderedHtml -> CodeBlockPreviewType.HTML
+                                        else -> null
+                                    }
+                                if (fullscreenPreviewType != null) {
+                                    showFullscreenPreview = true
+                                }
+                            },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Fullscreen,
+                                contentDescription = stringResource(R.string.common_fullscreen_preview),
+                                tint = Color(0xFFAAAAAA),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -225,7 +264,7 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
                     ) {
                         Icon(
                             imageVector = Icons.Default.SwapHoriz,
-                            contentDescription = if (autoWrapEnabled) "关闭自动换行" else "开启自动换行",
+                            contentDescription = if (autoWrapEnabled) stringResource(R.string.common_disable_autowrap) else stringResource(R.string.common_enable_autowrap),
                             tint = if (!autoWrapEnabled) MaterialTheme.colorScheme.primary else Color(
                                 0xFFAAAAAA
                             ),
@@ -237,7 +276,7 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
                     IconButton(onClick = handleCopy, modifier = Modifier.size(28.dp)) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "复制代码",
+                            contentDescription = stringResource(R.string.common_copy_code),
                             tint = Color(0xFFAAAAAA),
                             modifier = Modifier.size(16.dp)
                         )
@@ -379,10 +418,42 @@ fun EnhancedCodeBlock(code: String, language: String = "", modifier: Modifier = 
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
-                            text = "已复制",
+                            text = stringResource(R.string.common_copied),
                             color = Color.White,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showFullscreenPreview) {
+        Dialog(
+            onDismissRequest = {
+                showFullscreenPreview = false
+            },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when (fullscreenPreviewType) {
+                        CodeBlockPreviewType.MERMAID -> MermaidRenderer(code = code, modifier = Modifier.fillMaxSize())
+                        CodeBlockPreviewType.HTML -> HtmlPreviewRenderer(code = code, modifier = Modifier.fillMaxSize())
+                        null -> Unit
+                    }
+
+                    IconButton(
+                        onClick = { showFullscreenPreview = false },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.common_exit_fullscreen),
+                            tint = Color.White
                         )
                     }
                 }
@@ -687,9 +758,11 @@ fun MermaidRenderer(code: String, modifier: Modifier = Modifier) {
 
             // 处理触摸事件
             setOnTouchListener { v, event ->
-                // 让WebView处理所有触摸事件
-                v.parent.requestDisallowInterceptTouchEvent(true)
-                false // 返回false以便WebView可以处理事件
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> v.parent.requestDisallowInterceptTouchEvent(true)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.parent.requestDisallowInterceptTouchEvent(false)
+                }
+                false
             }
 
             // 设置背景颜色
@@ -722,7 +795,11 @@ fun MermaidRenderer(code: String, modifier: Modifier = Modifier) {
     }
 
     // 渲染WebView
-    AndroidView(factory = { webView }, modifier = modifier)
+    val nestedScrollInterop = rememberNestedScrollInteropConnection()
+    AndroidView(
+        factory = { webView },
+        modifier = modifier.nestedScroll(nestedScrollInterop)
+    )
 }
 
 @Composable
@@ -751,6 +828,14 @@ fun HtmlPreviewRenderer(code: String, modifier: Modifier = Modifier) {
                 }
 
             setBackgroundColor(android.graphics.Color.WHITE)
+
+            setOnTouchListener { v, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> v.parent.requestDisallowInterceptTouchEvent(true)
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.parent.requestDisallowInterceptTouchEvent(false)
+                }
+                false
+            }
         }
     }
 
@@ -777,7 +862,11 @@ fun HtmlPreviewRenderer(code: String, modifier: Modifier = Modifier) {
         )
     }
 
-    AndroidView(factory = { webView }, modifier = modifier)
+    val nestedScrollInterop = rememberNestedScrollInteropConnection()
+    AndroidView(
+        factory = { webView },
+        modifier = modifier.nestedScroll(nestedScrollInterop)
+    )
 }
 
 /** 带缓存的单行代码组件，进一步减少重组和计算 */

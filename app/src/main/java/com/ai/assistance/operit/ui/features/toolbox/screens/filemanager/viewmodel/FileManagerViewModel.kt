@@ -15,6 +15,7 @@ import com.ai.assistance.operit.core.tools.FileInfoData
 import com.ai.assistance.operit.core.tools.FindFilesResultData
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolParameter
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.components.DisplayMode
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.models.FileItem
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.models.TabItem
@@ -25,6 +26,8 @@ import kotlinx.coroutines.withContext
 class FileManagerViewModel(private val context: Context) : ViewModel() {
     // 路径和导航状态
     var currentPath by mutableStateOf("/sdcard")
+        private set
+    var currentEnvironment by mutableStateOf<String?>(null)
         private set
     var files = mutableStateListOf<FileItem>()
     var isLoading by mutableStateOf(false)
@@ -52,7 +55,7 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
     var pendingScrollPosition by mutableStateOf<Pair<String, Int>?>(null)
 
     // 标签页状态
-    var tabs = mutableStateListOf(TabItem("/sdcard", "主目录"))
+    var tabs = mutableStateListOf(TabItem("/sdcard", context.getString(R.string.file_manager_home), null))
     var activeTabIndex by mutableStateOf(0)
 
     // 上下文菜单状态
@@ -77,8 +80,17 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
 
     private val toolHandler by lazy { AIToolHandler.getInstance(context) }
 
+    private fun withEnvParams(base: List<ToolParameter>, environment: String? = currentEnvironment): List<ToolParameter> {
+        if (environment.isNullOrBlank()) return base
+        return base + ToolParameter("environment", environment)
+    }
+
+    private fun isSafEnv(environment: String?): Boolean {
+        return environment?.startsWith("repo:", ignoreCase = true) == true
+    }
+
     // 加载当前目录内容
-    fun loadCurrentDirectory(path: String = currentPath) {
+    fun loadCurrentDirectory(path: String = currentPath, environment: String? = currentEnvironment) {
         viewModelScope.launch {
             isLoading = true
             error = null
@@ -88,9 +100,11 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
                     val listFilesTool =
                             AITool(
                                     name = "list_files",
-                                    parameters = listOf(ToolParameter("path", path))
+                                    parameters = withEnvParams(listOf(ToolParameter("path", path)), environment)
                             )
+                    AppLogger.d("ToolboxFileManager", "execute list_files path=$path env=$environment")
                     val result = toolHandler.executeTool(listFilesTool)
+                    AppLogger.d("ToolboxFileManager", "result list_files success=${result.success} error=${result.error}")
                     if (result.success) {
                         val directoryListing = result.result as DirectoryListingData
                         val fileList =
@@ -175,7 +189,7 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
     }
 
     // 直接导航到指定路径
-    fun navigateToPath(path: String) {
+    fun navigateToPath(path: String, environment: String? = currentEnvironment) {
         if (path.isNotEmpty()) {
             val normalizedPath =
                     when {
@@ -187,24 +201,26 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
             // 设置需要恢复的滚动位置
             pendingScrollPosition = normalizedPath to (scrollPositions[normalizedPath] ?: 0)
 
+            currentEnvironment = environment
             currentPath = normalizedPath
             if (activeTabIndex < tabs.size) {
                 val updatedTabs = tabs.toMutableList()
                 updatedTabs[activeTabIndex] =
-                        updatedTabs[activeTabIndex].copy(path = normalizedPath)
+                        updatedTabs[activeTabIndex].copy(path = normalizedPath, environment = environment)
                 tabs.clear()
                 tabs.addAll(updatedTabs)
             }
 
-            loadCurrentDirectory(normalizedPath)
+            loadCurrentDirectory(normalizedPath, environment)
         }
     }
 
     // 添加新标签
-    fun addTab(path: String = "/sdcard", title: String = "新标签") {
-        tabs.add(TabItem(path, title))
+    fun addTab(path: String = "/sdcard", title: String = context.getString(R.string.file_manager_new_tab)) {
+        tabs.add(TabItem(path, title, null))
         activeTabIndex = tabs.size - 1
         currentPath = path
+        currentEnvironment = null
         loadCurrentDirectory()
     }
 
@@ -216,6 +232,7 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
                 activeTabIndex = tabs.size - 1
             }
             currentPath = tabs[activeTabIndex].path
+            currentEnvironment = tabs[activeTabIndex].environment
             loadCurrentDirectory()
         }
     }
@@ -225,6 +242,7 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
         if (index < tabs.size) {
             activeTabIndex = index
             currentPath = tabs[index].path
+            currentEnvironment = tabs[index].environment
             loadCurrentDirectory()
         }
     }
@@ -238,11 +256,13 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
 
                 val createFolderTool =
                         AITool(
-                                name = "create_directory",
-                                parameters = listOf(ToolParameter("path", fullPath))
+                                name = "make_directory",
+                                parameters = withEnvParams(listOf(ToolParameter("path", fullPath)))
                         )
 
+                AppLogger.d("ToolboxFileManager", "execute make_directory path=$fullPath env=$currentEnvironment")
                 val result = toolHandler.executeTool(createFolderTool)
+                AppLogger.d("ToolboxFileManager", "result make_directory success=${result.success} error=${result.error}")
 
                 if (result.success) {
                     // 刷新当前目录
@@ -279,17 +299,19 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
                             AITool(
                                     name = "find_files",
                                     parameters =
-                                            listOf(
+                                            withEnvParams(listOf(
                                                     ToolParameter("path", currentPath),
                                                     ToolParameter("pattern", searchPattern),
                                                     ToolParameter(
                                                             "case_sensitive",
                                                             isCaseSensitive.toString()
                                                     )
-                                            )
+                                            ))
                             )
 
+                    AppLogger.d("ToolboxFileManager", "execute find_files path=$currentPath env=$currentEnvironment pattern=$searchPattern")
                     val result = toolHandler.executeTool(searchTool)
+                    AppLogger.d("ToolboxFileManager", "result find_files success=${result.success} error=${result.error}")
                     if (result.success) {
                         // 使用正确的FindFilesResultData类型解析结果
                         val findResult = result.result as FindFilesResultData
@@ -304,12 +326,12 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
                                                         AITool(
                                                                 name = "file_info",
                                                                 parameters =
-                                                                        listOf(
+                                                                        withEnvParams(listOf(
                                                                                 ToolParameter(
                                                                                         "path",
                                                                                         filePath
                                                                                 )
-                                                                        )
+                                                                        ))
                                                         )
                                                 val fileInfoResult =
                                                         toolHandler.executeTool(fileInfoTool)
@@ -340,11 +362,15 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
                             showSearchResultsDialog = true
                         }
                     } else {
-                        withContext(Dispatchers.Main) { error = result.error ?: "搜索失败" }
+                        withContext(Dispatchers.Main) {
+                            error = result.error ?: context.getString(R.string.file_manager_search_failed)
+                        }
                     }
                 } catch (e: Exception) {
                     AppLogger.e("FileManagerViewModel", "Error searching files", e)
-                    withContext(Dispatchers.Main) { error = "搜索错误: ${e.message}" }
+                    withContext(Dispatchers.Main) {
+                        error = context.getString(R.string.file_manager_search_error, e.message ?: "Unknown")
+                    }
                 } finally {
                     withContext(Dispatchers.Main) { isLoading = false }
                 }
@@ -402,13 +428,18 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
                                 AITool(
                                         name = "copy_file",
                                         parameters =
-                                                listOf(
+                                                withEnvParams(listOf(
                                                         ToolParameter("source", fullSourcePath),
                                                         ToolParameter("destination", fullTargetPath)
-                                                )
+                                                ))
                                 )
 
+                        AppLogger.d(
+                            "ToolboxFileManager",
+                            "execute copy_file src=$fullSourcePath dst=$fullTargetPath env=$currentEnvironment"
+                        )
                         val result = toolHandler.executeTool(copyTool)
+                        AppLogger.d("ToolboxFileManager", "result copy_file success=${result.success} error=${result.error}")
 
                         if (result.success) {
                             if (isCutOperation) {
@@ -416,12 +447,12 @@ class FileManagerViewModel(private val context: Context) : ViewModel() {
                                         AITool(
                                                 name = "delete_file",
                                                 parameters =
-                                                        listOf(
+                                                        withEnvParams(listOf(
                                                                 ToolParameter(
                                                                         "path",
                                                                         fullSourcePath
                                                                 )
-                                                        )
+                                                        ))
                                         )
                                 toolHandler.executeTool(deleteTool)
                             }

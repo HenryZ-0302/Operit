@@ -1024,7 +1024,7 @@ class VirtualDisplayOverlay private constructor(private val context: Context, pr
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "Shower 虚拟屏尚未就绪",
+                                    text = stringResource(R.string.virtual_display_not_ready),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                 )

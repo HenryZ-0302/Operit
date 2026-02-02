@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.core.tools.system.action
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import kotlinx.coroutines.CoroutineScope
@@ -68,13 +69,13 @@ class ActionManager(private val context: Context) {
             
             if (!permissionStatus.granted) {
                 AppLogger.w(TAG, "最高可用权限监听器权限不足: ${permissionStatus.reason}")
-                return ActionListener.ListeningResult.failure("权限不足: ${permissionStatus.reason}")
+                return ActionListener.ListeningResult.failure(context.getString(R.string.action_insufficient_permission, permissionStatus.reason))
             }
             
             return startListeningWithListener(listener, callback)
         } catch (e: Exception) {
             AppLogger.e(TAG, "使用最高权限启动监听失败", e)
-            return ActionListener.ListeningResult.failure("启动失败: ${e.message}")
+            return ActionListener.ListeningResult.failure(context.getString(R.string.admin_start_failed, e.message ?: ""))
         }
     }
 
@@ -95,7 +96,7 @@ class ActionManager(private val context: Context) {
             return startListeningWithListener(listener, callback)
         } catch (e: Exception) {
             AppLogger.e(TAG, "使用指定权限启动监听失败", e)
-            return ActionListener.ListeningResult.failure("启动失败: ${e.message}")
+            return ActionListener.ListeningResult.failure(context.getString(R.string.admin_start_failed, e.message ?: ""))
         }
     }
 
@@ -240,7 +241,7 @@ class ActionManager(private val context: Context) {
                 result[level] = Pair(available, permissionStatus)
             } catch (e: Exception) {
                 AppLogger.e(TAG, "获取监听器状态失败: $level", e)
-                result[level] = Pair(false, ActionListener.PermissionStatus.denied("获取状态失败: ${e.message}"))
+                result[level] = Pair(false, ActionListener.PermissionStatus.denied(context.getString(R.string.action_get_status_failed, e.message ?: "")))
             }
         }
         

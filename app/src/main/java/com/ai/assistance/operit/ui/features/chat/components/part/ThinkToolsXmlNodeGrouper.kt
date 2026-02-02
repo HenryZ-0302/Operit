@@ -46,14 +46,11 @@ class ThinkToolsXmlNodeGrouper(
 ) : MarkdownNodeGrouper {
 
     override fun group(nodes: List<MarkdownNodeStable>, rendererId: String): List<MarkdownGroupedItem> {
-        if (!showThinkingProcess) {
-            return nodes.indices.map { MarkdownGroupedItem.Single(it) }
-        }
-
         val out = ArrayList<MarkdownGroupedItem>(nodes.size)
         var i = 0
         while (i < nodes.size) {
             val node = nodes[i]
+
             if (node.type != MarkdownProcessorType.XML_BLOCK) {
                 out.add(MarkdownGroupedItem.Single(i))
                 i++
@@ -61,51 +58,100 @@ class ThinkToolsXmlNodeGrouper(
             }
 
             val tag = extractXmlTagName(node.content)
-            if (tag != "think" && tag != "thinking") {
+
+            if (showThinkingProcess && (tag == "think" || tag == "thinking")) {
+                var j = i + 1
+                var toolCount = 0
+                while (j < nodes.size) {
+                    val next = nodes[j]
+                    // 允许 think 与 tool/tool_result 之间出现纯空白文本（通常是换行）
+                    if (next.type == MarkdownProcessorType.PLAIN_TEXT && next.content.isBlank()) {
+                        j++
+                        continue
+                    }
+                    if (next.type != MarkdownProcessorType.XML_BLOCK) break
+
+                    val nextTag = extractXmlTagName(next.content)
+                    val isThinkAgain = nextTag == "think" || nextTag == "thinking"
+                    val isToolRelated = nextTag == "tool" || nextTag == "tool_result"
+                    if (!isThinkAgain && !isToolRelated) break
+
+                    if (isToolRelated) {
+                        val toolName = extractToolNameFromToolOrResult(next.content)
+                        if (!shouldGroupToolByName(toolName)) break
+                        if (nextTag == "tool") toolCount++
+                    }
+
+                    j++
+                }
+
+                if (toolCount > 0) {
+                    out.add(
+                        MarkdownGroupedItem.Group(
+                            startIndex = i,
+                            endIndexInclusive = j - 1,
+                            stableKey = "think-tools-$i"
+                        )
+                    )
+                    i = j
+                    continue
+                }
+
                 out.add(MarkdownGroupedItem.Single(i))
                 i++
                 continue
             }
 
-            var j = i + 1
-            var toolCount = 0
-            while (j < nodes.size) {
-                val next = nodes[j]
-                // 允许 think 与 tool/tool_result 之间出现纯空白文本（通常是换行）
-                if (next.type == MarkdownProcessorType.PLAIN_TEXT && next.content.isBlank()) {
-                    j++
+            if (tag == "tool" || tag == "tool_result") {
+                val firstToolName = extractToolNameFromToolOrResult(node.content)
+                if (!shouldGroupToolByName(firstToolName)) {
+                    out.add(MarkdownGroupedItem.Single(i))
+                    i++
                     continue
                 }
-                if (next.type != MarkdownProcessorType.XML_BLOCK) break
 
-                val nextTag = extractXmlTagName(next.content)
-                val isThinkAgain = nextTag == "think" || nextTag == "thinking"
-                val isToolRelated = nextTag == "tool" || nextTag == "tool_result"
-                if (!isThinkAgain && !isToolRelated) break
+                var j = i + 1
+                var toolCount = if (tag == "tool") 1 else 0
+                var xmlToolRelatedCount = 1
 
-                if (isToolRelated) {
-                    val toolName = extractToolName(next.content)
+                while (j < nodes.size) {
+                    val next = nodes[j]
+                    if (next.type == MarkdownProcessorType.PLAIN_TEXT && next.content.isBlank()) {
+                        j++
+                        continue
+                    }
+                    if (next.type != MarkdownProcessorType.XML_BLOCK) break
+
+                    val nextTag = extractXmlTagName(next.content)
+                    val isToolRelated = nextTag == "tool" || nextTag == "tool_result"
+                    if (!isToolRelated) break
+
+                    val toolName = extractToolNameFromToolOrResult(next.content)
                     if (!shouldGroupToolByName(toolName)) break
 
+                    xmlToolRelatedCount++
                     if (nextTag == "tool") toolCount++
+                    j++
                 }
 
-                j++
+                if (toolCount >= 2 && xmlToolRelatedCount >= 2) {
+                    out.add(
+                        MarkdownGroupedItem.Group(
+                            startIndex = i,
+                            endIndexInclusive = j - 1,
+                            stableKey = "tools-only-$i"
+                        )
+                    )
+                    i = j
+                } else {
+                    out.add(MarkdownGroupedItem.Single(i))
+                    i++
+                }
+                continue
             }
 
-            if (toolCount > 0) {
-                out.add(
-                    MarkdownGroupedItem.Group(
-                        startIndex = i,
-                        endIndexInclusive = j - 1,
-                        stableKey = "think-tools-$i"
-                    )
-                )
-                i = j
-            } else {
-                out.add(MarkdownGroupedItem.Single(i))
-                i++
-            }
+            out.add(MarkdownGroupedItem.Single(i))
+            i++
         }
 
         return out
@@ -145,13 +191,45 @@ class ThinkToolsXmlNodeGrouper(
             it.type == MarkdownProcessorType.XML_BLOCK && !isXmlFullyClosed(it.content)
         }
 
-        var expanded by remember(rendererId, group.stableKey) { mutableStateOf(isInProgress || isLastNode) }
+        fun isConformingTailNode(node: MarkdownNodeStable): Boolean {
+            return when (node.type) {
+                MarkdownProcessorType.PLAIN_TEXT -> node.content.isBlank()
+                MarkdownProcessorType.XML_BLOCK -> {
+                    val tag = extractXmlTagName(node.content)
+                    when (tag) {
+                        "think", "thinking" -> true
+                        "tool", "tool_result" -> {
+                            val toolName = extractToolNameFromToolOrResult(node.content)
+                            if (toolName == null) {
+                                !isXmlFullyClosed(node.content)
+                            } else {
+                                shouldGroupToolByName(toolName)
+                            }
+                        }
+                        null -> !isXmlFullyClosed(node.content)
+                        else -> false
+                    }
+                }
+                else -> false
+            }
+        }
+
+        val tailStartIndex = (group.endIndexInclusive + 1).coerceAtMost(nodes.size)
+        val hasNonConformingAfterGroup =
+            if (tailStartIndex >= nodes.size) {
+                false
+            } else {
+                nodes.subList(tailStartIndex, nodes.size).any { !isConformingTailNode(it) }
+            }
+        val shouldAutoExpand = !hasNonConformingAfterGroup
+
+        var expanded by remember(rendererId, group.stableKey) { mutableStateOf(shouldAutoExpand) }
         var userOverride by remember(rendererId, group.stableKey) { mutableStateOf<Boolean?>(null) }
         val appearedKeys = remember(rendererId, group.stableKey) { mutableStateMapOf<String, Boolean>() }
 
-        LaunchedEffect(isInProgress, isLastNode, userOverride) {
+        LaunchedEffect(shouldAutoExpand, userOverride) {
             if (userOverride != null) return@LaunchedEffect
-            expanded = isInProgress || isLastNode
+            expanded = shouldAutoExpand
         }
 
         Column(
@@ -180,7 +258,7 @@ class ThinkToolsXmlNodeGrouper(
 
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = if (expanded) "收起" else "展开",
+                    contentDescription = if (expanded) "Collapse" else "Expand",
                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
                     modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = rotation }
                 )
@@ -189,7 +267,11 @@ class ThinkToolsXmlNodeGrouper(
 
                 Text(
                     text = stringResource(
-                        id = R.string.thinking_tools_group_title_with_count,
+                        id = if (group.stableKey.startsWith("tools-only-")) {
+                            R.string.tools_group_title_with_count
+                        } else {
+                            R.string.thinking_tools_group_title_with_count
+                        },
                         toolCount
                     ),
                     style = MaterialTheme.typography.labelMedium,
@@ -265,7 +347,27 @@ private fun isXmlFullyClosed(xml: String): Boolean {
     return trimmed.contains("</$tagName>")
 }
 
+private fun extractToolNameFromToolOrResult(xml: String): String? {
+    val tag = extractXmlTagName(xml)
+    return when (tag) {
+        "tool", "tool_result" -> extractToolName(xml)
+        else -> null
+    }
+}
+
 private fun shouldGroupToolByName(toolName: String?): Boolean {
-    val n = toolName?.trim()?.lowercase() ?: return true
-    return n != "apply_file" && n != "delete_file"
+    val n = toolName?.trim()?.lowercase() ?: return false
+    if (n.contains("search")) return true
+    return n in setOf(
+        "list_files",
+        "grep_code",
+        "grep_context",
+        "read_file",
+        "read_file_part",
+        "read_file_full",
+        "read_file_binary",
+        "use_package",
+        "find_files",
+        "visit_web"
+    )
 }

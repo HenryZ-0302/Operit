@@ -3,6 +3,7 @@ package com.ai.assistance.operit.api.voice
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.util.AppLogger
 import java.io.File
@@ -88,22 +89,22 @@ class OpenAIVoiceProvider(
     override suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
         try {
             if (endpointUrl.isBlank()) {
-                throw TtsException("OpenAI TTS URL 未设置，请填写完整接口地址（例如 https://xxx/v1/audio/speech）。")
+                throw TtsException(context.getString(R.string.openai_tts_error_url_not_set))
             }
             if (!endpointUrl.startsWith("http://") && !endpointUrl.startsWith("https://")) {
-                throw TtsException("OpenAI TTS URL 必须以 http:// 或 https:// 开头。")
+                throw TtsException(context.getString(R.string.openai_tts_error_url_invalid_scheme))
             }
             if (!endpointUrl.contains("/audio/speech")) {
-                throw TtsException("OpenAI TTS URL 必须包含 /v1/audio/speech（请填写完整到 audio/speech）。")
+                throw TtsException(context.getString(R.string.openai_tts_error_url_invalid_path))
             }
             if (apiKey.isBlank()) {
-                throw TtsException("API Key 未设置，请在设置中填写。")
+                throw TtsException(context.getString(R.string.openai_tts_error_api_key_not_set))
             }
             if (model.isBlank()) {
-                throw TtsException("OpenAI TTS model 未设置，请在设置中填写（例如 tts-1）。")
+                throw TtsException(context.getString(R.string.openai_tts_error_model_not_set))
             }
             if (voiceId.isBlank()) {
-                throw TtsException("OpenAI TTS voice 未设置，请在设置中填写（例如 alloy）。")
+                throw TtsException(context.getString(R.string.openai_tts_error_voice_not_set))
             }
 
             _isInitialized.value = true
@@ -112,7 +113,7 @@ class OpenAIVoiceProvider(
             _isInitialized.value = false
             AppLogger.e(TAG, "OpenAI TTS initialize failed", e)
             if (e is TtsException) throw e
-            throw TtsException("初始化 OpenAI TTS 服务时发生意外错误", cause = e)
+            throw TtsException(context.getString(R.string.openai_tts_error_init_failed), cause = e)
         }
     }
 
@@ -165,7 +166,7 @@ class OpenAIVoiceProvider(
                 val response = try {
                     httpClient.newCall(request).execute()
                 } catch (e: IOException) {
-                    throw TtsException("请求 OpenAI TTS 失败", cause = e)
+                    throw TtsException(context.getString(R.string.openai_tts_error_request_failed), cause = e)
                 }
 
                 if (!response.isSuccessful) {

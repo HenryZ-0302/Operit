@@ -85,7 +85,7 @@ fun MCPConfigScreen(
 
     // 实例化ViewModel
     val viewModel = remember {
-        MCPViewModel.Factory(mcpRepository).create(MCPViewModel::class.java)
+        MCPViewModel.Factory(mcpRepository, context).create(MCPViewModel::class.java)
     }
     val deployViewModel = remember {
         MCPDeployViewModel.Factory(context, mcpRepository).create(MCPDeployViewModel::class.java)
@@ -570,12 +570,12 @@ fun MCPConfigScreen(
                         Tab(
                             selected = importTabIndex == 3,
                             onClick = { importTabIndex = 3 },
-                            text = { 
+                            text = {
                                 Text(
-                                    "配置导入",
+                                    stringResource(R.string.mcp_config_import),
                                     style = MaterialTheme.typography.labelMedium,
                                     maxLines = 1
-                                ) 
+                                )
                             }
                         )
                     }
@@ -591,13 +591,13 @@ fun MCPConfigScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = "更多选项",
+                                    contentDescription = stringResource(R.string.mcp_more_options),
                                     modifier = Modifier.size(14.dp),
                                     tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    "左滑查看更多选项",
+                                    stringResource(R.string.mcp_swipe_for_more),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
                                     fontSize = 11.sp
@@ -725,12 +725,12 @@ fun MCPConfigScreen(
                         }
                         3 -> {
                             // 配置导入
-                            Text("粘贴 MCP 配置 JSON", style = MaterialTheme.typography.bodyMedium)
-                            
+                            Text(stringResource(R.string.mcp_paste_config_json), style = MaterialTheme.typography.bodyMedium)
+
                             OutlinedTextField(
                                 value = configJsonInput,
                                 onValueChange = { configJsonInput = it },
-                                label = { Text("配置内容") },
+                                label = { Text(stringResource(R.string.mcp_config_content)) },
                                 placeholder = { Text("{\n  \"mcpServers\": {\n    \"playwright\": {\n      \"command\": \"npx\",\n      \"args\": [\"@playwright/mcp@latest\"]\n    }\n  }\n}") },
                                 modifier = Modifier.fillMaxWidth().height(180.dp),
                                 maxLines = 8
@@ -750,9 +750,9 @@ fun MCPConfigScreen(
                                         fileIntent.setDataAndType(android.net.Uri.parse("file://${mcpLocalServer.getConfigFilePath()}"), "*/*")
                                         fileIntent.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
                                         try {
-                                            context.startActivity(android.content.Intent.createChooser(fileIntent, "打开配置文件"))
+                                            context.startActivity(android.content.Intent.createChooser(fileIntent, context.getString(R.string.mcp_open_config_file)))
                                         } catch (e2: Exception) {
-                                            Toast.makeText(context, "配置文件位置: ${mcpLocalServer.getConfigFilePath()}", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, context.getString(R.string.mcp_config_file_location, mcpLocalServer.getConfigFilePath()), Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
@@ -760,7 +760,7 @@ fun MCPConfigScreen(
                             ) {
                                 Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("打开配置文件", fontSize = 12.sp)
+                                Text(stringResource(R.string.mcp_open_config_file), fontSize = 12.sp)
                             }
                         }
                     }
@@ -808,23 +808,23 @@ fun MCPConfigScreen(
                                         val result = mcpLocalServer.mergeConfigFromJson(configJsonInput)
                                         result.onSuccess { count ->
                                             AppLogger.i("MCPConfigScreen", "配置导入成功，合并了 $count 个服务器")
-                                            Toast.makeText(context, "已合并 $count 个服务器配置", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, context.getString(R.string.mcp_merged_servers, count), Toast.LENGTH_SHORT).show()
                                             refreshMcpScreen()
                                             configJsonInput = ""
                                             showImportDialog = false
                                         }.onFailure { error ->
                                             AppLogger.e("MCPConfigScreen", "配置导入失败: ${error.message}", error)
-                                            Toast.makeText(context, "✗ 合并失败: ${error.message}", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, context.getString(R.string.mcp_merge_failed, error.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
                                         }
                                     } catch (e: Exception) {
                                         AppLogger.e("MCPConfigScreen", "配置导入异常", e)
-                                        Toast.makeText(context, "✗ 导入异常: ${e.message}", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, context.getString(R.string.mcp_import_exception, e.message ?: "Unknown error"), Toast.LENGTH_LONG).show()
                                     } finally {
                                         isImporting = false
                                     }
                                 }
                             } else {
-                                Toast.makeText(context, "请输入配置内容", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.mcp_please_enter_config), Toast.LENGTH_SHORT).show()
                             }
                         } else if (isRepoImport || isZipImport || isRemoteConnect) {
                             // 检查插件ID是否冲突
@@ -906,7 +906,7 @@ fun MCPConfigScreen(
                     }
                     Text(when(importTabIndex) {
                         2 -> stringResource(R.string.connect)
-                        3 -> "合并配置"
+                        3 -> stringResource(R.string.mcp_merge_config)
                         else -> stringResource(R.string.import_action)
                     })
                 }

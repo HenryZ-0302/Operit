@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.core.tools.defaultTool.standard
 
 import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.*
 import com.ai.assistance.operit.data.model.AITool
@@ -30,7 +31,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "缺少参数: session_name"
+                        error = context.getString(R.string.terminal_error_missing_session_name)
                     )
                 }
 
@@ -71,7 +72,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "创建或获取终端会话时出错: ${e.message}"
+                    error = context.getString(R.string.terminal_error_create_session, e.message ?: "")
                 )
             }
         }
@@ -89,7 +90,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "缺少参数: session_id"
+                        error = context.getString(R.string.terminal_error_missing_session_id)
                     )
                 }
 
@@ -110,7 +111,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "终端会话 '$sessionId' 不存在或已关闭"
+                        error = context.getString(R.string.terminal_error_session_not_exist, sessionId)
                     )
                 }
 
@@ -157,7 +158,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "终端命令执行失败或超时"
+                        error = context.getString(R.string.terminal_error_command_failed)
                     )
                 }
             } catch (e: Exception) {
@@ -166,7 +167,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "执行终端命令时出错: ${e.message}"
+                        error = context.getString(R.string.terminal_error_execute_command, e.message ?: "")
                 )
             }
         }
@@ -182,7 +183,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         toolName = tool.name,
                         success = false,
                         result = StringResultData(""),
-                        error = "缺少参数: session_id"
+                        error = context.getString(R.string.terminal_error_missing_session_id)
                     )
                 }
 
@@ -198,7 +199,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                     result = TerminalSessionCloseResultData(
                         sessionId = sessionId,
                         success = true,
-                        message = "终端会话 '$sessionId' 已成功关闭。"
+                        message = context.getString(R.string.terminal_session_closed, sessionId)
                     )
                 )
             } catch (e: Exception) {
@@ -207,7 +208,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                     toolName = tool.name,
                     success = false,
                     result = StringResultData(""),
-                    error = "关闭终端会话 '$sessionId' 时出错: ${e.message}"
+                    error = context.getString(R.string.terminal_error_close_session, sessionId, e.message ?: "")
                 )
             }
         }

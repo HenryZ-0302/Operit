@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.util
 
+import android.content.Context
 import android.os.Environment
 import java.io.File
 
@@ -12,6 +13,13 @@ object OperitPaths {
     private const val EXPORTS_DIR_NAME = "exports"
     private const val WORKSPACE_DIR_NAME = "workspace"
     private const val TEST_DIR_NAME = "test"
+
+    const val SHERPA_NCNN_MODELS_DIR_NAME = ".sherpa_ncnn_models"
+    const val VECTOR_INDEX_DIR_NAME = ".vector_index"
+
+    const val IMAGE_POOL_DIR_NAME = "image_pool"
+    const val MEDIA_POOL_DIR_NAME = "media_pool"
+    const val SKILL_REPO_ZIP_POOL_DIR_NAME = "skill_repo_zip_pool"
 
     fun downloadsDir(): File {
         return Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
@@ -43,6 +51,36 @@ object OperitPaths {
 
     fun testDir(): File {
         return ensureDir(File(operitRootDir(), TEST_DIR_NAME))
+    }
+
+    fun sherpaNcnnModelsDir(context: Context): File {
+        return ensureDir(File(context.filesDir, SHERPA_NCNN_MODELS_DIR_NAME))
+    }
+
+    fun vectorIndexDir(context: Context): File {
+        return ensureDir(File(context.filesDir, VECTOR_INDEX_DIR_NAME))
+    }
+
+    fun imagePoolDir(baseDir: File): File {
+        return ensureDir(File(baseDir, IMAGE_POOL_DIR_NAME))
+    }
+
+    fun mediaPoolDir(baseDir: File): File {
+        return ensureDir(File(baseDir, MEDIA_POOL_DIR_NAME))
+    }
+
+    fun skillRepoZipPoolDir(baseDir: File): File {
+        return ensureDir(File(baseDir, SKILL_REPO_ZIP_POOL_DIR_NAME))
+    }
+
+    fun rawSnapshotExcludedFilesTopLevelDirNames(): Set<String> {
+        return setOf(
+            SHERPA_NCNN_MODELS_DIR_NAME,
+            VECTOR_INDEX_DIR_NAME,
+            IMAGE_POOL_DIR_NAME,
+            MEDIA_POOL_DIR_NAME,
+            SKILL_REPO_ZIP_POOL_DIR_NAME
+        )
     }
 
     fun operitRootPathSdcard(): String {

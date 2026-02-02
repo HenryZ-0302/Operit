@@ -16,6 +16,14 @@
     <string name="menu">Menú</string>
     <string name="token_config">Obtener clave</string>
 
+    <!-- Tool Test Names -->
+    <string name="write_small_file_test">Escribir archivo pequeño</string>
+    <string name="write_large_file_test">Escribir archivo grande</string>
+
+    <!-- Tool Test Descriptions -->
+    <string name="write_small_file_test_desc">Escribe un archivo de texto pequeño para validar la escritura básica.</string>
+    <string name="write_large_file_test_desc">Escribe un archivo de texto más grande para validar la escritura por bloques.</string>
+
     <!-- 用于NavItem类的标识符 -->
     <string name="shizuku_commands">Concesión de permisos</string>
     <string name="tool_permissions">Configuración de permisos de herramientas</string>
@@ -357,6 +365,7 @@
     <string name="avatar_crop_failed">Error al recortar avatar: %1$s</string>
     <string name="cannot_open_file">No se puede abrir el archivo: %1$s</string>
     <string name="message_copied_to_clipboard">Mensaje copiado al portapapeles</string>
+    <string name="message_workspace_backing_up">Respaldando el espacio de trabajo...</string>
     <string name="selected_content_copied">Contenido seleccionado copiado</string>
     <string name="requesting_root_permission">Solicitando permiso Root...</string>
     <string name="root_permission_granted">Permiso Root concedido</string>
@@ -1286,7 +1295,7 @@
     <string name="current_value">Valor Actual</string>
     <string name="closer_to_edge">Más Cerca del Borde</string>
     <string name="farther_from_edge">Más Lejos del Borde</string>
-    <string name="invalid_value_range">Valor inválido. Por favor ingrese un número entre %.1f y %.1f</string>
+    <string name="invalid_value_range">Valor inválido. Por favor ingrese un número entre %1$.1f y %2$.1f</string>
     <string name="reset_to_default">Restablecer por Defecto</string>
     <string name="layout_reset_settings">Restablecer Configuración de Diseño</string>
     <string name="layout_reset_settings_desc">Restablecer todas las configuraciones de ajuste de diseño a valores predeterminados</string>
@@ -1311,6 +1320,15 @@
     <string name="status_info_block">Información de Estado</string>
     <string name="html_content_block">Contenido HTML</string>
     <string name="mood_tag_block">Etiqueta de Ánimo</string>
+
+    <string name="thinking_settings">Pensamiento</string>
+    <string name="thinking_settings_desc">Gestionar modo de pensamiento y guía de pensamiento</string>
+    <string name="thinking_settings_active_count">%1$d activados</string>
+    <string name="thinking_type_off">off</string>
+    <string name="thinking_type_mode">mode</string>
+    <string name="thinking_type_guidance">guidance</string>
+    <string name="thinking_quality">Calidad de pensamiento</string>
+    <string name="thinking_quality_desc">Solo efectivo en modo de pensamiento</string>
     
     <string name="provider_doubao">Doubao (Modelo Volcano)</string>
 

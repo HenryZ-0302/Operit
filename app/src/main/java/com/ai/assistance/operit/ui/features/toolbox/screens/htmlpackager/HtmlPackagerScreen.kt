@@ -14,6 +14,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import com.ai.assistance.operit.R
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -85,15 +87,15 @@ fun HtmlPackagerScreen(onGoBack: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Folder, contentDescription = "Step 1", modifier = Modifier.size(32.dp))
                         Spacer(modifier = Modifier.width(16.dp))
-                        Text("第一步：选择项目文件夹", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.htmlpackager_step1_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = { folderPickerLauncher.launch(null) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("选择文件夹")
+                        Text(stringResource(R.string.htmlpackager_select_folder))
                     }
                     if (webProjectUri != null) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("已选: ${DocumentFile.fromTreeUri(context, webProjectUri!!)?.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.htmlpackager_selected, DocumentFile.fromTreeUri(context, webProjectUri!!)?.name ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                     }
                 }
             }
@@ -106,7 +108,7 @@ fun HtmlPackagerScreen(onGoBack: () -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Html, contentDescription = "Step 2", modifier = Modifier.size(32.dp))
                         Spacer(modifier = Modifier.width(16.dp))
-                        Text("第二步：指定入口文件", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.htmlpackager_step2_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     ExposedDropdownMenuBox(
@@ -117,7 +119,7 @@ fun HtmlPackagerScreen(onGoBack: () -> Unit) {
                             value = selectedIndexFile?.name ?: "",
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("主HTML文件") },
+                            label = { Text(stringResource(R.string.htmlpackager_main_html)) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isIndexFileDropdownExpanded) },
                             modifier = Modifier.menuAnchor().fillMaxWidth(),
                             enabled = webProjectUri != null && htmlFiles.isNotEmpty()
@@ -150,7 +152,7 @@ fun HtmlPackagerScreen(onGoBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
                 Icon(Icons.Default.Build, contentDescription = "Package", modifier = Modifier.padding(end = 8.dp))
-                Text("生成安装包", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.htmlpackager_generate_package), style = MaterialTheme.typography.titleMedium)
             }
         }
     }

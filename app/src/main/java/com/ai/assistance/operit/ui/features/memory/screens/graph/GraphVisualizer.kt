@@ -15,9 +15,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.*
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.sp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.features.memory.screens.graph.model.Edge
 import com.ai.assistance.operit.ui.features.memory.screens.graph.model.Graph
 import com.ai.assistance.operit.ui.features.memory.screens.graph.model.Node
@@ -58,6 +60,14 @@ fun GraphVisualizer(
     AppLogger.d("GraphVisualizer", "Recomposing. isBoxSelectionMode: $isBoxSelectionMode")
     val textMeasurer = rememberTextMeasurer()
     val colorScheme = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val textStyle = remember(colorScheme) { TextStyle(fontSize = 12.sp, color = colorScheme.onSurface) }
+    val singleCharWidth = remember(textMeasurer, textStyle, context) {
+        textMeasurer.measure(
+            text = AnnotatedString(context.getString(R.string.graph_char_for_measurement)),
+            style = textStyle
+        ).size.width.toFloat()
+    }
     var nodePositions by remember { mutableStateOf(mapOf<String, Offset>()) }
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -522,7 +532,8 @@ fun GraphVisualizer(
                         colorScheme = colorScheme,
                         isSelected = isSelected,
                         isLinkingCandidate = isLinkingCandidate,
-                        isBoxSelected = isBoxSelected // 新增：传递框选状态
+                        isBoxSelected = isBoxSelected, // 新增：传递框选状态
+                        singleCharWidth = singleCharWidth
                     )
                 }
             }
@@ -560,7 +571,8 @@ private fun DrawScope.drawNode(
     colorScheme: androidx.compose.material3.ColorScheme,
     isSelected: Boolean,
     isLinkingCandidate: Boolean,
-    isBoxSelected: Boolean // 新增：接收框选状态
+    isBoxSelected: Boolean, // 新增：接收框选状态
+    singleCharWidth: Float
 ) {
     val color = if (isSelected) colorScheme.secondary else node.color
     drawCircle(
@@ -591,10 +603,6 @@ private fun DrawScope.drawNode(
     // 设置文本最大宽度，让文本可以自动换行
     // 先测量单个字符的宽度，确保每行至少有10个字符
     val textStyle = TextStyle(fontSize = 12.sp, color = colorScheme.onSurface)
-    val singleCharWidth = textMeasurer.measure(
-        text = AnnotatedString("中"), // 使用中文字符测量，因为中文通常比英文宽
-        style = textStyle
-    ).size.width.toFloat()
     val minLineWidth = singleCharWidth * 10 // 每行至少10个字符的宽度
     
     val maxTextWidth = maxOf(radius * 2.5f, minLineWidth) // 文本最大宽度，但至少能容纳10个字符

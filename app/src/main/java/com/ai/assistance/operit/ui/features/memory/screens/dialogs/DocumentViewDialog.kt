@@ -27,8 +27,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.DocumentChunk
 import com.ai.assistance.operit.data.model.Memory
 
@@ -57,13 +59,13 @@ fun DocumentViewDialog(
                 OutlinedTextField(
                     value = memoryTitle,
                     onValueChange = onTitleChange,
-                    label = { Text("文档标题") },
+                    label = { Text(stringResource(R.string.memory_document_title)) },
                     modifier = Modifier.fillMaxWidth(),
                     textStyle = MaterialTheme.typography.bodyMedium
                 )
                 if (folderPath.isNotEmpty()) {
                     Text(
-                        text = "文件夹: $folderPath",
+                        text = "${stringResource(R.string.memory_folder_label)}: $folderPath",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 4.dp)
@@ -76,7 +78,7 @@ fun DocumentViewDialog(
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
-                    label = { Text("在文档内搜索...") },
+                    label = { Text(stringResource(R.string.memory_search_in_document)) },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     singleLine = true,
                     trailingIcon = {
@@ -99,7 +101,7 @@ fun DocumentViewDialog(
                 )
                 if (chunks.isEmpty() && searchQuery.isNotEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("没有找到相关内容。")
+                        Text(stringResource(R.string.document_no_content_found))
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -111,7 +113,7 @@ fun DocumentViewDialog(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp),
-                                label = { Text("区块 ${chunk.chunkIndex + 1}") }
+                                label = { Text(stringResource(R.string.document_block_label, chunk.chunkIndex + 1)) }
                             )
                         }
                     }
@@ -120,7 +122,7 @@ fun DocumentViewDialog(
         },
         dismissButton = {
              OutlinedButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(stringResource(R.string.memory_close))
             }
         },
         confirmButton = {
@@ -129,13 +131,13 @@ fun DocumentViewDialog(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start)
             ) {
                 Button(onClick = onSave) {
-                    Text("保存全部")
+                    Text(stringResource(R.string.memory_save_all))
                 }
                 Button(
                     onClick = onDelete,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("删除文档")
+                    Text(stringResource(R.string.memory_delete_document))
                 }
             }
         }

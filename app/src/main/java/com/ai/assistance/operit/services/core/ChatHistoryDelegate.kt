@@ -491,15 +491,15 @@ class ChatHistoryDelegate(
     }
 
     /** 绑定聊天到工作区 */
-    fun bindChatToWorkspace(chatId: String, workspace: String) {
+    fun bindChatToWorkspace(chatId: String, workspace: String, workspaceEnv: String?) {
         coroutineScope.launch {
             // 1. Update the database
-            chatHistoryManager.updateChatWorkspace(chatId, workspace)
+            chatHistoryManager.updateChatWorkspace(chatId, workspace, workspaceEnv)
 
             // 2. Manually update the UI state to reflect the change immediately
             val updatedHistories = _chatHistories.value.map {
                 if (it.id == chatId) {
-                    it.copy(workspace = workspace, updatedAt = LocalDateTime.now())
+                    it.copy(workspace = workspace, workspaceEnv = workspaceEnv, updatedAt = LocalDateTime.now())
                 } else {
                     it
                 }
@@ -528,12 +528,12 @@ class ChatHistoryDelegate(
     fun unbindChatFromWorkspace(chatId: String) {
         coroutineScope.launch {
             // 1. Update the database (set workspace to null)
-            chatHistoryManager.updateChatWorkspace(chatId, null)
+            chatHistoryManager.updateChatWorkspace(chatId, null, null)
 
             // 2. Manually update the UI state to reflect the change immediately
             val updatedHistories = _chatHistories.value.map {
                 if (it.id == chatId) {
-                    it.copy(workspace = null, updatedAt = LocalDateTime.now())
+                    it.copy(workspace = null, workspaceEnv = null, updatedAt = LocalDateTime.now())
                 } else {
                     it
                 }

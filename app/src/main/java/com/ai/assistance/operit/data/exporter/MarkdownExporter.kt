@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.data.exporter
 
+import android.content.Context
+import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.ChatMessage
 import java.time.format.DateTimeFormatter
@@ -14,9 +16,9 @@ object MarkdownExporter {
     /**
      * 导出单个对话为 Markdown
      */
-    fun exportSingle(chatHistory: ChatHistory): String {
+    fun exportSingle(context: Context, chatHistory: ChatHistory): String {
         val sb = StringBuilder()
-        
+
         // 结构化元数据注释 (简化格式)
         // 格式: key=value, key=value
         val metaParts = mutableListOf<String>()
@@ -28,7 +30,7 @@ object MarkdownExporter {
             metaParts.add("group=${chatHistory.group}")
         }
         sb.appendLine("<!-- chat-info: ${metaParts.joinToString(", ")} -->")
-        
+
         // YAML Front Matter (保留用于兼容性和可读性)
         sb.appendLine("---")
         sb.appendLine("title: ${chatHistory.title}")
@@ -40,54 +42,54 @@ object MarkdownExporter {
         sb.appendLine("messages: ${chatHistory.messages.size}")
         sb.appendLine("---")
         sb.appendLine()
-        
+
         // 标题
         sb.appendLine("# ${chatHistory.title}")
         sb.appendLine()
-        
+
         // 元信息
-        sb.appendLine("**创建时间:** ${chatHistory.createdAt.format(dateFormatter)}")
-        sb.appendLine("**更新时间:** ${chatHistory.updatedAt.format(dateFormatter)}")
+        sb.appendLine(context.getString(R.string.markdown_export_created_time, chatHistory.createdAt.format(dateFormatter)))
+        sb.appendLine(context.getString(R.string.markdown_export_updated_time, chatHistory.updatedAt.format(dateFormatter)))
         if (chatHistory.group != null) {
-            sb.appendLine("**分组:** ${chatHistory.group}")
+            sb.appendLine(context.getString(R.string.markdown_export_group, chatHistory.group))
         }
         sb.appendLine()
         sb.appendLine("---")
         sb.appendLine()
-        
+
         // 消息内容
         for (message in chatHistory.messages) {
             appendMessage(sb, message)
         }
-        
+
         return sb.toString()
     }
     
     /**
      * 导出多个对话为 Markdown
      */
-    fun exportMultiple(chatHistories: List<ChatHistory>): String {
+    fun exportMultiple(context: Context, chatHistories: List<ChatHistory>): String {
         val sb = StringBuilder()
-        
-        sb.appendLine("# 聊天记录导出")
+
+        sb.appendLine(context.getString(R.string.markdown_export_title))
         sb.appendLine()
-        sb.appendLine("**导出时间:** ${java.time.LocalDateTime.now().format(dateFormatter)}")
-        sb.appendLine("**对话数量:** ${chatHistories.size}")
-        sb.appendLine("**总消息数:** ${chatHistories.sumOf { it.messages.size }}")
+        sb.appendLine(context.getString(R.string.markdown_export_export_time, java.time.LocalDateTime.now().format(dateFormatter)))
+        sb.appendLine(context.getString(R.string.markdown_export_conversation_count, chatHistories.size))
+        sb.appendLine(context.getString(R.string.markdown_export_total_messages, chatHistories.sumOf { it.messages.size }))
         sb.appendLine()
         sb.appendLine("---")
         sb.appendLine()
-        
+
         for ((index, chatHistory) in chatHistories.withIndex()) {
             if (index > 0) {
                 sb.appendLine()
                 sb.appendLine("---")
                 sb.appendLine()
             }
-            
-            sb.append(exportSingle(chatHistory))
+
+            sb.append(exportSingle(context, chatHistory))
         }
-        
+
         return sb.toString()
     }
     

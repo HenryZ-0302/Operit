@@ -198,6 +198,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val enableThinkingMode by actualViewModel.enableThinkingMode.collectAsState() // 收集思考模式状态
     val enableThinkingGuidance by
             actualViewModel.enableThinkingGuidance.collectAsState() // 收集思考引导状态
+    val thinkingQualityLevel by actualViewModel.thinkingQualityLevel.collectAsState()
     val enableMemoryQuery by actualViewModel.enableMemoryQuery.collectAsState()
     val enableMaxContextMode by actualViewModel.enableMaxContextMode.collectAsState()
     val enableTools by actualViewModel.enableTools.collectAsState()
@@ -441,7 +442,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                 ) {
                     Icon(
                             imageVector = Icons.Default.Terminal,
-                            contentDescription = "AI电脑",
+                            contentDescription = stringResource(R.string.ai_computer),
                             tint =
                             if (showAiComputer) MaterialTheme.colorScheme.primaryContainer
                             else appBarContentColor
@@ -456,7 +457,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                 ) {
                     Icon(
                             imageVector = Icons.Default.Code,
-                            contentDescription = "代码编辑器",
+                            contentDescription = stringResource(R.string.code_editor),
                             tint =
                             if (showWebView) MaterialTheme.colorScheme.primaryContainer
                             else appBarContentColor
@@ -604,7 +605,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                         // 添加导航到Token配置页面的回调
                         onNavigateToTokenConfig = onNavigateToTokenConfig,
                         // 添加导航到Settings页面的回调
-                        onNavigateToSettings = onNavigateToSettings
+                        onNavigateToSettings = onNavigateToSettings,
+                        onNavigateToModelConfig = onNavigateToModelConfig
                 )
             } else {
                 // The main content area is now a Box to allow overlaying.
@@ -672,6 +674,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 enableThinkingGuidance = enableThinkingGuidance,
                                 onToggleThinkingGuidance = {
                                     actualViewModel.toggleThinkingGuidance()
+                                },
+                                thinkingQualityLevel = thinkingQualityLevel,
+                                onThinkingQualityLevelChange = {
+                                    actualViewModel.updateThinkingQualityLevel(it)
                                 },
                                 maxWindowSizeInK =
                                         actualViewModel.maxWindowSizeInK.collectAsState().value,
@@ -868,7 +874,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                         showAndroidExportDialog = false
                         showExportProgressDialog = true
                         exportProgress = 0f
-                        exportStatus = "开始导出..."
+                        exportStatus = context.getString(R.string.export_starting)
 
                         // 启动导出过程
                         coroutineScope.launch {
@@ -906,7 +912,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                         showWindowsExportDialog = false
                         showExportProgressDialog = true
                         exportProgress = 0f
-                        exportStatus = "开始导出..."
+                        exportStatus = context.getString(R.string.export_starting)
 
                         // 启动导出过程
                         coroutineScope.launch {
@@ -966,10 +972,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     popupMessage?.let { message ->
         AlertDialog(
                 onDismissRequest = { actualViewModel.clearPopupMessage() },
-                title = { Text("提示") },
+                title = { Text(stringResource(R.string.dialog_title_prompt)) },
                 text = { Text(message ?: "") },
                 confirmButton = {
-                    TextButton(onClick = { actualViewModel.clearPopupMessage() }) { Text("确定") }
+                    TextButton(onClick = { actualViewModel.clearPopupMessage() }) { Text(stringResource(R.string.ok)) }
                 }
         )
     }
@@ -983,7 +989,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             actualViewModel.toggleFloatingMode()
             Toast.makeText(
                             context,
-                            "未获得悬浮窗权限，已关闭悬浮窗模式",
+                            context.getString(R.string.floating_window_permission_denied),
                             Toast.LENGTH_SHORT
                     )
                     .show()
