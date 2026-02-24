@@ -65,7 +65,6 @@ import kotlinx.coroutines.launch
 import com.ai.assistance.operit.data.mcp.InstallResult
 import com.ai.assistance.operit.data.mcp.InstallProgress
 import com.ai.assistance.operit.ui.features.startup.screens.LocalPluginLoadingState
-import com.ai.assistance.operit.data.mcp.plugins.MCPStarter
 
 /** MCP配置屏幕 - 极简风格界面，专注于插件快速部署 */
 @SuppressLint("StateFlowValueCalledInComposition")
@@ -97,10 +96,20 @@ fun MCPConfigScreen(
     val installProgress by viewModel.installProgress.collectAsState()
     val installResult by viewModel.installResult.collectAsState()
     val currentInstallingPlugin by viewModel.currentServer.collectAsState()
-    val installedPlugins =
-            mcpRepository.installedPluginIds.collectAsState(initial = emptySet()).value
-
     val mcpConfigSnapshot = mcpLocalServer.mcpConfig.collectAsState().value
+    val discoveredInstalledPluginIds = mcpRepository.installedPluginIds.collectAsState().value
+    val configuredPluginIds = remember(mcpConfigSnapshot) {
+        mcpConfigSnapshot.mcpServers.keys.toSet()
+    }
+    val remotePluginIds = remember(mcpConfigSnapshot) {
+        mcpConfigSnapshot.pluginMetadata
+            .filterValues { metadata -> metadata.type == "remote" }
+            .keys
+            .toSet()
+    }
+    val visiblePluginIds = remember(configuredPluginIds, remotePluginIds, discoveredInstalledPluginIds) {
+        configuredPluginIds + remotePluginIds + discoveredInstalledPluginIds
+    }
 
     // 部署状态
     val deploymentStatus by deployViewModel.deploymentStatus.collectAsState()
@@ -138,7 +147,10 @@ fun MCPConfigScreen(
             try {
                 refreshMcpScreen()
                 withTimeoutOrNull(20_000) {
-                    mcpRepository.installedPluginIds.first { it.contains(pluginId) }
+                    mcpLocalServer.mcpConfig.first { config ->
+                        config.mcpServers.containsKey(pluginId) ||
+                            config.pluginMetadata.containsKey(pluginId)
+                    }
                 }
             } finally {
                 pendingPluginId = null
@@ -165,7 +177,7 @@ fun MCPConfigScreen(
 
             // 读取并记录已安装的MCP插件列表，但不执行任何操作
             com.ai.assistance.operit.util.AppLogger.d("MCPConfigScreen", "已安装的MCP插件列表:")
-            installedPlugins.forEach { pluginId ->
+            visiblePluginIds.forEach { pluginId ->
                 try {
                     val isEnabled = mcpLocalServer.isServerEnabled(pluginId) // 从配置读取
                     com.ai.assistance.operit.util.AppLogger.d("MCPConfigScreen", "插件ID: $pluginId, 已启用: $isEnabled")
@@ -235,8 +247,8 @@ fun MCPConfigScreen(
     var pluginToolsMap by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
 
     // 计算插件启动统计 - 只统计已启用的插件
-    val totalEnabledPlugins = remember(installedPlugins) {
-        installedPlugins.count { pluginId -> mcpLocalServer.isServerEnabled(pluginId) }
+    val totalEnabledPlugins = remember(visiblePluginIds) {
+        visiblePluginIds.count { pluginId -> mcpLocalServer.isServerEnabled(pluginId) }
     }
     val successfulToolRequests = remember { mutableStateOf(0) }
     
@@ -246,12 +258,12 @@ fun MCPConfigScreen(
     }
 
     val computedSortedPluginIds = remember(
-        installedPlugins,
+        visiblePluginIds,
         pluginToolsMap,
         serverStatusMap,
         mcpConfigSnapshot
     ) {
-        installedPlugins
+        visiblePluginIds
             .toList()
             .sortedWith(
                 compareBy<String> { pluginId ->
@@ -269,17 +281,17 @@ fun MCPConfigScreen(
     }
 
     // Lock order once tools are loaded (so the initial "good" sort is applied, then frozen)
-    LaunchedEffect(isToolsLoading, installedPlugins, toolRefreshTrigger) {
-        if (lockedPluginOrder == null && installedPlugins.isNotEmpty() && !isToolsLoading) {
+    LaunchedEffect(isToolsLoading, visiblePluginIds, toolRefreshTrigger) {
+        if (lockedPluginOrder == null && visiblePluginIds.isNotEmpty() && !isToolsLoading) {
             lockedPluginOrder = computedSortedPluginIds
         }
     }
 
-    val sortedPluginIds = remember(lockedPluginOrder, installedPlugins, computedSortedPluginIds) {
-        val installedSet = installedPlugins.toSet()
+    val sortedPluginIds = remember(lockedPluginOrder, visiblePluginIds, computedSortedPluginIds) {
+        val visibleSet = visiblePluginIds.toSet()
         val base = (lockedPluginOrder ?: computedSortedPluginIds)
-        val kept = base.filter { installedSet.contains(it) }
-        val missing = installedSet - kept.toSet()
+        val kept = base.filter { visibleSet.contains(it) }
+        val missing = visibleSet - kept.toSet()
         if (missing.isEmpty()) {
             kept
         } else {
@@ -289,11 +301,10 @@ fun MCPConfigScreen(
         }
     }
 
-    LaunchedEffect(installedPlugins, toolRefreshTrigger) {
+    LaunchedEffect(visiblePluginIds, mcpConfigSnapshot, toolRefreshTrigger) {
         isToolsLoading = true
-        // 只有在安装了插件后才运行
-        if (installedPlugins.isEmpty()) {
-            AppLogger.d("MCPConfigScreen", "No installed plugins, clearing tool list.")
+        if (visiblePluginIds.isEmpty()) {
+            AppLogger.d("MCPConfigScreen", "No configured plugins, clearing tool list.")
             pluginToolsMap = emptyMap()
             isToolsLoading = false
             return@LaunchedEffect
@@ -302,14 +313,21 @@ fun MCPConfigScreen(
         // Give services a moment to initialize after starting
         delay(1000)
 
-        AppLogger.d("MCPConfigScreen", "Fetching tools for installed services...")
+        AppLogger.d("MCPConfigScreen", "Fetching tools for configured deployed services...")
 
         val toolsMap = mutableMapOf<String, List<String>>()
 
         try {
-            // 遍历已安装的插件，获取每个插件的工具信息
-            for (pluginId in installedPlugins) {
+            for (pluginId in visiblePluginIds) {
                 try {
+                    val metadata = mcpConfigSnapshot.pluginMetadata[pluginId]
+                    val isRemote = metadata?.type == "remote"
+                    val isDeployed = if (isRemote) true else mcpLocalServer.isPluginDeployed(pluginId)
+                    if (!isDeployed) {
+                        AppLogger.d("MCPConfigScreen", "Plugin $pluginId is not deployed, skip tool fetch.")
+                        continue
+                    }
+
                     val client = MCPBridgeClient(context, pluginId)
                     val serviceInfo = client.getServiceInfo()
 
@@ -829,7 +847,7 @@ fun MCPConfigScreen(
                         } else if (isRepoImport || isZipImport || isRemoteConnect) {
                             // 检查插件ID是否冲突
                             val proposedId = pluginNameInput.replace(" ", "_").lowercase()
-                            if (mcpRepository.isPluginInstalled(proposedId)) {
+                            if (visiblePluginIds.contains(proposedId)) {
                                 Toast.makeText(context, context.getString(R.string.plugin_already_exists, pluginNameInput), Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
@@ -994,7 +1012,7 @@ fun MCPConfigScreen(
     val isAnyLoading =
         isRefreshing || isToolsLoading || isImporting || isPluginLoading || pendingPluginId != null
 
-    val isEmptyLoading = installedPlugins.isEmpty() && (isAnyLoading || !initialAutoStartPerformed.value)
+    val isEmptyLoading = visiblePluginIds.isEmpty() && (isAnyLoading || !initialAutoStartPerformed.value)
     
     CustomScaffold(
             floatingActionButton = {
@@ -1127,7 +1145,7 @@ fun MCPConfigScreen(
 
                     
                     // 插件列表标题
-                    if (installedPlugins.isNotEmpty()) {
+                    if (sortedPluginIds.isNotEmpty()) {
                         
                         // 插件列表
                         items(items = sortedPluginIds, key = { it }) { pluginId ->
@@ -1135,6 +1153,7 @@ fun MCPConfigScreen(
                                 mcpRepository.getInstalledPluginInfo(pluginId)
                             }
                             val isRemote = pluginInfo?.type == "remote"
+                            val invalidConfigReason: String? = null
 
                             // 获取插件服务器状态
                             val pluginServerStatus = mcpLocalServer.getServerStatus(pluginId)
@@ -1185,7 +1204,13 @@ fun MCPConfigScreen(
                                     onClick = {
                                         selectedPluginId = pluginId
                                         pluginConfigJson = mcpLocalServer.getPluginConfig(pluginId)
-                                        selectedPluginForDetails = getPluginAsServer(pluginId, mcpRepository, context)
+                                        selectedPluginForDetails = getPluginAsServer(
+                                            pluginId,
+                                            mcpRepository,
+                                            mcpConfigSnapshot,
+                                            discoveredInstalledPluginIds,
+                                            context
+                                        )
                                     },
                                     onDeploy = {
                                         pluginToDeploy = pluginId
@@ -1193,7 +1218,13 @@ fun MCPConfigScreen(
                                     },
                                     onEdit = {
                                         // 设置要编辑的服务器并显示对话框
-                                        val serverToEdit = getPluginAsServer(pluginId, mcpRepository,context)
+                                        val serverToEdit = getPluginAsServer(
+                                            pluginId,
+                                            mcpRepository,
+                                            mcpConfigSnapshot,
+                                            discoveredInstalledPluginIds,
+                                            context
+                                        )
                                         if(serverToEdit != null){
                                             editingRemoteServer = serverToEdit
                                             showRemoteEditDialog = true
@@ -1206,7 +1237,9 @@ fun MCPConfigScreen(
                                         }
                                     },
                                     isRunning = pluginRunningState.value,
-                                    isDeployed = deploySuccessState.value
+                                    isDeployed = deploySuccessState.value,
+                                    isConfigValid = isRemote || deploySuccessState.value,
+                                    invalidConfigReason = invalidConfigReason
                             )
                             HorizontalDivider(modifier = Modifier.padding(horizontal = 4.dp))
                         }
@@ -1278,16 +1311,24 @@ private fun getPluginDisplayName(pluginId: String, mcpRepository: MCPRepository)
 private fun getPluginAsServer(
     pluginId: String,
     mcpRepository: MCPRepository,
+    mcpConfigSnapshot: MCPLocalServer.MCPConfig,
+    discoveredInstalledPluginIds: Set<String>,
     context: Context
 ): MCPLocalServer.PluginMetadata? {
-    val pluginInfo = mcpRepository.getInstalledPluginInfo(pluginId)
+    val metadataFromConfig = mcpConfigSnapshot.pluginMetadata[pluginId]
+    val pluginInfo = metadataFromConfig ?: mcpRepository.getInstalledPluginInfo(pluginId)
+    val isRemote = pluginInfo?.type == "remote"
+    val isInstalled =
+        pluginId in discoveredInstalledPluginIds ||
+            isRemote ||
+            (pluginInfo?.isInstalled == true)
 
     // 尝试从内存中的服务器列表查找
     val existingServer = mcpRepository.mcpServers.value.find { it.id == pluginId }
 
     // 如果在列表中找到，直接使用
     if (existingServer != null) {
-        return existingServer.copy(isInstalled = true)
+        return existingServer.copy(isInstalled = existingServer.isInstalled || isInstalled)
     }
 
     val displayName = getPluginDisplayName(pluginId, mcpRepository)
@@ -1298,7 +1339,7 @@ private fun getPluginAsServer(
         description = pluginInfo?.description ?: context.getString(R.string.local_installed_plugin),
         logoUrl = "",
         author = pluginInfo?.author ?: context.getString(R.string.local_installation),
-        isInstalled = true,
+        isInstalled = isInstalled,
         version = pluginInfo?.version ?: context.getString(R.string.local_version),
         updatedAt = "",
         longDescription = pluginInfo?.longDescription
@@ -1323,7 +1364,9 @@ private fun PluginListItem(
     isEnabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     isRunning: Boolean = false,
-    isDeployed: Boolean = false
+    isDeployed: Boolean = false,
+    isConfigValid: Boolean = true,
+    invalidConfigReason: String? = null
 ) {
     Card(
         modifier = Modifier
@@ -1440,6 +1483,33 @@ private fun PluginListItem(
                                 )
                             }
                         }
+
+                        if (!invalidConfigReason.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.mcp_config_invalid_tag),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    fontSize = 9.sp
+                                )
+                            }
+                        }
+                    }
+
+                    if (!invalidConfigReason.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = invalidConfigReason,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
 
@@ -1447,6 +1517,7 @@ private fun PluginListItem(
                 Switch(
                     checked = isEnabled,
                     onCheckedChange = onEnabledChange,
+                    enabled = isConfigValid,
                     modifier = Modifier.scale(0.8f),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = MaterialTheme.colorScheme.primary,

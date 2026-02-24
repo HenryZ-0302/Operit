@@ -274,6 +274,10 @@ my-script-project/
 METADATA
 {
     "name": "Automatic_bilibili_assistant",
+    "display_name": {
+        "zh": "B站智能助手",
+        "en": "Bilibili Assistant"
+    },
     "description": "高级B站智能助手，通过UI自动化技术实现B站应用交互...",
     "category": "UI_AUTOMATION",
     "env": ["BILIBILI_SESSDATA"],
@@ -298,6 +302,7 @@ METADATA
 ```
 
 -   `name`: 脚本的唯一标识符。
+-   `display_name`: （可选，推荐）用于界面显示的名称。不会影响脚本 ID；脚本 ID 仍由 `name` 决定。支持字符串或多语言对象（见 3.1.2）。
 -   `description`: 对脚本功能的详细描述。
 -   `category`: 脚本分类，例如 `UI_AUTOMATION`, `NETWORK`, `DAILY_LIFE`。
 -   `env`: （可选）字符串数组，声明该脚本/包运行时依赖的环境变量名称，例如各类 API Key。应用会根据这里列出的键在“环境配置”界面中展示对应的输入项，并在激活包前校验这些变量是否已经配置。
@@ -305,6 +310,9 @@ METADATA
     -   `name`: 工具的函数名。
     -   `description`: 工具功能的描述。
     -   `parameters`: 工具接受的参数列表，每个参数都应定义 `name`, `description`, `type`, 和 `required`。
+    -   `advice`: （可选）标记“仅提示/说明”的工具（如 usage_advice / workflow_guide）。
+        -   `advice: true` 时，该工具不要求在脚本中有同名函数实现。
+        -   应用于纯提示/规则说明场景，运行时会跳过“工具不存在”的校验。
 
 ### 3.1.1. 动态工具集：`states`
 
@@ -350,13 +358,17 @@ METADATA
 
 #### 脚本侧获取当前 state
 
-运行时会向脚本环境提供全局函数 `getState(): string | undefined`，返回当前激活的 state 的 `id`。
-当当前包未使用 states 或未命中任何 state 时，返回 `undefined`。
+运行时会向脚本环境提供全局函数 `getState(): string`，返回当前激活的 state 的 `id`。
+
+#### 脚本侧获取当前语言
+
+运行时会向脚本环境提供全局函数 `getLang(): string`，返回当前使用的语言代码（如 `zh` / `en`）。若语言不可用则返回 `en`。
 
 ### 3.1.2. 文本字段的双语/多语（LocalizedText）
 
 在 `METADATA` 中，以下文本字段都支持“单语字符串”或“多语对象”两种写法：
 
+-   包级：`display_name`
 -   包级：`description`
 -   工具级：`tools[].description`
 -   参数级：`tools[].parameters[].description`
@@ -396,6 +408,11 @@ METADATA
 METADATA
 {
   "name": "MyBilingualPackage",
+  "display_name": {
+    "zh": "双语示例包",
+    "en": "Bilingual Demo Package",
+    "default": "Bilingual Demo Package"
+  },
   "description": {
     "zh": "演示双语元数据",
     "en": "Bilingual metadata demo",

@@ -32,11 +32,11 @@ import com.ai.assistance.operit.data.backup.RoomDatabaseBackupScheduler
 import com.ai.assistance.operit.data.db.AppDatabase
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.data.preferences.WakeWordPreferences
 import com.ai.assistance.operit.data.preferences.initAndroidPermissionPreferences
 import com.ai.assistance.operit.data.preferences.initUserPreferencesManager
 import com.ai.assistance.operit.data.preferences.preferencesManager
 import com.ai.assistance.operit.data.repository.CustomEmojiRepository
-import com.ai.assistance.operit.services.OnnxEmbeddingService
 import com.ai.assistance.operit.ui.features.chat.webview.LocalWebServer
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.editor.language.LanguageFactory
 import com.ai.assistance.operit.util.GlobalExceptionHandler
@@ -52,6 +52,7 @@ import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.ai.assistance.operit.core.tools.system.shower.OperitShowerShellRunner
 import com.ai.assistance.showerclient.ShowerEnvironment
+import com.ai.assistance.showerclient.ShowerLogSink
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -119,17 +120,8 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
         // Initialize AIMessageManager
         AIMessageManager.initialize(this)
         AppLogger.d(TAG, "【启动计时】AIMessageManager初始化完成 - ${System.currentTimeMillis() - startTime}ms")
-
-        startGlobalAIForegroundService()
-        AppLogger.d(TAG, "【启动计时】AIForegroundService 启动完成 - ${System.currentTimeMillis() - startTime}ms")
-
-        // Initialize Embedding Service asynchronously in background
-        // Using ONNX-based multilingual model for better Chinese support
-        applicationScope.launch {
-            val embeddingStartTime = System.currentTimeMillis()
-            OnnxEmbeddingService.initialize(this@OperitApplication)
-            AppLogger.d(TAG, "【启动计时】OnnxEmbeddingService初始化完成（异步） - ${System.currentTimeMillis() - embeddingStartTime}ms")
-        }
+        startGlobalAIForegroundServiceIfAlwaysListening()
+        AppLogger.d(TAG, "【启动计时】AIForegroundService 始终监听检查完成 - ${System.currentTimeMillis() - startTime}ms")
 
         // Initialize ANR monitor
         // AnrMonitor.start()
@@ -181,7 +173,33 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
 
         // 初始化 Shower 虚拟屏客户端的 ShellRunner 环境
         ShowerEnvironment.shellRunner = OperitShowerShellRunner
+        ShowerEnvironment.logSink =
+            ShowerLogSink { priority, tag, message, throwable ->
+                when (priority) {
+                    AppLogger.VERBOSE ->
+                        if (throwable != null) AppLogger.v(tag, message, throwable) else AppLogger.v(tag, message)
+                    AppLogger.DEBUG ->
+                        if (throwable != null) AppLogger.d(tag, message, throwable) else AppLogger.d(tag, message)
+                    AppLogger.INFO ->
+                        if (throwable != null) AppLogger.i(tag, message, throwable) else AppLogger.i(tag, message)
+                    AppLogger.WARN ->
+                        if (throwable != null) AppLogger.w(tag, message, throwable) else AppLogger.w(tag, message)
+                    AppLogger.ERROR ->
+                        if (throwable != null) AppLogger.e(tag, message, throwable) else AppLogger.e(tag, message)
+                    AppLogger.ASSERT ->
+                        if (throwable != null) AppLogger.wtf(tag, message, throwable) else AppLogger.wtf(tag, message)
+                    else ->
+                        if (throwable != null) {
+                            AppLogger.println(priority, tag, "$message\n${AppLogger.getStackTraceString(throwable)}")
+                        } else {
+                            AppLogger.println(priority, tag, message)
+                        }
+                }
+            }
+        // Shower logs are already mirrored to AppLogger; avoid duplicate system log entries.
+        ShowerEnvironment.emitToSystemLog = false
         AppLogger.d(TAG, "【启动计时】ShowerEnvironment.shellRunner 已配置 - ${System.currentTimeMillis() - startTime}ms")
+        AppLogger.d(TAG, "【启动计时】ShowerEnvironment.logSink 已配置 - ${System.currentTimeMillis() - startTime}ms")
 
         // 初始化PDFBox资源加载器
         PDFBoxResourceLoader.init(getApplicationContext());
@@ -333,20 +351,24 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
         }
     }
 
-    private fun startGlobalAIForegroundService() {
+    private fun startGlobalAIForegroundServiceIfAlwaysListening() {
         try {
-            if (!AIForegroundService.isRunning.get()) {
-                val intent = Intent(this, AIForegroundService::class.java).apply {
-                    putExtra(AIForegroundService.EXTRA_STATE, AIForegroundService.STATE_IDLE)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent)
-                } else {
-                    startService(intent)
-                }
+            val alwaysListeningEnabled = runBlocking {
+                WakeWordPreferences(applicationContext).alwaysListeningEnabledFlow.first()
+            }
+            if (!alwaysListeningEnabled || AIForegroundService.isRunning.get()) {
+                return
+            }
+            val intent = Intent(this, AIForegroundService::class.java).apply {
+                putExtra(AIForegroundService.EXTRA_STATE, AIForegroundService.STATE_IDLE)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
             }
         } catch (e: Exception) {
-            AppLogger.e(TAG, "启动 AIForegroundService 失败: ${e.message}", e)
+            AppLogger.e(TAG, "按始终监听状态启动 AIForegroundService 失败: ${e.message}", e)
         }
     }
 

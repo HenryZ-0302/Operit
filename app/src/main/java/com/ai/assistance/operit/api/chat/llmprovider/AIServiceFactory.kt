@@ -105,6 +105,20 @@ object AIServiceFactory {
                     enableToolCall = enableToolCall
                 )
 
+            ApiProviderType.OPENAI_RESPONSES ->
+                OpenAIResponsesProvider(
+                    apiEndpoint = config.apiEndpoint,
+                    apiKeyProvider = apiKeyProvider,
+                    modelName = config.modelName,
+                    client = httpClient,
+                    customHeaders = customHeaders,
+                    providerType = config.apiProviderType,
+                    supportsVision = supportsVision,
+                    supportsAudio = supportsAudio,
+                    supportsVideo = supportsVideo,
+                    enableToolCall = enableToolCall
+                )
+
             // Claude格式，支持Anthropic Claude系列
             ApiProviderType.ANTHROPIC,
             ApiProviderType.ANTHROPIC_GENERIC -> ClaudeProvider(config.apiEndpoint, apiKeyProvider, config.modelName, httpClient, customHeaders, config.apiProviderType, enableToolCall)
@@ -147,7 +161,8 @@ object AIServiceFactory {
                 modelName = config.modelName,
                 threadCount = config.llamaThreadCount,
                 contextSize = config.llamaContextSize,
-                providerType = config.apiProviderType
+                providerType = config.apiProviderType,
+                enableToolCall = enableToolCall
             )
 
             // 阿里云（通义千问）使用专用的QwenProvider
@@ -220,7 +235,7 @@ object AIServiceFactory {
                     enableToolCall = enableToolCall
                 )
             ApiProviderType.MOONSHOT ->
-                OpenAIProvider(
+                KimiProvider(
                     apiEndpoint = config.apiEndpoint,
                     apiKeyProvider = apiKeyProvider,
                     modelName = config.modelName,
@@ -245,8 +260,7 @@ object AIServiceFactory {
                     supportsVision = supportsVision,
                     supportsAudio = supportsAudio,
                     supportsVideo = supportsVideo,
-                    enableToolCall = enableToolCall,
-                    enableReasoning = config.enableDeepseekReasoning
+                    enableToolCall = enableToolCall
                 )
             ApiProviderType.MISTRAL ->
                 MistralProvider(

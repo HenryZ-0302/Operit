@@ -3,7 +3,11 @@ METADATA
 {
     // Bilibili 智能助手包
     name: Automatic_bilibili_assistant
-    description: { zh: "高级B站智能助手，通过UI自动化技术实现B站应用交互，支持视频搜索播放、评论互动、用户关注等功能，为AI赋予B站社交和内容消费能力。适用于自动追番、视频推荐、社交互动等场景。", en: "Advanced Bilibili assistant powered by UI automation. Supports video search/playback, commenting, and following uploaders, enabling AI-driven content consumption and social interaction on Bilibili." }
+
+    display_name: {
+      zh: "Bilibili自动化助手"
+      en: "Bilibili Automation Assistant"
+    }description: { zh: "高级B站智能助手，通过UI自动化技术实现B站应用交互，支持视频搜索播放、评论互动、用户关注等功能，为AI赋予B站社交和内容消费能力。适用于自动追番、视频推荐、社交互动等场景。", en: "Advanced Bilibili assistant powered by UI automation. Supports video search/playback, commenting, and following uploaders, enabling AI-driven content consumption and social interaction on Bilibili." }
 
     // Tools in this package
     tools: [
@@ -11,6 +15,7 @@ METADATA
             name: workflow_guide
             description: { zh: "B站助手工具使用流程指南。要完成复杂任务，请按以下顺序组合使用工具：\n1. **搜索视频**: 使用 `search_video` 查找视频，这是所有操作的起点。\n2. **播放视频**: 从搜索结果中，使用 `play_video` 播放指定视频。\n3. **视频内互动**: 视频播放后，可执行 `get_video_info`, `like_video`, `collect_video`, `follow_uploader`, `send_comment`, `browse_comments` 等操作。\n4. **返回列表**: 要播放另一个视频，必须先用 `return_to_video_list` 返回搜索列表，再调用 `play_video`。\n- **随时导航**: `navigate_to_home` 等导航工具可在多数情况下使用。", en: "Workflow guide for the Bilibili assistant:\n1. **Search videos**: use `search_video` as the entry point for most tasks.\n2. **Play a video**: use `play_video` to open a specific result.\n3. **Interact**: while on the video page you can run `get_video_info`, `like_video`, `collect_video`, `follow_uploader`, `send_comment`, `browse_comments`, etc.\n4. **Back to list**: to play another video, call `return_to_video_list` first, then `play_video`.\n- **Navigation**: tools like `navigate_to_home` can often be used at any time." }
             parameters: []
+            advice: true
         },
         {
             name: search_video

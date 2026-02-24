@@ -65,8 +65,10 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatMessage
 import com.ai.assistance.operit.ui.features.chat.components.attachments.AttachmentViewerDialog
 import com.ai.assistance.operit.ui.features.chat.components.attachments.ChatAttachment
+import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkParser
 import com.ai.assistance.operit.util.ImageBitmapLimiter
 import com.ai.assistance.operit.util.ImagePoolManager
+import com.ai.assistance.operit.util.ChatMarkupRegex
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -98,6 +100,18 @@ fun UserMessageComposable(message: ChatMessage, backgroundColor: Color, textColo
     val trailingAttachments = parseResult.trailingAttachments
     val replyInfo = parseResult.replyInfo
     val imageLinks = parseResult.imageLinks
+    val proxySenderName = parseResult.proxySenderName
+    val isProxySender = !proxySenderName.isNullOrBlank()
+    val effectiveBackgroundColor = if (isProxySender) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        backgroundColor
+    }
+    val effectiveTextColor = if (isProxySender) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        textColor
+    }
 
     Column(modifier = Modifier
         .fillMaxWidth()
@@ -157,8 +171,8 @@ fun UserMessageComposable(message: ChatMessage, backgroundColor: Color, textColo
                             size = 0L,
                             content = ""
                         ),
-                        textColor = textColor,
-                        backgroundColor = backgroundColor,
+                        textColor = effectiveTextColor,
+                        backgroundColor = effectiveBackgroundColor,
                         onClick = { _ ->
                             // 当点击图片链接时，如果图片未过期则显示预览
                             if (imageLink.bitmap != null) {
@@ -174,8 +188,8 @@ fun UserMessageComposable(message: ChatMessage, backgroundColor: Color, textColo
                 trailingAttachments.forEach { attachment ->
                     AttachmentTag(
                         attachment = attachment,
-                        textColor = textColor,
-                        backgroundColor = backgroundColor,
+                        textColor = effectiveTextColor,
+                        backgroundColor = effectiveBackgroundColor,
                         onClick = { attachmentData ->
                             selectedChatAttachment.value =
                                 ChatAttachment(
@@ -197,7 +211,7 @@ fun UserMessageComposable(message: ChatMessage, backgroundColor: Color, textColo
         Card(
             modifier =
             Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = backgroundColor),
+            colors = CardDefaults.cardColors(containerColor = effectiveBackgroundColor),
             shape = RoundedCornerShape(8.dp)
         ) {
             Column(modifier = Modifier
@@ -205,16 +219,20 @@ fun UserMessageComposable(message: ChatMessage, backgroundColor: Color, textColo
                 .padding(16.dp)) {
                 // 用户消息标题
                 Text(
-                    text = "Prompt",
+                    text = if (!proxySenderName.isNullOrBlank()) {
+                        "Prompt by $proxySenderName"
+                    } else {
+                        "Prompt"
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = textColor.copy(alpha = 0.7f),
+                    color = effectiveTextColor.copy(alpha = 0.7f),
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
                 // Display main text content with inline attachments
                 Text(
                     text = textContent,
-                    color = textColor,
+                    color = effectiveTextColor,
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -302,7 +320,8 @@ data class MessageParseResult(
     val processedText: String,
     val trailingAttachments: List<AttachmentData>,
     val replyInfo: ReplyInfo? = null, // 新增回复信息
-    val imageLinks: List<ImageLinkData> = emptyList() // 图片链接数据
+    val imageLinks: List<ImageLinkData> = emptyList(), // 图片链接数据
+    val proxySenderName: String? = null
 )
 
 /** Data class for reply information */
@@ -325,57 +344,49 @@ data class ImageLinkData(
 private fun parseMessageContent(context: android.content.Context, content: String): MessageParseResult {
     // First, strip out any <memory> tags so they are not displayed in the UI.
     var cleanedContent =
-        content.replace(Regex("<memory>.*?</memory>", RegexOption.DOT_MATCHES_ALL), "").trim()
+        content.replace(ChatMarkupRegex.memoryTag, "").trim()
+
+    val proxySenderMatch = ChatMarkupRegex.proxySenderTag.find(cleanedContent)
+    val proxySenderName = proxySenderMatch?.groupValues?.getOrNull(1)
+    if (proxySenderMatch != null) {
+        cleanedContent = cleanedContent.replace(proxySenderMatch.value, "").trim()
+    }
 
     // Extract image link tags and load from pool
-    val imageLinkRegex =
-        Regex("""<link\s+type="image"\s+id="([^"]+)"\s*>.*?</link>""", RegexOption.DOT_MATCHES_ALL)
     val imageLinks = mutableListOf<ImageLinkData>()
-    imageLinkRegex.findAll(cleanedContent).forEach { match ->
-        val id = match.groupValues[1]
-        if (id != "error") {
-            val imageData = ImagePoolManager.getImage(id)
-            if (imageData != null) {
-                val bitmap = try {
-                    val bytes = Base64.decode(imageData.base64, Base64.DEFAULT)
-                    ImageBitmapLimiter.decodeDownsampledBitmap(bytes)
-                } catch (e: Exception) {
-                    com.ai.assistance.operit.util.AppLogger.e("UserMessageComposable", "Failed to decode image: $id", e)
-                    null
-                }
-                imageLinks.add(ImageLinkData(id, bitmap))
+    MediaLinkParser.extractImageLinkIds(cleanedContent).forEach { id ->
+        val imageData = ImagePoolManager.getImage(id)
+        val bitmap = imageData?.let {
+            try {
+                val bytes = Base64.decode(it.base64, Base64.DEFAULT)
+                ImageBitmapLimiter.decodeDownsampledBitmap(bytes)
+            } catch (e: Exception) {
+                com.ai.assistance.operit.util.AppLogger.e("UserMessageComposable", "Failed to decode image: $id", e)
+                null
             }
         }
+        imageLinks.add(ImageLinkData(id, bitmap))
     }
-    cleanedContent = cleanedContent.replace(imageLinkRegex, "").trim()
+    cleanedContent = MediaLinkParser.removeImageLinks(cleanedContent).trim()
 
-    val mediaLinkRegex =
-        Regex(
-            """<link\s+type="(audio|video)"\s+id="([^"]+)"\s*>.*?</link>""",
-            RegexOption.DOT_MATCHES_ALL
-        )
     val mediaLinkAttachments = mutableListOf<AttachmentData>()
-    mediaLinkRegex.findAll(cleanedContent).forEach { match ->
-        val type = match.groupValues[1]
-        val id = match.groupValues[2]
-        if (id != "error") {
-            mediaLinkAttachments.add(
-                AttachmentData(
-                    id = "media_pool:$id",
-                    filename = if (type == "audio") "Audio" else "Video",
-                    type = if (type == "audio") "audio/*" else "video/*",
-                    size = 0L,
-                    content = ""
-                )
+    MediaLinkParser.extractMediaLinkTags(cleanedContent).forEach { tag ->
+        val filename = if (tag.type == "audio") "Audio" else "Video"
+        val mimeType = if (tag.type == "audio") "audio/*" else "video/*"
+        mediaLinkAttachments.add(
+            AttachmentData(
+                id = "media_pool:${tag.id}",
+                filename = filename,
+                type = mimeType,
+                size = 0L,
+                content = ""
             )
-        }
+        )
     }
-    cleanedContent = cleanedContent.replace(mediaLinkRegex, "").trim()
+    cleanedContent = MediaLinkParser.removeMediaLinks(cleanedContent).trim()
 
     // Extract reply information
-    val replyRegex =
-        Regex("<reply_to\\s+sender=\"([^\"]+)\"\\s+timestamp=\"([^\"]+)\">([^<]*)</reply_to>")
-    val replyMatch = replyRegex.find(cleanedContent)
+    val replyMatch = ChatMarkupRegex.replyToTag.find(cleanedContent)
     val replyInfo = replyMatch?.let { match ->
         val fullContent = match.groupValues[3]
         // 指示语，用于从回复内容中提取纯净的预览文本
@@ -399,9 +410,7 @@ private fun parseMessageContent(context: android.content.Context, content: Strin
 
     val workspaceAttachments = mutableListOf<AttachmentData>()
     // Extract workspace context as a special attachment
-    val workspaceRegex =
-        Regex("<workspace_attachment>.*?</workspace_attachment>", RegexOption.DOT_MATCHES_ALL)
-    val workspaceMatch = workspaceRegex.find(cleanedContent)
+    val workspaceMatch = ChatMarkupRegex.workspaceAttachmentTag.find(cleanedContent)
     if (workspaceMatch != null) {
         val workspaceContent = workspaceMatch.value
         workspaceAttachments.add(
@@ -422,7 +431,13 @@ private fun parseMessageContent(context: android.content.Context, content: Strin
 
     // 先用简单的分割方式检测有没有附件标签
     if (!cleanedContent.contains("<attachment")) {
-        return MessageParseResult(cleanedContent, workspaceAttachments + mediaLinkAttachments, replyInfo, imageLinks)
+        return MessageParseResult(
+            cleanedContent,
+            workspaceAttachments + mediaLinkAttachments,
+            replyInfo,
+            imageLinks,
+            proxySenderName
+        )
     }
 
     try {
@@ -430,12 +445,8 @@ private fun parseMessageContent(context: android.content.Context, content: Strin
         // 1. New format (paired tags): <attachment ...>content</attachment>
         // 2. Old format (self-closing): <attachment ... content="..." />
         // 注意：优先匹配新格式（配对标签），回退到旧格式（自闭合标签）
-        val pairedTagPattern =
-            "<attachment\\s+id=\"([^\"]+)\"\\s+filename=\"([^\"]+)\"\\s+type=\"([^\"]+)\"(?:\\s+size=\"([^\"]+)\")?\\s*>([\\s\\S]*?)</attachment>".toRegex()
-        val selfClosingPattern =
-            "<attachment\\s+id=\"([^\"]+)\"\\s+filename=\"([^\"]+)\"\\s+type=\"([^\"]+)\"(?:\\s+size=\"([^\"]+)\")?(?:\\s+content=\"(.*?)\")?\\s*/>".toRegex(
-                RegexOption.DOT_MATCHES_ALL
-            )
+        val pairedTagPattern = ChatMarkupRegex.attachmentDataTag
+        val selfClosingPattern = ChatMarkupRegex.attachmentDataSelfClosingTag
 
         // Try to find matches with both patterns
         val pairedMatches = pairedTagPattern.findAll(cleanedContent).toList()
@@ -456,7 +467,13 @@ private fun parseMessageContent(context: android.content.Context, content: Strin
         }
 
         if (matches.isEmpty()) {
-            return MessageParseResult(cleanedContent, workspaceAttachments + mediaLinkAttachments, replyInfo, imageLinks)
+            return MessageParseResult(
+                cleanedContent,
+                workspaceAttachments + mediaLinkAttachments,
+                replyInfo,
+                imageLinks,
+                proxySenderName
+            )
         }
 
         // Determine which attachments form a contiguous block at the end
@@ -544,12 +561,19 @@ private fun parseMessageContent(context: android.content.Context, content: Strin
             messageText.toString(),
             trailingAttachments,
             replyInfo,
-            imageLinks
+            imageLinks,
+            proxySenderName
         )
     } catch (e: Exception) {
         // 如果解析失败，返回原始内容
         com.ai.assistance.operit.util.AppLogger.e("UserMessageComposable", "Failed to parse message content", e)
-        return MessageParseResult(cleanedContent, workspaceAttachments + mediaLinkAttachments, replyInfo, imageLinks)
+        return MessageParseResult(
+            cleanedContent,
+            workspaceAttachments + mediaLinkAttachments,
+            replyInfo,
+            imageLinks,
+            proxySenderName
+        )
     }
 }
 

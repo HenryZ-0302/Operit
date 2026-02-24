@@ -332,16 +332,16 @@ class GeminiProvider(
     private fun buildPartsArray(text: String): JSONArray {
         val partsArray = JSONArray()
 
-        val hasImages = ImageLinkParser.hasImageLinks(text)
+        val hasImages = MediaLinkParser.hasImageLinks(text)
         val hasMedia = MediaLinkParser.hasMediaLinks(text)
 
         if (hasImages || hasMedia) {
-            val imageLinks = if (hasImages) ImageLinkParser.extractImageLinks(text) else emptyList()
+            val imageLinks = if (hasImages) MediaLinkParser.extractImageLinks(text) else emptyList()
             val mediaLinks = if (hasMedia) MediaLinkParser.extractMediaLinks(text) else emptyList()
 
             var textWithoutLinks = text
             if (hasImages) {
-                textWithoutLinks = ImageLinkParser.removeImageLinks(textWithoutLinks)
+                textWithoutLinks = MediaLinkParser.removeImageLinks(textWithoutLinks)
             }
             if (hasMedia) {
                 textWithoutLinks = MediaLinkParser.removeMediaLinks(textWithoutLinks)

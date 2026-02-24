@@ -13,7 +13,7 @@ import com.ai.assistance.operit.util.OperitPaths
 import com.k2fsa.sherpa.ncnn.*
 import com.ai.assistance.operit.api.speech.SpeechPrerollStore
 import java.io.File
-import java.io.FileOutputStream
+import com.ai.assistance.operit.util.AssetCopyUtils
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -180,40 +180,17 @@ class SherpaSpeechProvider(private val context: Context) : SpeechService {
         }
     }
 
-    @Throws(IOException::class)
-    private fun copyAssetDirToCache(assetDir: String, cacheDir: File): File {
-        val targetDir = File(cacheDir, assetDir.substringAfterLast('/'))
-        if (targetDir.exists() && targetDir.list()?.isNotEmpty() == true) {
-            AppLogger.d(TAG, "Model files already exist in cache: ${targetDir.absolutePath}")
-            return targetDir
-        }
-        AppLogger.d(TAG, "Copying model files from assets '$assetDir' to ${targetDir.absolutePath}")
-        targetDir.mkdirs()
-
-        val assetManager = context.assets
-        val fileList = assetManager.list(assetDir)
-        if (fileList.isNullOrEmpty()) {
-            throw IOException("Asset directory '$assetDir' is empty or does not exist.")
-        }
-
-        fileList.forEach { fileName ->
-            val assetPath = "$assetDir/$fileName"
-            val targetFile = File(targetDir, fileName)
-            assetManager.open(assetPath).use { inputStream ->
-                FileOutputStream(targetFile).use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-            }
-        }
-        return targetDir
-    }
-
     private fun createRecognizer() {
         val localModelDir: File
         try {
             val modelDirName = "sherpa-ncnn-streaming-zipformer-bilingual-zh-en-2023-02-13"
             val assetModelDir = "models/$modelDirName"
-            localModelDir = copyAssetDirToCache(assetModelDir, OperitPaths.sherpaNcnnModelsDir(context))
+            val targetDir = File(OperitPaths.sherpaNcnnModelsDir(context), modelDirName)
+            localModelDir = AssetCopyUtils.copyAssetDirRecursive(
+                context,
+                assetModelDir,
+                targetDir
+            )
         } catch (e: IOException) {
             AppLogger.e(TAG, "Failed to copy model assets.", e)
             _recognitionState.value = SpeechService.RecognitionState.ERROR

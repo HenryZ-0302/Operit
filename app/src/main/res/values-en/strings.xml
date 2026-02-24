@@ -109,6 +109,7 @@
     <string name="nav_group_system">System</string>
     <string name="menu">Menu</string>
     <string name="token_config">Get API Key</string>
+    <string name="package_category_plugin">Plugin</string>
     <string name="desktop_pet_start">Start Desktop Pet</string>
     
     <!-- Workflow related -->
@@ -195,6 +196,11 @@
     <string name="workflow_confirm_delete_workflow_message">Are you sure you want to delete workflow "%1$s"? This action cannot be undone.</string>
     <string name="workflow_confirm_delete_node_message">Are you sure you want to delete node "%1$s"?</string>
     <string name="workflow_execution_result_title">Execution Result</string>
+    <string name="workflow_view_logs">View logs</string>
+    <string name="workflow_execution_log_title">Latest execution logs</string>
+    <string name="workflow_execution_log_node_title">Node logs: %1$s</string>
+    <string name="workflow_execution_log_empty">No execution logs yet</string>
+    <string name="workflow_execution_log_empty_for_node">No logs for node: %1$s</string>
     <string name="workflow_edit_dialog_title">Edit Workflow</string>
     <string name="workflow_enabled_label">Enable workflow</string>
     <string name="workflow_disabled">Disabled</string>
@@ -345,10 +351,25 @@
     <string name="y_translation">Y Translation: %1$s</string>
     <string name="confirm_delete_model_title">Confirm Delete Model?</string>
     <string name="confirm_delete_model_message">This action cannot be undone. Are you sure you want to delete this model?</string>
+    <string name="rename_avatar_model_title">Rename Model</string>
+    <string name="rename_avatar_model_message">Enter a new display name for this model</string>
+    <string name="avatar_model_name_label">Model Name</string>
     <string name="no_models_available">No models available</string>
     <string name="please_select_model">Please select a model</string>
     <string name="unsupported_model_type">Unsupported model type: %1$s</string>
+    <string name="avatar_preview_error_log">Avatar preview error: %1$s</string>
     <string name="how_to_import">How to create and import models?</string>
+    <string name="how_to_import_tap_to_expand">How to create and import models? (tap to expand)</string>
+    <string name="how_to_import_tap_to_collapse">How to create and import models? (tap to collapse)</string>
+    <string name="avatar_config_supported_formats">Supported: DragonBones (.json + _tex.json + _tex.png), WebP (.webp), MMD (.pmx/.pmd + optional .vmd), glTF (.glb/.gltf).</string>
+    <string name="avatar_config_import_methods">Direct file import supports .glb/.gltf; import .zip for DragonBones, WebP, MMD, or multi-file glTF resources.</string>
+    <string name="avatar_supported_formats_title">Supported formats</string>
+    <string name="avatar_supported_formats_desc">- DragonBones: skeleton .json + *_tex.json + *_tex.png\n- WebP: one or more .webp files\n- MMD: .pmx or .pmd model, optional .vmd motions\n- glTF: .glb or .gltf (plus referenced .bin/textures when needed)</string>
+    <string name="avatar_import_methods_title">Import methods</string>
+    <string name="avatar_import_methods_desc">- Direct file picker: .glb / .gltf\n- ZIP import: DragonBones, WebP, MMD, or multi-file glTF packages</string>
+    <string name="import_structure_guide_tap_to_expand">Import structure guide (tap to expand)</string>
+    <string name="import_structure_guide_tap_to_collapse">Import structure guide (tap to collapse)</string>
+    <string name="import_structure_guide_content">This is the IMPORT PACKAGE layout (files inside your ZIP / picked file), not app internal storage.\n\nDragonBones (.zip)\n  my_dragonbones.zip\n    any_folder_name/\n      hero_ske.json\n      hero_tex.json\n      hero_tex.png\n  Requirement: ske/tex json/png files must share the same filename prefix.\n\nWebP (.zip)\n  my_webp.zip\n    any_folder_name/\n      idle.webp\n      talking.webp\n      happy.webp\n  Requirement: include at least one .webp file.\n\nMMD (.zip)\n  my_mmd.zip\n    any_folder_name/\n      character.pmx (or .pmd)\n      motions/idle.vmd (optional)\n      textures/...\n  Requirement: keep relative paths referenced by PMX/PMD unchanged.\n\nglTF\n  Method A (direct file):\n    avatar.glb\n  Method B (.zip for multi-file glTF):\n    my_gltf.zip\n      any_folder_name/\n        avatar.gltf\n        avatar.bin\n        textures/...\n  Requirement: keep relative paths referenced by .gltf unchanged.</string>
     <string name="enter">Enter</string>
     <string name="about_avatar_formats">This app supports multiple avatar formats, including DragonBones. Here are instructions for creating and importing models.</string>
     <string name="dragon_bones_renamed">DragonBones has been renamed to LoongBones, and a new online editor has been launched.\nLoongBones supports professional animation features like IK, mesh deformation, and bone binding.</string>
@@ -609,6 +630,15 @@
     <string name="auto_read_active">Auto read enabled</string>
     <string name="disable_stream_output">Disable Stream Output</string>
     <string name="disable_stream_output_desc">When disabled, AI responses will be displayed all at once instead of streaming word by word</string>
+    <string name="disable_settings_group">Disable Options</string>
+    <string name="disable_settings_group_desc">This group manages disable toggles that affect response behavior.</string>
+    <string name="manage_tools">Manage Tools</string>
+    <string name="tool_prompt_manager_title">Tool Prompt Manager</string>
+    <string name="manage_packages">Manage Packages</string>
+    <string name="disable_user_preference_description">Disable User Preference Description</string>
+    <string name="disable_user_preference_description_desc">When disabled, the system prompt no longer appends the "User preference description" section</string>
+    <string name="disable_latex_description">Disable LaTeX Description</string>
+    <string name="disable_latex_description_desc">When disabled, the system prompt no longer includes LaTeX formula formatting guidance</string>
     <string name="stop_reading">Stop Reading</string>
     <string name="edit_and_resend">Edit &amp; Resend</string>
     <string name="rollback_to_here">Rollback to Here</string>
@@ -644,7 +674,7 @@
     <string name="share_failed">Share failed</string>
     <string name="image_generated">Image generated</string>
     <string name="image_preview">Image Preview</string>
-    <string name="load_more_history">Load more history messages...</string>
+    <string name="load_more_history">Tap to load chat history</string>
 
     <!-- Theme Settings Screen -->
     <string name="theme_title_mode">Theme Mode</string>
@@ -751,8 +781,8 @@
     <string name="settings_theme_appearance">Theme and Appearance</string>
     <string name="settings_theme_appearance_desc">Personalize app appearance, including dark/light mode and custom color schemes</string>
     <string name="settings_customize_theme">Customize Theme</string>
-    <string name="settings_global_display">Global Display Settings</string>
-    <string name="settings_global_display_subtitle">Manage message display, FPS counter, notifications and other global display options</string>
+    <string name="settings_global_display">Display &amp; Behavior</string>
+    <string name="settings_global_display_subtitle">Manage global options for display style, automation behavior, and screenshots</string>
     <string name="settings_data_backup">Data Backup and Recovery</string>
     <string name="settings_data_backup_desc">Import, export, or delete chat history and problem library data for easy backup and recovery of important information</string>
     <string name="settings_chat_history_management">Chat History Management</string>
@@ -902,7 +932,14 @@
     <string name="path_copied_to_clipboard">Path copied to clipboard</string>
     <string name="open_file_manager">Open File Manager</string>
     <string name="navigate_to_external_files">Please navigate to Android/data/com.ai.assistance.operit/files/packages directory</string>
-    <string name="package_js_only">Only JavaScript files supported</string>
+    <string name="package_js_only">Only JavaScript (.js) and ToolPkg (.toolpkg) files are supported</string>
+    <string name="pkg_toolpkg_subpackages">ToolPkg Subpackages</string>
+    <string name="pkg_toolpkg_version">Version: %1$s</string>
+    <string name="pkg_toolpkg_resources">Resources: %1$d</string>
+    <string name="pkg_toolpkg_ui_modules">UI modules: %1$d</string>
+    <string name="pkg_toolpkg_empty_subpackages">This ToolPkg does not declare any subpackages</string>
+    <string name="pkg_toolpkg_tool_count">Tools: %1$d</string>
+    <string name="pkg_toolpkg_subpackage_toggle_failed">Failed to update subpackage state. Please retry.</string>
     <string name="automation_json_only">Only JSON files supported</string>
     <string name="no_filename">Unable to get filename</string>
     <string name="external_package_imported">External package imported</string>
@@ -1332,7 +1369,7 @@
     
     <!-- Settings Screen Additional Strings -->
     <string name="settings_prompt_section">Prompt Configuration</string>
-    <string name="settings_prompt_title">Prompt Editor</string>
+    <string name="settings_prompt_title">Character Card Editor</string>
     <string name="settings_prompt_desc">Customize AI assistant behavior and personality prompts</string>
     <string name="settings_configure_prompt">Configure Prompts</string>
     <string name="settings_functional_prompt_title">Functional Prompt Configuration</string>
@@ -1517,6 +1554,8 @@
     <string name="workspace_project_type_java_description">For Java development, supports Gradle and Maven builds</string>
     <string name="workspace_project_type_go_title">Go Project</string>
     <string name="workspace_project_type_go_description">For Go development, includes go mod and build commands</string>
+    <string name="workspace_project_type_android_title">Android Project</string>
+    <string name="workspace_project_type_android_description">For Android development with quick Gradle task shortcuts</string>
     <string name="please_select_or_create_conversation">Please select or create a conversation first</string>
     <string name="latest">Latest</string>
     <string name="main_highlights">✨ Main Highlights</string>
@@ -1676,6 +1715,7 @@
     <string name="install">Install</string>
     <string name="import_from_repo">From Repo</string>
     <string name="import_from_zip">From ZIP</string>
+    <string name="import_from_direct">Manual</string>
     <string name="connect_remote_service">Remote</string>
     <string name="enter_repo_info">Please enter repository information</string>
     <string name="repo_link">Repository Link</string>
@@ -1780,9 +1820,25 @@
     <string name="shell_executor_execute_failed">Command execution failed: %s</string>
     <string name="tool_log_viewer">Log Viewer</string>
     <string name="tool_log_viewer_desc">Real-time capture and view system and application logs with filtering and search support</string>
+    <string name="tool_sql_viewer">SQL Viewer</string>
+    <string name="tool_sql_viewer_desc">Browse built-in tables and run SQL commands</string>
+    <string name="screen_title_sql_viewer">SQL Viewer</string>
+    <string name="sql_viewer_title">SQL Viewer</string>
+    <string name="sql_viewer_input_label">SQL Input</string>
+    <string name="sql_viewer_run">Run</string>
+    <string name="sql_viewer_clear">Clear</string>
+    <string name="sql_viewer_page_size">Page size</string>
+    <string name="sql_viewer_paging">Paging</string>
+    <string name="sql_viewer_tables_chip">Tables</string>
+    <string name="sql_viewer_schema_chip">Schema</string>
+    <string name="sql_viewer_row_count">%1$d rows / %2$d columns</string>
+    <string name="sql_viewer_affected_rows">Affected rows: %1$d</string>
+    <string name="sql_viewer_load_more">Load more</string>
+    <string name="sql_viewer_empty_sql">SQL cannot be empty</string>
+    <string name="sql_viewer_controls">Controls</string>
+    <string name="sql_viewer_empty_state">No results yet. Tap the top-right button to run SQL.</string>
     <string name="tool_process_limit_remover">Phantom Process Limit Remover</string>
     <string name="tool_process_limit_remover_desc">Manage Android 12+ phantom process count limits to allow more background child processes</string>
-
     <string name="tool_html_packager">HTML Packager</string>
     <string name="tool_html_packager_desc">Package HTML files and their dependencies into a single file</string>
     
@@ -2466,6 +2522,11 @@
     <string name="test_connection_failed">Failed: %1$s</string>
     <string name="test_connection_desc">Test Connection</string>
     <string name="test">Test</string>
+    <string name="test_item_chat">Chat</string>
+    <string name="test_item_toolcall">Tool Call</string>
+    <string name="test_item_image">Image</string>
+    <string name="test_item_audio">Audio</string>
+    <string name="test_item_video">Video</string>
     <string name="expand_desc">Expand</string>
     <string name="selected_desc">Selected</string>
     <string name="functional_config_warning_image_unsupported">Warning: the selected model is not marked as “supports vision”, so image recognition may not work. Switch to a model that supports vision and enable “Model supports vision”.</string>
@@ -2630,8 +2691,8 @@
     <string name="feature_file_operations">File Operations</string>
     <string name="feature_screen_auto_click">Screen Auto Click</string>
     <string name="feature_system_permission_modification">System Permission Modification</string>
-    <string name="feature_termux_support">Termux Support</string>
-    <string name="feature_run_js">Run JavaScript</string>
+    <string name="feature_termux_support">Terminal Support</string>
+    <string name="feature_run_js">Virtual Screen</string>
     <string name="feature_plugin_market_mcp">Plugin Market MCP</string>
     <string name="supported">Supported</string>
     <string name="not_supported">Not Supported</string>
@@ -2664,6 +2725,15 @@
     <string name="skillmgr_cannot_read_file">Cannot read file</string>
     <string name="skillmgr_delete">Delete</string>
     <string name="skillmgr_close">Close</string>
+    <string name="skillmgr_direct_skill_id">Skill ID</string>
+    <string name="skillmgr_direct_skill_id_hint">e.g. my_skill</string>
+    <string name="skillmgr_direct_description">Description</string>
+    <string name="skillmgr_direct_content">Content</string>
+    <string name="skillmgr_direct_content_hint">Enter the SKILL.md body content</string>
+    <string name="skillmgr_direct_files_saved_hint">Attachments will be copied into the skill folder under assets/</string>
+    <string name="skillmgr_direct_skill_id_required">Please enter Skill ID</string>
+    <string name="skillmgr_direct_skill_id_invalid">Skill ID can only contain letters, numbers, dots, underscores, and hyphens, and cannot be . or ..</string>
+    <string name="skillmgr_direct_content_required">Please enter skill content</string>
     <string name="foldernav_close_sidebar">Close sidebar</string>
     <string name="foldernav_refresh_folders">Refresh folder list</string>
     <string name="foldernav_new_folder">New folder</string>
@@ -2687,6 +2757,11 @@
     <string name="theme_font_cursive">Cursive</string>
     <string name="theme_avatar_description">Note: The user avatar on the left is a character card exclusive setting. When empty, it will use the global user avatar on the right. The global user avatar is shared across all character cards.</string>
     <string name="functional_config_model_count">%1$d models</string>
+    <string name="functional_config_test_grep_intent">Find the greeting in the snippet.</string>
+    <string name="functional_config_test_grep_display_path">&lt;test&gt;</string>
+    <string name="functional_config_test_grep_candidates_digest">#1 [file: example.txt]\nHello world\n#2 [file: main.kt]\nfun main() {}</string>
+    <string name="functional_config_test_ui_controller_prompt">Current UI State: [Button(label="OK", bounds="[0,0][100,50]")]\nTask Goal: Tap OK.\nExecution History: []</string>
+    <string name="functional_config_test_problem_library_prompt">Conversation:\nUser: Connection test question.\nAssistant: Connection test answer.</string>
     <string name="tool_permission_instruction_title">Instructions</string>
     <string name="tool_permission_instruction_content">1. The \"Global Default Permission\" above controls the default behavior of all tools.\n2. Tools added to each group below set \"exception rules\" for that tool, which override the global default.\n3. Click the same tool in a group again, or uncheck it in the selection dialog to remove the tool\'s exception configuration and make it follow the global default again.</string>
     <string name="token_price_description">Set the RMB price per API request</string>
@@ -2887,6 +2962,8 @@
     <string name="workspace_project_go_description">High-performance concurrent programming using Go Modules for dependency management</string>
     <string name="workspace_project_office_title">Office Documents</string>
     <string name="workspace_project_office_description">For document editing, file processing, and general office tasks</string>
+    <string name="workspace_project_android_title">Android Project</string>
+    <string name="workspace_project_android_description">For Android development with quick Gradle task shortcuts</string>
 
     <!-- Workspace UI -->
     <string name="workspace_preview">Preview</string>
@@ -2914,6 +2991,12 @@
     <string name="workspace_cmd_java_gradle_jar">Package JAR</string>
     <string name="workspace_cmd_java_gradle_clean">Clean Build</string>
     <string name="workspace_cmd_java_gradle_tasks">View All Tasks</string>
+    <string name="workspace_cmd_android_setup_env">Initialize Android Build Environment</string>
+    <string name="workspace_cmd_android_gradle_tasks">Initialize Gradle</string>
+    <string name="workspace_cmd_android_assemble_debug">Assemble Debug APK</string>
+    <string name="workspace_cmd_android_install_debug">Install Debug APK</string>
+    <string name="workspace_cmd_android_lint">Run Lint</string>
+    <string name="workspace_cmd_android_test">Run Tests</string>
 
     <string name="chat_added_files_count">Added %1$d file(s)</string>
     <string name="chat_process_shared_files_failed">Failed to process shared files: %1$s</string>
@@ -2947,6 +3030,7 @@
     <string name="chat_processing_attachment">Processing attachment...</string>
     <string name="chat_attachment_processing_failed">Failed to process attachment: %1$s</string>
     <string name="chat_create_failed">Failed to create a new chat</string>
+    <string name="chat_please_create_new_chat">Please create a new chat</string>
     <string name="chat_processing_shared_files">Processing shared files...</string>
     <string name="chat_start_workspace_server_failed">Failed to start workspace service</string>
     <string name="chat_update_workspace_server_failed">Failed to update web workspace: %1$s</string>
@@ -3081,12 +3165,21 @@
     <string name="settings_billing_mode_token">Token-based Billing</string>
     <string name="settings_billing_mode_count">Per-request Billing</string>
     <string name="settings_price_per_request">Price Per Request (CNY)</string>
+    <string name="settings_price_per_request_with_currency">Price per Request (%1$s)</string>
     <string name="settings_per_request_cost">¥%1$.4f per request</string>
+    <string name="settings_per_request_cost_with_currency">%1$s%2$.4f per request</string>
     <string name="settings_switch_billing_mode">Switch Billing Mode</string>
     <string name="settings_model_details">Model Details</string>
     <string name="settings_click_to_edit_pricing">Click to edit pricing</string>
     <string name="settings_edit_model_pricing">Edit Model Pricing - %1$s</string>
     <string name="settings_pricing_description">Set RMB price per million tokens</string>
+    <string name="settings_pricing_currency_hint">Current pricing currency: %1$s</string>
+    <string name="settings_pricing_description_with_currency">Set price per million tokens (%1$s)</string>
+    <string name="settings_token_price_description_with_currency">Set price per API request (%1$s)</string>
+    <string name="settings_exchange_rate_title">Exchange Rate</string>
+    <string name="settings_exchange_rate_subtitle">USD-priced models are converted to CNY total cost using this rate</string>
+    <string name="settings_usd_to_cny_rate_label">USD → CNY Rate</string>
+    <string name="settings_rate_applied_hint">Total cost converted with 1 USD = %1$.4f CNY</string>
     <string name="settings_input_price_per_million">Input Price (per million tokens)</string>
     <string name="settings_output_price_per_million">Output Price (per million tokens)</string>
     <string name="settings_cached_input_price_per_million">Cached Input Price (per million tokens)</string>
@@ -3272,6 +3365,11 @@
     <string name="chat_style_desc">Choose chat interface style</string>
     <string name="chat_style_cursor">Command Box</string>
     <string name="chat_style_bubble">Bubble</string>
+    <string name="input_style_title">Input Style</string>
+    <string name="input_style_desc">Choose the style for the message input area</string>
+    <string name="input_style_classic">Classic</string>
+    <string name="input_style_agent">Agent</string>
+    <string name="input_style_agent_reserved">Agent style is in development; this is a reserved entry for now</string>
     <string name="display_options_title">Display Options</string>
     <string name="show_thinking_process">Show Thinking Process</string>
     <string name="show_thinking_process_desc">Toggle visibility of &lt;think&gt; tags in AI responses</string>
@@ -3347,6 +3445,9 @@
     <string name="enable_google_search_desc">When enabled, Gemini will use Google Search to enhance responses (may incur additional charges)</string>
     <string name="enable_tool_call">Model supports ToolCall</string>
     <string name="enable_tool_call_desc">When disabled, uses the built-in tool invocation mechanism which also supports tool calls. When enabled, uses the API\'s dedicated native interface (requires model support)</string>
+    <string name="strict_tool_call">Strict ToolCall</string>
+    <string name="strict_tool_call_desc">Enable this only when ToolCall is supported but still failing. This option may alter ToolCall runtime stability. Keep it off unless necessary.</string>
+    <string name="strict_tool_call_required">Strict ToolCall needs to be enabled</string>
     <string name="enable_deepseek_reasoning">Enable DeepSeek Reasoning Mode</string>
     <string name="enable_deepseek_reasoning_desc">When enabled, content within &lt;think&gt; tags will be sent as reasoning_content to DeepSeek models, supporting tool invocation for reasoning models like DeepSeek-R1</string>
     <string name="search_sources">Search Sources</string>
@@ -3365,6 +3466,7 @@
     <string name="auto_save_failed">Auto save failed</string>
     <!-- API Provider names -->
     <string name="provider_openai">OpenAI (GPT Series)</string>
+    <string name="provider_openai_responses">OpenAI (Responses API)</string>
     <string name="provider_anthropic">Anthropic (Claude Series)</string>
     <string name="provider_anthropic_generic">Anthropic (Generic)</string>
     <string name="provider_google">Google (Gemini Series)</string>
@@ -3500,10 +3602,10 @@
     <string name="screen_title_persona_card_generation">Persona Card Generation</string>
     <string name="screen_title_waifu_mode_settings">Waifu Mode Settings</string>
     <string name="screen_title_tag_market">Tag Market</string>
-    <string name="screen_title_model_prompts_settings">Model Prompts Settings</string>
+    <string name="screen_title_model_prompts_settings">Character Card Editor</string>
     <string name="screen_title_functional_config">Functional Model Configuration</string>
     <string name="screen_title_theme_settings">Theme Settings</string>
-    <string name="screen_title_global_display_settings">Global Display Settings</string>
+    <string name="screen_title_global_display_settings">Display &amp; Behavior</string>
     <string name="screen_title_layout_adjustment">Layout Adjustment</string>
     <string name="screen_title_chat_history_settings">Chat History Management</string>
     <string name="screen_title_chat_backup_settings">Data Backup &amp; Restore</string>
@@ -4192,12 +4294,6 @@
     <string name="migration_imported_desc">Successfully imported %1$d chat records</string>
     <string name="migration_back_to_screen">Back to migration screen</string>
 
-    <!-- Chat binding announcement -->
-    <string name="chat_binding_announcement_title">Notice</string>
-    <string name="chat_binding_announcement_body">This app is free. If you bought it from someone, you were scammed. Beware of impersonation/reselling.</string>
-    <string name="chat_binding_announcement_primary_button">Got it</string>
-    <string name="chat_binding_announcement_acknowledge">Got it</string>
-    <string name="chat_binding_announcement_acknowledge_countdown">Got it (%1$ds left)</string>
 
     <string name="settings_context_card_title">Setup Instructions:</string>
     <string name="settings_context_card_content">· Context Length: Recommended to set to your daily maximum usage value.\n· Max Context Length: Recommended to set to the maximum value supported by the model API.\nThe software will automatically compress the context when the threshold is reached to prevent exceeding the limit. Note that a larger context is not always better; user cooperation with the software is required.</string>
@@ -4420,6 +4516,14 @@
     <string name="delete_failed">Delete failed: %1$s</string>
     <string name="character_card_statistics">Character Card Statistics</string>
     <string name="character_card_statistics_subtitle">View chats and message counts for each character card</string>
+    <string name="missing_card_entry_action_title">Missing Character Card Entry</string>
+    <string name="missing_card_entry_action_message">%2$d chat(s) are still under \"%1$s\". Choose an action:</string>
+    <string name="action_assign_to_card">Assign to Card</string>
+    <string name="action_delete_residual_chats">Delete Residual Chats</string>
+    <string name="delete_residual_chats_confirmation">Are you sure you want to delete %2$d residual chat(s) under \"%1$s\"?\n\nLocked chats will be skipped, and this action cannot be undone.</string>
+    <string name="deleted_residual_chats_count">Deleted %1$d residual chat(s)</string>
+    <string name="deleted_residual_chats_with_skipped_locked">Deleted %1$d residual chat(s), skipped %2$d locked chat(s)</string>
+    <string name="click_to_manage_missing_card">Click to manage this missing-card entry</string>
     <string name="character_fallback">C</string>
     <string name="selected_chats_count">Selected %1$d / %2$d</string>
     <string name="apply_changes">Apply Changes</string>
@@ -4780,6 +4884,8 @@
     <string name="toolreg_create_terminal_session_desc">Create or get terminal session: %1$s</string>
     <string name="toolreg_execute_in_terminal_session_desc">Execute in terminal session [%1$s]: %2$s</string>
     <string name="toolreg_close_terminal_session_desc">Close terminal session: %1$s</string>
+    <string name="toolreg_input_in_terminal_session_desc">Write input to terminal session [%1$s] (control=%2$s)</string>
+    <string name="toolreg_get_terminal_session_screen_desc">Get current terminal screen content for session [%1$s] (single screen)</string>
     <string name="toolreg_query_memory_desc">Query memory library: %1$s</string>
     <string name="toolreg_get_memory_by_title_desc">Get memory by title: %1$s</string>
 
@@ -4824,8 +4930,11 @@
     <string name="toolreg_create_new_chat_desc">Create new chat</string>
     <string name="toolreg_create_new_chat_in_group_desc">Create new chat (group: %1$s)</string>
     <string name="toolreg_list_chats_desc">List all chats</string>
+    <string name="toolreg_find_chat_desc">Find chat: %1$s</string>
+    <string name="toolreg_agent_status_desc">Check chat status: %1$s</string>
     <string name="toolreg_switch_chat_desc">Switch to chat: %1$s</string>
     <string name="toolreg_send_message_to_ai_desc">Send message to AI: %1$s</string>
+    <string name="toolreg_list_character_cards_desc">List all character cards</string>
     <string name="toolreg_get_chat_messages_desc">Get chat messages: %1$s%2$s%3$s</string>
     <string name="toolreg_list_files_desc">List directory: %1$s%2$s</string>
     <string name="toolreg_read_file_desc">Read file: %1$s%2$s</string>
@@ -5038,6 +5147,50 @@
     <string name="memory_test_ai_tool">Test AI Memory Tool</string>
     <string name="memory_test_tool_hint">Enter a query to simulate AI retrieving relevant memories from the knowledge base:</string>
     <string name="memory_test_results">Results</string>
+    <string name="memory_search_settings_title">Memory Search Settings</string>
+    <string name="memory_search_threshold">Semantic Threshold</string>
+    <string name="memory_search_calc_mode">Scoring Mode</string>
+    <string name="memory_search_weight_section">Threshold &amp; Weights</string>
+    <string name="memory_search_mode_balanced">Balanced</string>
+    <string name="memory_search_mode_keyword_first">Keyword First</string>
+    <string name="memory_search_mode_semantic_first">Semantic First</string>
+    <string name="memory_search_keyword_weight">Keyword Weight</string>
+    <string name="memory_search_vector_weight">Vector Weight</string>
+    <string name="memory_search_edge_weight">Edge Propagation Weight</string>
+    <string name="memory_search_reset_default">Reset Default</string>
+    <string name="memory_search_debug_tools">Search Debug</string>
+    <string name="memory_search_simulation_open">Simulate Search</string>
+    <string name="memory_search_simulation_title">Search Simulation</string>
+    <string name="memory_search_simulation_query">Simulation Query</string>
+    <string name="memory_search_simulation_run">Run Simulation</string>
+    <string name="memory_search_simulation_summary">Search Summary</string>
+    <string name="memory_search_simulation_scope_count">Memories in scope: %1$d</string>
+    <string name="memory_search_simulation_match_count">Matches keyword:%1$d reverse:%2$d semantic:%3$d</string>
+    <string name="memory_search_simulation_result_count">Scored:%1$d passed:%2$d threshold:%3$.4f</string>
+    <string name="memory_search_simulation_weight_line">Weights keyword:%1$.2f semantic:%2$.2f edge:%3$.2f norm:%4$.4f</string>
+    <string name="memory_search_simulation_fragments">Keyword Fragments</string>
+    <string name="memory_search_simulation_raw_keywords">Raw (%1$d): %2$s</string>
+    <string name="memory_search_simulation_lexical_tokens">Lexical (%1$d): %2$s</string>
+    <string name="memory_search_simulation_top_candidates">Candidates (showing top %1$d / %2$d)</string>
+    <string name="memory_search_simulation_candidate_title">%1$d. [%2$s] %3$s</string>
+    <string name="memory_search_simulation_candidate_scores">k:%1$.4f r:%2$.4f s:%3$.4f e:%4$.4f total:%5$.4f token:%6$d</string>
+    <string name="memory_embedding_cloud_title">Cloud Embedding Model</string>
+    <string name="memory_embedding_cloud_enable">Enable cloud embedding model</string>
+    <string name="memory_embedding_cloud_endpoint">Embedding API endpoint</string>
+    <string name="memory_embedding_cloud_api_key">Embedding API key</string>
+    <string name="memory_embedding_cloud_model">Embedding model name</string>
+    <string name="memory_embedding_dimension_usage">Current embedding dimension usage</string>
+    <string name="memory_embedding_dimension_memory_summary">Memory vectors: total %1$d, missing %2$d</string>
+    <string name="memory_embedding_dimension_chunk_summary">Document chunk vectors: total %1$d, missing %2$d</string>
+    <string name="memory_embedding_dimension_none">No vectors</string>
+    <string name="memory_embedding_dimension_item">%1$d-dim: %2$d items</string>
+    <string name="memory_embedding_rebuild_action">Rebuild Vector Index</string>
+    <string name="memory_embedding_rebuild_progress">Progress %1$d/%2$d, failed %3$d, stage: %4$s</string>
+    <string name="memory_embedding_stage_preparing">Preparing</string>
+    <string name="memory_embedding_stage_memory">Rebuilding memory vectors</string>
+    <string name="memory_embedding_stage_chunk">Rebuilding chunk vectors</string>
+    <string name="memory_embedding_stage_done">Done</string>
+    <string name="memory_embedding_rebuild_failed">Failed to rebuild vector index: %1$s</string>
     <string name="memory_document_title">Document Title</string>
     <string name="memory_search_in_document">Search in document...</string>
     <string name="memory_save_all">Save All</string>
@@ -5822,12 +5975,23 @@
 
     <!-- Global Display Settings -->
     <string name="global_display_automation_behavior">Automation Display &amp; Behavior</string>
+    <string name="root_execution_mode_title">Root Execution Mode</string>
+    <string name="root_execution_mode_description">Auto picks based on environment; manual mode overrides auto selection.</string>
+    <string name="root_execution_mode_auto">Auto</string>
+    <string name="root_execution_mode_force_libsu">Manual Magisk SU</string>
+    <string name="root_execution_mode_force_exec">Manual KernelSU</string>
+    <string name="root_custom_su_command">Custom su command (KernelSU mode)</string>
+    <string name="root_custom_su_command_description">Applies only in KernelSU mode. You can enter commands like su or su --mount-master.</string>
     <string name="global_display_virtual_screen_bitrate">Virtual Screen Bitrate</string>
     <string name="global_display_status_indicator_style">Status Indicator Style</string>
     <string name="global_display_screenshot_settings">Screenshot Settings</string>
     <string name="global_display_image_format">Image Format</string>
     <string name="global_display_image_quality">Quality (JPG only)</string>
     <string name="global_display_resolution_scale">Resolution Scale (downscale before sending)</string>
+    <string name="tool_collapse_mode_title">Tool Collapse</string>
+    <string name="tool_collapse_mode_desc">Set the default collapse scope for tool-call groups in messages</string>
+    <string name="tool_collapse_mode_read_only">Collapse Read-only Tools</string>
+    <string name="tool_collapse_mode_all">Collapse All Tools</string>
 
     <!-- ANR Monitor -->
     <string name="anr_main_thread_not_responding">Main thread not responding: %1$dms</string>
@@ -6131,6 +6295,7 @@
     <string name="enhanced_receiving_response">Receiving AI response...</string>
     <string name="enhanced_error_with_message">Error: %1$s</string>
     <string name="enhanced_tool_warning">Warning: Tool calls and waiting for user response cannot exist at the same time. Tool calls were processed, but this is extremely dangerous.</string>
+    <string name="enhanced_pure_thinking_only_warning">Warning: Please output main content and do not output thinking-only responses.</string>
     <string name="enhanced_receiving_tool_result">Receiving AI response after tool execution...</string>
     <string name="enhanced_process_tool_result_failed">Failed to process tool execution result: %1$s</string>
     <string name="enhanced_memory_tools_category">Memory and Memory Library Tools</string>
@@ -6153,9 +6318,20 @@
     <string name="terminal_error_missing_session_id">Missing parameter: session_id</string>
     <string name="terminal_error_session_not_exist">Terminal session \'%1$s\' does not exist or is closed</string>
     <string name="terminal_error_command_failed">Terminal command execution failed or timed out</string>
+    <string name="terminal_error_command_timeout">Terminal command timed out (%1$dms)</string>
+    <string name="terminal_error_command_non_zero_exit">Terminal command exited with non-zero status (exitCode=%1$d)</string>
     <string name="terminal_error_execute_command">Error executing terminal command: %1$s</string>
     <string name="terminal_session_closed">Terminal session \'%1$s\' closed successfully.</string>
     <string name="terminal_error_close_session">Error closing terminal session \'%1$s\': %2$s</string>
+    <string name="terminal_error_missing_input_or_control">Missing parameter: input or control (at least one is required)</string>
+    <string name="terminal_error_control_requires_input">Parameter %1$s requires input</string>
+    <string name="terminal_error_ctrl_input_single_char">When control=ctrl, input must be a single character</string>
+    <string name="terminal_error_ctrl_input_unsupported">Unsupported input for control=ctrl: %1$s</string>
+    <string name="terminal_error_unsupported_control">Unsupported control: %1$s</string>
+    <string name="terminal_error_input">Error writing input to terminal session</string>
+    <string name="terminal_error_input_with_reason">Error writing input to terminal session: %1$s</string>
+    <string name="terminal_error_get_screen">Error reading current terminal screen content: %1$s</string>
+    <string name="terminal_input_sent">Input sent to terminal session \'%1$s\' (acceptedChars=%2$d)</string>
 
     <!-- OpenAISttProvider -->
     <string name="openai_stt_error_url_not_set">OpenAI STT URL not set, please enter the complete interface address (e.g., https://api.openai.com/v1/audio/transcriptions).</string>
@@ -6349,6 +6525,8 @@
     <string name="skill_cannot_determine_default_branch">Cannot determine default branch for %1$s</string>
     <string name="skill_download_zip_failed">Failed to download repository ZIP file</string>
     <string name="skill_import_failed">Import failed: %1$s</string>
+    <string name="skillmgr_direct_create_dir_failed">Failed to create directory: %1$s</string>
+    <string name="skillmgr_direct_attachment_read_failed">Failed to read attachment: %1$s</string>
 
     <!-- PathFinder -->
     <string name="path_simple_start_node_not_exist">Start node \'%1$s\' does not exist</string>
@@ -6413,7 +6591,7 @@
     <string name="default_character_card">Default Character Card</string>
 
     <!-- PromptTagManager -->
-    <string name="prompt_tag_system_chat_prompt">Use problem library to personalize responses based on user style, preferences, and past information.</string>
+    <string name="prompt_tag_system_chat_prompt"></string>
     <string name="prompt_tag_unnamed">Unnamed Tag</string>
     <string name="prompt_tag_general_chat">General Chat</string>
     <string name="prompt_tag_general_chat_desc">General prompt for chat functionality</string>
@@ -6493,4 +6671,80 @@
     <string name="repo_bookmark_name_exists">Name already exists, please choose another</string>
     <string name="repo_bookmark_delete">Delete</string>
 
+    <string name="mcp_config_invalid_tag">Invalid</string>
+    <string name="mcp_config_invalid_missing_endpoint">Invalid: missing endpoint</string>
+    <string name="mcp_config_invalid_missing_server_entry">Invalid: missing mcpServers.%1$s</string>
+    <string name="mcp_config_invalid_missing_command">Invalid: missing command</string>
+
+    <!-- StandardWebSessionTools Accessibility -->
+    <string name="web_session_accessibility_web_content">Web content</string>
+    <string name="web_session_accessibility_minimize_panel">Minimize web sessions panel</string>
+    <string name="web_session_accessibility_close_current_session">Close current web session</string>
+    <string name="web_session_accessibility_minimized_indicator">Web sessions panel minimized, double tap to expand</string>
+
+    <string name="tool_windows_control_one_click">Windows One-Click Setup</string>
+    <string name="tool_windows_control_one_click_desc">Export the PC agent package, configure HTTP agent environment variables, and enable windows_control in one flow</string>
+    <string name="screen_title_windows_control_one_click">Windows One-Click Setup</string>
+
+    <string name="windows_one_click_title">Windows Control One-Click Setup</string>
+    <string name="windows_one_click_subtitle">Share the bundled PC agent package to your Windows computer and run it, then save HTTP agent settings here to enable the windows_control package.</string>
+    <string name="windows_one_click_step1_title">Step 1: Export and share PC agent</string>
+    <string name="windows_one_click_step1_desc">This exports the built-in operit-pc-agent ZIP into /sdcard/Download/Operit/cleanOnExit and opens the system share sheet.</string>
+    <string name="windows_one_click_step1_button">Export and Share ZIP</string>
+    <string name="windows_one_click_exporting">Preparing ZIP...</string>
+    <string name="windows_one_click_step1_success">Written to cleanOnExit and shared: %1$s</string>
+    <string name="windows_one_click_step1_error_missing_asset">Bundled agent ZIP is missing. Run tools/package_operit_pc_agent_asset.py first to generate the asset.</string>
+    <string name="windows_one_click_step1_error_share">Failed to open share sheet</string>
+    <string name="windows_one_click_share_title">Share Operit PC Agent</string>
+
+    <string name="windows_one_click_step2_title">Step 2: Paste agent config and enable package</string>
+    <string name="windows_one_click_step2_desc">After pasting, the app saves WINDOWS_AGENT_* environment variables and enables windows_control automatically.</string>
+    <string name="windows_one_click_field_host">WINDOWS_AGENT_BASE_URL</string>
+    <string name="windows_one_click_field_username">WINDOWS_AGENT_TOKEN (required)</string>
+    <string name="windows_one_click_field_password">WINDOWS_AGENT_DEFAULT_SHELL (optional)</string>
+    <string name="windows_one_click_field_private_key">WINDOWS_AGENT_TIMEOUT_MS (optional)</string>
+    <string name="windows_one_click_field_port">(unused)</string>
+    <string name="windows_one_click_field_strict_host_key">(unused)</string>
+    <string name="windows_one_click_field_session_name">(unused)</string>
+    <string name="windows_one_click_field_ssh_options">(unused)</string>
+    <string name="windows_one_click_tip_env">Required: WINDOWS_AGENT_BASE_URL and WINDOWS_AGENT_TOKEN.</string>
+    <string name="windows_one_click_button_apply">Save and Enable windows_control</string>
+    <string name="windows_one_click_button_paste_apply">Paste and Enable windows_control</string>
+    <string name="windows_one_click_connection_button">Check Current Connection</string>
+    <string name="windows_one_click_connection_card_title">Connection Status</string>
+    <string name="windows_one_click_connection_state_idle">Not checked yet</string>
+    <string name="windows_one_click_connection_state_checking">Checking...</string>
+    <string name="windows_one_click_connection_state_ok">Connected</string>
+    <string name="windows_one_click_connection_state_failed">Connection failed</string>
+    <string name="windows_one_click_connection_state_not_configured">Not configured</string>
+    <string name="windows_one_click_connection_field_base_url">Base URL</string>
+    <string name="windows_one_click_connection_field_package_version">Package Version</string>
+    <string name="windows_one_click_connection_field_agent_version">Agent Version</string>
+    <string name="windows_one_click_connection_field_duration">Duration (ms)</string>
+    <string name="windows_one_click_connection_field_command">Command</string>
+    <string name="windows_one_click_connection_field_error">Error</string>
+    <string name="windows_one_click_connection_fix_base_url_label">Enter New Address</string>
+    <string name="windows_one_click_connection_fix_base_url_placeholder">Example: http://192.168.1.8:58321</string>
+    <string name="windows_one_click_connection_fix_apply_button">Save and Retry</string>
+    <string name="windows_one_click_connection_checking">Checking connection...</string>
+    <string name="windows_one_click_connection_ok">Connection check succeeded: %1$s</string>
+    <string name="windows_one_click_connection_failed">Connection check failed: %1$s</string>
+    <string name="windows_one_click_connection_package_not_enabled">windows_control is not configured yet. Please complete one-click setup first.</string>
+    <string name="windows_one_click_applying">Applying settings...</string>
+    <string name="windows_one_click_error_host_required">Please fill WINDOWS_AGENT_BASE_URL</string>
+    <string name="windows_one_click_error_token_required">Please fill WINDOWS_AGENT_TOKEN</string>
+    <string name="windows_one_click_error_username_required">(unused)</string>
+    <string name="windows_one_click_error_credential_required">(unused)</string>
+    <string name="windows_one_click_error_paste_empty">Please paste the configuration text first</string>
+    <string name="windows_one_click_error_paste_invalid">Failed to parse configuration text: %1$s</string>
+    <string name="windows_one_click_field_config_text">Configuration Text</string>
+    <string name="windows_one_click_field_config_text_placeholder">Paste the configuration text copied from the PC here (WINDOWS_AGENT_*)</string>
+    <string name="windows_one_click_status_success">Configuration saved, windows_control is enabled.</string>
+    <string name="windows_one_click_status_error">Operation failed: %1$s</string>
+    <string name="request_limit_per_minute">Requests per minute</string>
+    <string name="request_limit_per_minute_desc">Requests over this limit will wait in queue. Use 0 or empty for no rate limit.</string>
+    <string name="max_concurrent_requests">Max concurrent requests</string>
+    <string name="max_concurrent_requests_desc">Requests over this limit will wait in queue. Use 0 or empty for unlimited concurrency.</string>
+    <string name="request_queue_controls">Request Queue Controls</string>
+    <string name="request_queue_controls_desc">Collapsed by default. Controls rate and concurrency; overflow requests wait in queue.</string>
 </resources>

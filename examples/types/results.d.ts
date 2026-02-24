@@ -488,6 +488,9 @@ export interface TerminalCommandResultData {
     /** ID of the terminal session used for execution */
     sessionId: string;
 
+    /** Whether this execution ended due to timeout */
+    timedOut?: boolean;
+
     /** Returns a formatted string representation of the terminal execution result */
     toString(): string;
 }
@@ -514,6 +517,22 @@ export interface TerminalSessionCloseResultData {
     success: boolean;
     /** A message describing the result */
     message: string;
+}
+
+/**
+ * Terminal session current screen snapshot result data (single screen, no scrollback/history)
+ */
+export interface TerminalSessionScreenResultData {
+    /** ID of the session */
+    sessionId: string;
+    /** Screen row count */
+    rows: number;
+    /** Screen column count */
+    cols: number;
+    /** Current visible screen text content */
+    content: string;
+    /** Returns a formatted string representation */
+    toString(): string;
 }
 
 // ============================================================================
@@ -666,6 +685,10 @@ export interface TerminalSessionCreationResult extends BaseResult {
 
 export interface TerminalSessionCloseResult extends BaseResult {
     data: TerminalSessionCloseResultData;
+}
+
+export interface TerminalSessionScreenResult extends BaseResult {
+    data: TerminalSessionScreenResultData;
 }
 
 export interface DeviceInfoResult extends BaseResult {
@@ -991,6 +1014,8 @@ export interface ChatInfo {
     inputTokens: number;
     /** Total output tokens used */
     outputTokens: number;
+    /** Bound character card name (if any) */
+    characterCardName?: string | null;
 }
 
 /**
@@ -1059,6 +1084,57 @@ export interface ChatMessagesResultData {
 }
 
 /**
+ * Character card list result data
+ */
+export interface CharacterCardListResultData {
+    totalCount: number;
+    cards: CharacterCardInfo[];
+    toString(): string;
+}
+
+/**
+ * Character card information
+ */
+export interface CharacterCardInfo {
+    id: string;
+    name: string;
+    description: string;
+    isDefault: boolean;
+    createdAt: number;
+    updatedAt: number;
+}
+
+/**
+ * Chat find result data
+ */
+export interface ChatFindResultData {
+    /** Total matched chats */
+    matchedCount: number;
+    /** The selected chat (if any) */
+    chat: ChatInfo | null;
+    /** Returns a formatted string representation */
+    toString(): string;
+}
+
+/**
+ * Agent status result data
+ */
+export interface AgentStatusResultData {
+    /** Target chat id */
+    chatId: string;
+    /** Current state key */
+    state: string;
+    /** Optional detail message */
+    message?: string | null;
+    /** Whether the chat is idle */
+    isIdle: boolean;
+    /** Whether the chat is processing */
+    isProcessing: boolean;
+    /** Returns a formatted string representation */
+    toString(): string;
+}
+
+/**
  * Result type wrappers for Chat Manager operations
  */
 export interface ChatServiceStartResult extends BaseResult {
@@ -1071,6 +1147,14 @@ export interface ChatCreationResult extends BaseResult {
 
 export interface ChatListResult extends BaseResult {
     data: ChatListResultData;
+}
+
+export interface ChatFindResult extends BaseResult {
+    data: ChatFindResultData;
+}
+
+export interface AgentStatusResult extends BaseResult {
+    data: AgentStatusResultData;
 }
 
 export interface ChatSwitchResult extends BaseResult {
@@ -1107,6 +1191,35 @@ export interface MemoryLinkResultData {
     toString(): string;
 }
 
+/**
+ * Memory link query result data
+ */
+export interface MemoryLinkQueryResultData {
+    /** Number of links returned */
+    totalCount: number;
+    /** Queried links */
+    links: Array<{
+        /** Link ID */
+        linkId: number;
+        /** Source memory title */
+        sourceTitle: string;
+        /** Target memory title */
+        targetTitle: string;
+        /** Link type */
+        linkType: string;
+        /** Link weight (0.0-1.0) */
+        weight: number;
+        /** Optional relationship description */
+        description: string;
+    }>;
+    /** Returns a formatted string representation */
+    toString(): string;
+}
+
 export interface MemoryLinkResult extends BaseResult {
     data: MemoryLinkResultData;
-} 
+}
+
+export interface MemoryLinkQueryResult extends BaseResult {
+    data: MemoryLinkQueryResultData;
+}

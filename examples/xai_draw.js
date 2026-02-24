@@ -1,6 +1,11 @@
 /* METADATA
 {
   "name": "xai_draw",
+
+  "display_name": {
+      "zh": "xAI 绘图",
+      "en": "xAI Draw"
+  },
   "description": {
     "zh": "使用 xAI 图像生成 API (grok-2-image-1212) 根据提示词画图，将图片保存到本地 /sdcard/Download/Operit/draws/ 目录，并返回 Markdown 图片提示。",
     "en": "Generate images with the xAI image generation API (grok-2-image-1212) from a prompt, save to /sdcard/Download/Operit/draws/, and return a Markdown image reference."
@@ -26,7 +31,12 @@
 }
 */
 const xaiDraw = (function () {
-    const client = OkHttp.newClient();
+    const HTTP_TIMEOUT_MS = 600000;
+    const client = OkHttp.newBuilder()
+        .connectTimeout(HTTP_TIMEOUT_MS)
+        .readTimeout(HTTP_TIMEOUT_MS)
+        .writeTimeout(HTTP_TIMEOUT_MS)
+        .build();
     const API_ENDPOINT = "https://api.x.ai/v1/images/generations";
     const DEFAULT_MODEL = "grok-2-image-1212";
     // Android 实际路径为 /sdcard/Download，对应系统中文名“下载”

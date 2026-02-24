@@ -99,7 +99,8 @@ data class TerminalCommandResultData(
         val command: String,
         val output: String,
         val exitCode: Int,
-        val sessionId: String
+        val sessionId: String,
+        val timedOut: Boolean = false
 ) : ToolResultData() {
     override fun toString(): String {
         val sb = StringBuilder()
@@ -107,6 +108,9 @@ data class TerminalCommandResultData(
         sb.appendLine("Command: $command")
         sb.appendLine("Session: $sessionId")
         sb.appendLine("Exit Code: $exitCode")
+        if (timedOut) {
+            sb.appendLine("Timed Out: true")
+        }
         sb.appendLine("\nOutput:")
         sb.appendLine(output)
         return sb.toString()
@@ -1082,6 +1086,25 @@ data class TerminalSessionCloseResultData(
     override fun toString(): String = message
 }
 
+/** 终端会话当前屏幕内容结果数据（仅当前屏，不含历史滚动缓冲） */
+@Serializable
+data class TerminalSessionScreenResultData(
+    val sessionId: String,
+    val rows: Int,
+    val cols: Int,
+    val content: String
+) : ToolResultData() {
+    override fun toString(): String {
+        val sb = StringBuilder()
+        sb.appendLine("Terminal Session Screen Snapshot:")
+        sb.appendLine("Session: $sessionId")
+        sb.appendLine("Size: ${cols}x${rows}")
+        sb.appendLine()
+        sb.append(content)
+        return sb.toString()
+    }
+}
+
 /** Grep代码搜索结果数据 */
 @Serializable
 @OptIn(ExperimentalSerializationApi::class)
@@ -1417,7 +1440,8 @@ data class ChatListResultData(
         val updatedAt: String,
         val isCurrent: Boolean,
         val inputTokens: Int,
-        val outputTokens: Int
+        val outputTokens: Int,
+        val characterCardName: String? = null
     )
     
     override fun toString(): String {
@@ -1436,6 +1460,9 @@ data class ChatListResultData(
                 sb.appendLine("ID: ${chat.id}$currentMarker")
                 sb.appendLine("Title: ${chat.title}")
                 sb.appendLine("Message Count: ${chat.messageCount}")
+                if (!chat.characterCardName.isNullOrBlank()) {
+                    sb.appendLine("Character Card: ${chat.characterCardName}")
+                }
                 sb.appendLine("Token Statistics: Input ${chat.inputTokens} / Output ${chat.outputTokens}")
                 sb.appendLine("Created: ${chat.createdAt}")
                 sb.appendLine("Updated: ${chat.updatedAt}")
@@ -1444,6 +1471,36 @@ data class ChatListResultData(
         }
 
         return sb.toString().trim()
+    }
+}
+
+/** 查找对话结果数据 */
+@Serializable
+data class ChatFindResultData(
+    val matchedCount: Int,
+    val chat: ChatListResultData.ChatInfo?
+) : ToolResultData() {
+    override fun toString(): String {
+        return if (chat != null) {
+            "Found chat (${chat.id}) (matched=$matchedCount)"
+        } else {
+            "No chat found (matched=$matchedCount)"
+        }
+    }
+}
+
+/** 对话输入状态结果数据 */
+@Serializable
+data class AgentStatusResultData(
+    val chatId: String,
+    val state: String,
+    val message: String? = null,
+    val isIdle: Boolean = false,
+    val isProcessing: Boolean = false
+) : ToolResultData() {
+    override fun toString(): String {
+        val detail = message?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: ""
+        return "Chat $chatId status: $state$detail"
     }
 }
 
@@ -1483,6 +1540,45 @@ data class ChatMessagesResultData(
 
     override fun toString(): String {
         return "Chat messages: $chatId (order=$order, limit=$limit)\nTotal: ${messages.size}"
+    }
+}
+
+/** 角色卡列表结果数据 */
+@Serializable
+data class CharacterCardListResultData(
+    val totalCount: Int,
+    val cards: List<CharacterCardInfo>
+) : ToolResultData() {
+
+    @Serializable
+    data class CharacterCardInfo(
+        val id: String,
+        val name: String,
+        val description: String,
+        val isDefault: Boolean,
+        val createdAt: Long,
+        val updatedAt: Long
+    )
+
+    override fun toString(): String {
+        val sb = StringBuilder()
+        sb.appendLine("Character Cards ($totalCount total):")
+        if (cards.isEmpty()) {
+            sb.appendLine("No cards")
+        } else {
+            cards.forEach { card ->
+                val defaultMarker = if (card.isDefault) " [Default]" else ""
+                sb.appendLine("ID: ${card.id}$defaultMarker")
+                sb.appendLine("Name: ${card.name}")
+                if (card.description.isNotBlank()) {
+                    sb.appendLine("Description: ${card.description}")
+                }
+                sb.appendLine("Created: ${card.createdAt}")
+                sb.appendLine("Updated: ${card.updatedAt}")
+                sb.appendLine("---")
+            }
+        }
+        return sb.toString().trim()
     }
 }
 
@@ -1526,5 +1622,37 @@ data class MemoryLinkResultData(
 ) : ToolResultData() {
     override fun toString(): String {
         return "Successfully linked memory: '$sourceTitle' -> '$targetTitle' (Type: $linkType, Strength: $weight)"
+    }
+}
+
+/** 记忆链接查询结果数据 */
+@Serializable
+data class MemoryLinkQueryResultData(
+    val totalCount: Int,
+    val links: List<LinkInfo>
+) : ToolResultData() {
+    @Serializable
+    data class LinkInfo(
+        val linkId: Long,
+        val sourceTitle: String,
+        val targetTitle: String,
+        val linkType: String,
+        val weight: Float,
+        val description: String
+    )
+
+    override fun toString(): String {
+        if (links.isEmpty()) {
+            return "No memory links found."
+        }
+        val sb = StringBuilder()
+        sb.appendLine("Memory Links ($totalCount):")
+        links.forEach { link ->
+            sb.appendLine("- #${link.linkId}: '${link.sourceTitle}' -> '${link.targetTitle}' (Type: ${link.linkType}, Weight: ${link.weight})")
+            if (link.description.isNotBlank()) {
+                sb.appendLine("  Description: ${link.description}")
+            }
+        }
+        return sb.toString().trim()
     }
 }

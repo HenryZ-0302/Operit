@@ -23,8 +23,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
@@ -76,7 +80,8 @@ class HttpVoiceProvider(
     // 媒体播放器实例
     private var mediaPlayer: MediaPlayer? = null
 
-    private val speakMutex = Mutex()
+    private val speakScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val speakQueue = Channel<SpeakRequest>(Channel.UNLIMITED)
 
     // 缓存的音频文件映射表
     private val audioCache = ConcurrentHashMap<String, File>()
@@ -88,6 +93,28 @@ class HttpVoiceProvider(
 
     // 临时文件目录
     private val cacheDir by lazy { context.cacheDir }
+
+    private data class SpeakRequest(
+        val text: String,
+        val interrupt: Boolean,
+        val rate: Float?,
+        val pitch: Float?,
+        val extraParams: Map<String, String>,
+        val completion: CompletableDeferred<Boolean>
+    )
+
+    init {
+        speakScope.launch {
+            for (request in speakQueue) {
+                try {
+                    val result = performSpeak(request)
+                    request.completion.complete(result)
+                } catch (e: Exception) {
+                    request.completion.completeExceptionally(e)
+                }
+            }
+        }
+    }
 
     /**
      * 设置HTTP TTS服务的配置
@@ -157,67 +184,101 @@ class HttpVoiceProvider(
         pitch: Float?,
         extraParams: Map<String, String>
     ): Boolean = withContext(Dispatchers.IO) {
-        speakMutex.withLock {
-            // 检查初始化状态
-            if (!isInitialized) {
-                val initResult = initialize()
-                if (!initResult) {
-                    return@withLock false
+        val completion = CompletableDeferred<Boolean>()
+        val request = SpeakRequest(
+            text = text,
+            interrupt = interrupt,
+            rate = rate,
+            pitch = pitch,
+            extraParams = extraParams,
+            completion = completion
+        )
+        speakQueue.send(request)
+        completion.await()
+    }
+
+    private suspend fun performSpeak(request: SpeakRequest): Boolean {
+        // 检查初始化状态
+        if (!isInitialized) {
+            val initResult = initialize()
+            if (!initResult) {
+                return false
+            }
+        }
+
+        // 如果需要中断当前播放，则停止
+        if (request.interrupt && isSpeaking) {
+            stopPlaybackOnly()
+        }
+
+        val prefs = SpeechServicesPreferences(context.applicationContext)
+        val effectiveRate = request.rate ?: prefs.ttsSpeechRateFlow.first()
+        val effectivePitch = request.pitch ?: prefs.ttsPitchFlow.first()
+
+        try {
+            // 生成缓存键
+            val cacheKey = generateCacheKey(
+                request.text,
+                effectiveRate,
+                effectivePitch,
+                currentVoiceId,
+                request.extraParams
+            )
+            var audioFile = audioCache[cacheKey]
+
+            // 如果缓存中没有，则请求新的音频
+            if (audioFile == null || !audioFile.exists()) {
+                audioFile = fetchAudioFromServer(
+                    request.text,
+                    effectiveRate,
+                    effectivePitch,
+                    currentVoiceId,
+                    request.extraParams
+                )
+                if (audioFile != null) {
+                    audioCache[cacheKey] = audioFile
+                } else {
+                    return false
                 }
             }
 
-            // 如果需要中断当前播放，则停止
-            if (interrupt && isSpeaking) {
-                stop()
-            }
-
-            val prefs = SpeechServicesPreferences(context.applicationContext)
-            val effectiveRate = rate ?: prefs.ttsSpeechRateFlow.first()
-            val effectivePitch = pitch ?: prefs.ttsPitchFlow.first()
-
-            try {
-                // 生成缓存键
-                val cacheKey = generateCacheKey(text, effectiveRate, effectivePitch, currentVoiceId, extraParams)
-                var audioFile = audioCache[cacheKey]
-
-                // 如果缓存中没有，则请求新的音频
-                if (audioFile == null || !audioFile.exists()) {
-                    audioFile = fetchAudioFromServer(text, effectiveRate, effectivePitch, currentVoiceId, extraParams)
-                    if (audioFile != null) {
-                        audioCache[cacheKey] = audioFile
-                    } else {
-                        return@withLock false
-                    }
-                }
-
-                // 播放音频文件
-                playAudioFile(audioFile)
-                return@withLock true
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "HTTP TTS播放失败", e)
-                throw e
-            }
+            // 播放音频文件
+            playAudioFile(audioFile)
+            return true
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "HTTP TTS播放失败", e)
+            throw e
         }
     }
 
-    /** 停止当前正在播放的语音 */
-    override suspend fun stop(): Boolean = withContext(Dispatchers.IO) {
-        if (!isInitialized) return@withContext false
+    private fun clearPendingRequests() {
+        while (true) {
+            val request = speakQueue.tryReceive().getOrNull() ?: break
+            request.completion.complete(false)
+        }
+    }
 
-        try {
+    private fun stopPlaybackOnly(): Boolean {
+        return try {
             mediaPlayer?.let {
                 if (it.isPlaying) {
                     it.stop()
                 }
                 it.reset()
                 _isSpeaking.value = false
-                return@withContext true
-            }
-            return@withContext false
+                true
+            } ?: false
         } catch (e: Exception) {
             AppLogger.e(TAG, "停止HTTP TTS播放失败", e)
-            return@withContext false
+            false
         }
+    }
+
+    /** 停止当前正在播放的语音 */
+    override suspend fun stop(): Boolean = withContext(Dispatchers.IO) {
+        clearPendingRequests()
+        if (!isInitialized) return@withContext false
+        stopPlaybackOnly()
     }
 
     /** 暂停当前正在播放的语音 */
@@ -261,6 +322,8 @@ class HttpVoiceProvider(
     /** 释放TTS引擎资源 */
     override fun shutdown() {
         try {
+            speakScope.cancel()
+            speakQueue.close()
             mediaPlayer?.let {
                 try {
                     if (it.isPlaying) {

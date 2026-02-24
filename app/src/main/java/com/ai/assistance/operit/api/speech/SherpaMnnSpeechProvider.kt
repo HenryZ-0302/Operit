@@ -12,7 +12,7 @@ import com.ai.assistance.operit.util.AppLogger
 import com.k2fsa.sherpa.mnn.*
 import com.ai.assistance.operit.api.speech.SpeechPrerollStore
 import java.io.File
-import java.io.FileOutputStream
+import com.ai.assistance.operit.util.AssetCopyUtils
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -161,59 +161,12 @@ class SherpaMnnSpeechProvider(private val context: Context) : SpeechService {
         }
     }
 
-    @Throws(IOException::class)
-    private fun copyAssetDirToCache(assetDir: String, cacheDir: File): File {
-        val targetDir = File(cacheDir, assetDir.substringAfterLast('/'))
-        if (targetDir.exists() && targetDir.list()?.isNotEmpty() == true) {
-            AppLogger.d(TAG, "Model files already exist in cache: ${targetDir.absolutePath}")
-            return targetDir
-        }
-        AppLogger.d(TAG, "Copying model files from assets '$assetDir' to ${targetDir.absolutePath}")
-        targetDir.mkdirs()
-
-        val assetManager = context.assets
-        val fileList = assetManager.list(assetDir)
-        if (fileList.isNullOrEmpty()) {
-            throw IOException("Asset directory '$assetDir' is empty or does not exist.")
-        }
-
-        fileList.forEach { fileName ->
-            val assetPath = "$assetDir/$fileName"
-            val targetFile = File(targetDir, fileName)
-            assetManager.open(assetPath).use { inputStream ->
-                FileOutputStream(targetFile).use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-            }
-        }
-        return targetDir
-    }
-
-    @Throws(IOException::class)
-    private fun copyAssetFileToCache(assetPath: String, cacheDir: File): File {
-        val fileName = assetPath.substringAfterLast('/')
-        val targetFile = File(cacheDir, fileName)
-        if (targetFile.exists()) {
-            AppLogger.d(TAG, "Model file already exists in cache: ${targetFile.absolutePath}")
-            return targetFile
-        }
-        AppLogger.d(TAG, "Copying model file from assets '$assetPath' to ${targetFile.absolutePath}")
-        
-        val assetManager = context.assets
-        assetManager.open(assetPath).use { inputStream ->
-            FileOutputStream(targetFile).use { outputStream ->
-                inputStream.copyTo(outputStream)
-            }
-        }
-        return targetFile
-    }
-
     private fun createRecognizer() {
         val localModelDir: File
         try {
             val modelDirName = "sherpa-mnn-streaming-zipformer-bilingual-zh-en-2023-02-20"
             val assetModelDir = "models/$modelDirName"
-            localModelDir = copyAssetDirToCache(assetModelDir, context.filesDir)
+            localModelDir = AssetCopyUtils.copyAssetDirToCache(context, assetModelDir, context.filesDir)
         } catch (e: IOException) {
             AppLogger.e(TAG, "Failed to copy model assets.", e)
             _recognitionState.value = SpeechService.RecognitionState.ERROR
@@ -271,7 +224,11 @@ class SherpaMnnSpeechProvider(private val context: Context) : SpeechService {
         /*
         try {
             val assetVadPath = "models/silero_vad.onnx"
-            val vadModelFile = copyAssetFileToCache(assetVadPath, context.filesDir)
+            val vadModelFile = AssetCopyUtils.copyAssetToFile(
+                context,
+                assetVadPath,
+                File(context.filesDir, assetVadPath.substringAfterLast('/'))
+            )
             
             // 验证文件是否存在且可读
             if (!vadModelFile.exists() || !vadModelFile.canRead()) {

@@ -2,7 +2,12 @@
 METADATA
 {
     "name": "daily_life",
-    "description": { "zh": "日常生活工具集合，提供丰富的日常功能接口，包括日期时间查询、设备状态监测、天气搜索、提醒闹钟设置、短信电话通讯、微信/QQ消息发送、微信朋友圈发表、手电筒控制、音量调节、Wi-Fi开关、截屏拍照及深色模式切换等。通过系统Intent和UI模拟实现各类日常任务，支持用户便捷地完成日常交互需求。", "en": "Daily life utilities that provide common device actions: date/time, device status, weather, reminders/alarms, SMS/calls, WeChat/QQ messaging, WeChat Moments posting, flashlight, volume, Wi-Fi, screenshots/photos, and dark mode toggling. Implemented via system Intents and UI automation." },
+
+    "display_name": {
+        "zh": "日常生活工具包",
+        "en": "Daily Life Toolkit"
+    },
+    "description": { "zh": "日常生活工具集合：日期时间、设备状态、电量/内存概况、天气查询、提醒、闹钟、短信、电话、微信单条消息发送、QQ单条消息发送、朋友圈发布、手电筒、音量调节、Wi‑Fi 开关、截图、拍照、深色模式、指定时间唤醒 AI 执行一次性定时任务。", "en": "Daily life utilities: date/time, device status, battery/memory overview, weather lookup, reminders, alarms, SMS, calls, single-message WeChat send, single-message QQ send, Moments posting, flashlight, volume control, Wi‑Fi toggle, screenshots, photos, dark mode, wake AI at a specified time for a one-time scheduled task." },
     "enabledByDefault": true,
     "tools": [
         {
@@ -44,6 +49,24 @@ METADATA
                     "type": "string",
                     "required": false
                 }
+            ]
+        },
+        {
+            "name": "schedule_one_time_task",
+            "description": { "zh": "在指定时间唤醒 AI 执行一次性定时任务（chat/role/sender 默认使用 getChatId/getCallerCardId/getCallerName）。", "en": "Wake the AI at a specified time to execute a one-time scheduled task (chat/role/sender default to getChatId/getCallerCardId/getCallerName)." },
+            "parameters": [
+                {
+                    "name": "trigger_time",
+                    "description": { "zh": "触发时间（格式示例，非当前时间：2026-01-04 10:30、2026-01-04 10:30:00、2026-01-04T10:30:00、2026-01-04）", "en": "Trigger time (format examples, not current time: 2026-01-04 10:30, 2026-01-04 10:30:00, 2026-01-04T10:30:00, 2026-01-04)." },
+                    "type": "string",
+                    "required": true
+                },
+                {
+                    "name": "message",
+                    "description": { "zh": "唤醒消息内容（可选）", "en": "Wake message content (optional)." },
+                    "type": "string",
+                    "required": false
+                },
             ]
         },
         {
@@ -473,6 +496,172 @@ const dailyLife = (function () {
                 error: error.message
             };
         }
+    }
+
+    /**
+     * Create a one-time scheduled workflow to send a reminder message to a chat.
+     */
+    async function schedule_one_time_task(params: {
+        trigger_time: string;
+        message?: string;
+    }): Promise<any> {
+        if (!params.trigger_time) {
+            throw new Error("trigger_time is required");
+        }
+
+        const resolvedChatId = getChatId();
+        if (!resolvedChatId) {
+            throw new Error("chat_id is required (call from a chat context)");
+        }
+
+        const resolvedRoleCardId = getCallerCardId();
+        const resolvedSenderName = getCallerName();
+        const resolvedLang = getLang();
+        const workflowName = resolvedLang?.toLowerCase()?.startsWith("zh")
+            ? `一次性定时任务 ${params.trigger_time}`
+            : `One-time scheduled task ${params.trigger_time}`;
+        const description = resolvedLang?.toLowerCase()?.startsWith("zh")
+            ? `一次性定时任务，触发时间 ${params.trigger_time}`
+            : `One-time scheduled task at ${params.trigger_time}`;
+        const timedTriggerTag = `[定时触发:${params.trigger_time}]\n[Scheduled Trigger:${params.trigger_time}]`;
+        const defaultMessage = `[自动任务] 时间到了，开始执行一次性定时任务。现在是 ${params.trigger_time}\n[Automated Task] Time reached, start executing the one-time scheduled task. Current time is ${params.trigger_time}`;
+        const messageContent = params.message
+            ? `${params.message}\n${timedTriggerTag}`
+            : `${defaultMessage}\n${timedTriggerTag}`;
+
+        const created = await Tools.Workflow.create(workflowName, description, null, null, true);
+        const workflowId = created?.id;
+
+        if (!workflowId) {
+            throw new Error("Failed to create workflow: missing workflow id");
+        }
+
+        const uniqueId = Date.now().toString();
+        const triggerNodeId = `trigger_${uniqueId}`;
+        const startNodeId = `start_${uniqueId}`;
+        const sendNodeId = `send_${uniqueId}`;
+        const deleteNodeId = `delete_${uniqueId}`;
+
+        const actionConfig: Record<string, any> = {
+            message: messageContent,
+            chat_id: resolvedChatId
+        };
+
+        if (resolvedRoleCardId) {
+            actionConfig.role_card_id = resolvedRoleCardId;
+        }
+        if (resolvedSenderName) {
+            actionConfig.sender_name = resolvedSenderName;
+        }
+
+        const nodeTexts = resolvedLang?.toLowerCase()?.startsWith("zh")
+            ? {
+                triggerName: "定时触发",
+                triggerDesc: "一次性定时触发",
+                startName: "启动对话服务",
+                startDesc: "启动对话服务以便发送消息",
+                sendName: "唤醒AI",
+                sendDesc: "向对话发送唤醒消息，触发AI执行任务",
+                deleteName: "删除工作流",
+                deleteDesc: "执行后删除自己"
+            }
+            : {
+                triggerName: "Scheduled Trigger",
+                triggerDesc: "One-time scheduled trigger",
+                startName: "Start Chat Service",
+                startDesc: "Start chat service to enable messaging",
+                sendName: "Wake AI",
+                sendDesc: "Send a wake message to trigger AI task execution",
+                deleteName: "Delete Workflow",
+                deleteDesc: "Delete itself after execution"
+            };
+
+        const nodes: Workflow.NodeInput[] = [
+            {
+                id: triggerNodeId,
+                type: "trigger",
+                name: nodeTexts.triggerName,
+                description: nodeTexts.triggerDesc,
+                position: { x: 0, y: 0 },
+                triggerType: "schedule",
+                triggerConfig: {
+                    schedule_type: "specific_time",
+                    specific_time: params.trigger_time,
+                    repeat: "false",
+                    enabled: "true"
+                }
+            },
+            {
+                id: startNodeId,
+                type: "execute",
+                name: nodeTexts.startName,
+                description: nodeTexts.startDesc,
+                position: { x: 260, y: 0 },
+                actionType: "start_chat_service",
+                actionConfig: {
+                    initial_mode: "BALL",
+                    keep_if_exists: "true"
+                }
+            },
+            {
+                id: sendNodeId,
+                type: "execute",
+                name: nodeTexts.sendName,
+                description: nodeTexts.sendDesc,
+                position: { x: 520, y: 0 },
+                actionType: "send_message_to_ai",
+                actionConfig
+            },
+            {
+                id: deleteNodeId,
+                type: "execute",
+                name: nodeTexts.deleteName,
+                description: nodeTexts.deleteDesc,
+                position: { x: 1040, y: 0 },
+                actionType: "delete_workflow",
+                actionConfig: {
+                    workflow_id: workflowId
+                }
+            }
+        ];
+
+        const connections: Workflow.ConnectionInput[] = [
+            {
+                sourceNodeId: triggerNodeId,
+                targetNodeId: startNodeId,
+                condition: "on_success"
+            },
+            {
+                sourceNodeId: startNodeId,
+                targetNodeId: sendNodeId,
+                condition: "on_success"
+            },
+            {
+                sourceNodeId: sendNodeId,
+                targetNodeId: deleteNodeId,
+                condition: "on_success"
+            }
+        ];
+
+        await Tools.Workflow.update(workflowId, {
+            name: workflowName,
+            description,
+            enabled: true,
+            nodes,
+            connections
+        });
+
+        return {
+            success: true,
+            message: "一次性提醒工作流已创建",
+            data: {
+                workflow_id: workflowId,
+                trigger_time: params.trigger_time,
+                chat_id: resolvedChatId,
+                role_card_id: resolvedRoleCardId || undefined,
+                workflow_name: workflowName
+            }
+        };
     }
 
     /**
@@ -1365,6 +1554,12 @@ const dailyLife = (function () {
             "设置提醒成功",
             "设置提醒失败"
         ),
+        schedule_one_time_task: async (params) => await daily_wrap(
+            schedule_one_time_task,
+            params,
+            "一次性定时任务创建成功",
+            "一次性定时任务创建失败"
+        ),
         set_alarm: async (params) => await daily_wrap(
             set_alarm,
             params,
@@ -1451,6 +1646,7 @@ exports.get_current_date = dailyLife.get_current_date;
 exports.device_status = dailyLife.device_status;
 exports.search_weather = dailyLife.search_weather;
 exports.set_reminder = dailyLife.set_reminder;
+exports.schedule_one_time_task = dailyLife.schedule_one_time_task;
 exports.set_alarm = dailyLife.set_alarm;
 exports.send_message = dailyLife.send_message;
 exports.wechat_send_message = dailyLife.wechat_send_message;

@@ -7,7 +7,7 @@ import ai.onnxruntime.TensorInfo
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import java.io.File
-import java.io.FileOutputStream
+import com.ai.assistance.operit.util.AssetCopyUtils
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
 import kotlin.math.ceil
@@ -64,7 +64,7 @@ class OnnxSileroVad(
     private var maxSilenceFramesCount = msToFrames(silenceDurationMs)
 
     init {
-        val modelFile = copyAssetToCache(context, modelAssetPath)
+        val modelFile = AssetCopyUtils.copyAssetToCache(context, modelAssetPath)
         val opts = OrtSession.SessionOptions().apply {
             setIntraOpNumThreads(1)
             setInterOpNumThreads(1)
@@ -323,24 +323,6 @@ class OnnxSileroVad(
         if (ms <= 0) return 0
         val frameDurationMs = (frameSize * 1000.0) / sampleRate
         return ceil(ms / frameDurationMs).toInt().coerceAtLeast(0)
-    }
-
-    private fun copyAssetToCache(context: Context, assetPath: String): File {
-        val cacheFile = File(context.cacheDir, assetPath)
-        val parent = cacheFile.parentFile
-        if (parent != null && !parent.exists()) {
-            parent.mkdirs()
-        }
-
-        if (!cacheFile.exists()) {
-            context.assets.open(assetPath).use { inputStream ->
-                FileOutputStream(cacheFile).use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-            }
-        }
-
-        return cacheFile
     }
 
     override fun close() {

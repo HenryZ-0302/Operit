@@ -8,7 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +35,7 @@ import com.ai.assistance.operit.ui.features.assistant.components.AvatarConfigSec
 import com.ai.assistance.operit.ui.features.assistant.components.AvatarPreviewSection
 import com.ai.assistance.operit.ui.features.assistant.components.CompactSwitchRow
 import com.ai.assistance.operit.ui.features.assistant.components.VoiceAutoAttachGrid
+import com.ai.assistance.operit.core.avatar.impl.factory.AvatarControllerFactoryImpl
 import com.ai.assistance.operit.ui.features.assistant.viewmodel.AssistantConfigViewModel
 import kotlinx.coroutines.launch
 
@@ -47,6 +47,11 @@ fun AssistantConfigScreen() {
     val viewModel: AssistantConfigViewModel =
         viewModel(factory = AssistantConfigViewModel.Factory(context))
     val uiState by viewModel.uiState.collectAsState()
+    val avatarControllerFactory = remember { AvatarControllerFactoryImpl() }
+    val sharedAvatarController =
+        uiState.currentAvatarModel?.let { model ->
+            avatarControllerFactory.createController(model)
+        }
 
     val wakePrefs = remember { WakeWordPreferences(context.applicationContext) }
     val wakeListeningEnabled by wakePrefs.alwaysListeningEnabledFlow.collectAsState(initial = WakeWordPreferences.DEFAULT_ALWAYS_LISTENING_ENABLED)
@@ -94,7 +99,8 @@ fun AssistantConfigScreen() {
     var wakeGreetingTextInput by remember { mutableStateOf("") }
     var autoNewChatGroupInput by remember { mutableStateOf("") }
 
-    var voiceWakeupExpanded by rememberSaveable { mutableStateOf(true) }
+    var selectedConfigTab by rememberSaveable { mutableStateOf(0) }
+    var isAvatarPreviewCollapsed by rememberSaveable { mutableStateOf(false) }
 
     var personalWakeConfigDialogVisible by rememberSaveable { mutableStateOf(false) }
 
@@ -129,7 +135,7 @@ fun AssistantConfigScreen() {
         ) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
                 result.data?.data?.let { uri ->
-                    // 导入选择的zip文件
+                    // 导入选择的 zip / glb / gltf 文件
                     viewModel.importAvatarFromZip(uri)
                 }
             }
@@ -140,10 +146,16 @@ fun AssistantConfigScreen() {
         val intent =
             Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                type = "application/zip"
+                type = "*/*"
                 putExtra(
                     Intent.EXTRA_MIME_TYPES,
-                    arrayOf("application/zip", "application/x-zip-compressed")
+                    arrayOf(
+                        "application/zip",
+                        "application/x-zip-compressed",
+                        "model/gltf-binary",
+                        "model/gltf+json",
+                        "application/octet-stream"
+                    )
                 )
             }
         zipFileLauncher.launch(intent)
@@ -183,70 +195,95 @@ fun AssistantConfigScreen() {
                     Modifier
                         .fillMaxSize()
                         .padding(paddingValues)
-                        .padding(horizontal = 16.dp)
-                        .verticalScroll(scrollState)
+                        .padding(horizontal = 12.dp)
             ) {
-                // Avatar预览区域
-                AvatarPreviewSection(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp),
-                    uiState = uiState,
-                    onDeleteCurrentModel =
-                        uiState.currentAvatarConfig?.let { model ->
-                            { viewModel.deleteAvatar(model.id) }
+                TabRow(selectedTabIndex = selectedConfigTab) {
+                    Tab(
+                        selected = selectedConfigTab == 0,
+                        onClick = { selectedConfigTab = 0 },
+                        text = { Text(text = stringResource(R.string.avatar_config)) }
+                    )
+                    Tab(
+                        selected = selectedConfigTab == 1,
+                        onClick = { selectedConfigTab = 1 },
+                        text = { Text(text = stringResource(R.string.voice_wakeup_section_title)) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                if (selectedConfigTab == 0) {
+                    // Avatar预览区域
+                    if (!isAvatarPreviewCollapsed) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                        ) {
+                            AvatarPreviewSection(
+                                modifier = Modifier.fillMaxSize(),
+                                uiState = uiState,
+                                avatarController = sharedAvatarController
+                            )
                         }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                AvatarConfigSection(
-                    viewModel = viewModel,
-                    uiState = uiState,
-                    onImportClick = { openZipFilePicker() }
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Voice Wake-up Section
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 0.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { voiceWakeupExpanded = !voiceWakeupExpanded }
-                            .padding(start = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = stringResource(R.string.voice_wakeup_section_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Icon(
-                            imageVector = if (voiceWakeupExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription =
-                                if (voiceWakeupExpanded) stringResource(R.string.collapse)
-                                else stringResource(R.string.expand),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
 
-                    if (voiceWakeupExpanded) Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center
                     ) {
+                        IconButton(onClick = { isAvatarPreviewCollapsed = !isAvatarPreviewCollapsed }) {
+                            Icon(
+                                imageVector =
+                                    if (isAvatarPreviewCollapsed) Icons.Default.ExpandMore
+                                    else Icons.Default.ExpandLess,
+                                contentDescription = stringResource(
+                                    if (isAvatarPreviewCollapsed) R.string.model_config_expand
+                                    else R.string.model_config_collapse
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .verticalScroll(scrollState)
+                    ) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            AvatarConfigSection(
+                                viewModel = viewModel,
+                                uiState = uiState,
+                                avatarController = sharedAvatarController,
+                                onImportClick = { openZipFilePicker() }
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                } else {
+                    // Voice Wake-up Section
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .verticalScroll(scrollState)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                         // Wake Mode
                         Text(
                             text = stringResource(R.string.voice_wakeup_mode_label),
@@ -267,18 +304,19 @@ fun AssistantConfigScreen() {
                             OutlinedTextField(
                                 modifier = Modifier
                                     .menuAnchor()
-                                    .fillMaxWidth(),
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp),
                                 value = modeLabel,
                                 onValueChange = {},
                                 readOnly = true,
                                 singleLine = true,
-                                label = { Text(text = stringResource(R.string.voice_wakeup_mode_label)) },
+                                textStyle = MaterialTheme.typography.bodyMedium,
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modeExpanded) },
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedContainerColor = Color.Transparent,
                                     unfocusedContainerColor = Color.Transparent
                                 ),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(10.dp),
                             )
 
                             ExposedDropdownMenu(
@@ -315,23 +353,28 @@ fun AssistantConfigScreen() {
                                 )
                             }
 
-                            FilledTonalButton(
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                onClick = { personalWakeConfigDialogVisible = true },
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(text = stringResource(R.string.voice_wakeup_personal_configure))
-                            }
+                                FilledTonalButton(
+                                    modifier = Modifier.weight(1f),
+                                    onClick = { personalWakeConfigDialogVisible = true },
+                                ) {
+                                    Text(text = stringResource(R.string.voice_wakeup_personal_configure))
+                                }
 
-                            OutlinedButton(
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = personalWakeTemplates.isNotEmpty(),
-                                onClick = {
-                                    coroutineScope.launch {
-                                        wakePrefs.savePersonalWakeTemplates(emptyList())
-                                    }
-                                },
-                            ) {
-                                Text(text = stringResource(R.string.voice_wakeup_personal_clear))
+                                OutlinedButton(
+                                    modifier = Modifier.weight(1f),
+                                    enabled = personalWakeTemplates.isNotEmpty(),
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            wakePrefs.savePersonalWakeTemplates(emptyList())
+                                        }
+                                    },
+                                ) {
+                                    Text(text = stringResource(R.string.voice_wakeup_personal_clear))
+                                }
                             }
                         }
 
@@ -365,7 +408,9 @@ fun AssistantConfigScreen() {
                         if (wakeRecognitionMode == WakeWordPreferences.WakeRecognitionMode.STT) {
                             // Wake Phrase Input
                             OutlinedTextField(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp),
                                 value = wakePhraseInput,
                                 onValueChange = { newValue ->
                                     wakePhraseInput = newValue
@@ -374,9 +419,10 @@ fun AssistantConfigScreen() {
                                     }
                                 },
                                 singleLine = true,
+                                textStyle = MaterialTheme.typography.bodyMedium,
                                 label = { Text(stringResource(R.string.voice_wakeup_phrase_label)) },
-                                supportingText = { Text(stringResource(R.string.voice_wakeup_phrase_supporting)) },
-                                shape = RoundedCornerShape(12.dp),
+                                placeholder = { Text(stringResource(R.string.voice_wakeup_phrase_supporting)) },
+                                shape = RoundedCornerShape(10.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedContainerColor = Color.Transparent,
                                     unfocusedContainerColor = Color.Transparent
@@ -398,7 +444,9 @@ fun AssistantConfigScreen() {
 
                         // Timeout Input
                         OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp),
                             value = inactivityTimeoutInput,
                             onValueChange = { newValue ->
                                 val filtered = newValue.filter { it.isDigit() }
@@ -412,10 +460,11 @@ fun AssistantConfigScreen() {
                                 }
                             },
                             singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
                             label = { Text(stringResource(R.string.voice_wakeup_inactivity_timeout_label)) },
-                            supportingText = { Text(stringResource(R.string.voice_wakeup_inactivity_timeout_supporting)) },
+                            placeholder = { Text(stringResource(R.string.voice_wakeup_inactivity_timeout_supporting)) },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent
@@ -436,7 +485,9 @@ fun AssistantConfigScreen() {
 
                         // Greeting Text Input
                         OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp),
                             value = wakeGreetingTextInput,
                             onValueChange = { newValue ->
                                 wakeGreetingTextInput = newValue
@@ -446,9 +497,10 @@ fun AssistantConfigScreen() {
                             },
                             singleLine = true,
                             enabled = wakeGreetingEnabled,
+                            textStyle = MaterialTheme.typography.bodyMedium,
                             label = { Text(stringResource(R.string.voice_wakeup_greeting_text_label)) },
-                            supportingText = { Text(stringResource(R.string.voice_wakeup_greeting_text_supporting)) },
-                            shape = RoundedCornerShape(12.dp),
+                            placeholder = { Text(stringResource(R.string.voice_wakeup_greeting_text_supporting)) },
+                            shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent
@@ -467,7 +519,9 @@ fun AssistantConfigScreen() {
                         )
 
                         OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp),
                             value = autoNewChatGroupInput,
                             onValueChange = { newValue ->
                                 autoNewChatGroupInput = newValue
@@ -478,8 +532,9 @@ fun AssistantConfigScreen() {
                                 }
                             },
                             singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
                             label = { Text(stringResource(R.string.voice_wakeup_auto_new_chat_group_label)) },
-                            supportingText = {
+                            placeholder = {
                                 Text(
                                     stringResource(
                                         R.string.voice_wakeup_auto_new_chat_group_supporting,
@@ -487,7 +542,7 @@ fun AssistantConfigScreen() {
                                     )
                                 )
                             },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
                                 unfocusedContainerColor = Color.Transparent
@@ -525,10 +580,10 @@ fun AssistantConfigScreen() {
                         }
                     }
                 }
-
-                // 底部空间
-                Spacer(modifier = Modifier.height(12.dp))
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
             if (personalWakeConfigDialogVisible) {
                 val scope = rememberCoroutineScope()
@@ -661,4 +716,3 @@ fun AssistantConfigScreen() {
         }
     }
 }
-

@@ -68,6 +68,7 @@ import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Summarize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.draw.alpha
+import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkParser
 import com.ai.assistance.operit.ui.features.chat.components.style.cursor.CursorStyleChatMessage
 import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleStyleChatMessage
 import com.ai.assistance.operit.util.ChatMarkupRegex
@@ -95,9 +96,85 @@ private fun cleanXmlTags(content: String): String {
         .replace(ChatMarkupRegex.toolResultSelfClosingTag, "")
         // 移除emotion标签
         .replace(ChatMarkupRegex.emotionTag, "")
+        // 移除附件与工作区上下文
+        .replace(ChatMarkupRegex.workspaceAttachmentTag, "")
+        .replace(ChatMarkupRegex.attachmentTag, "")
+        .replace(ChatMarkupRegex.attachmentSelfClosingTag, "")
+        // 移除多媒体链接标签
+        .let(MediaLinkParser::removeImageLinks)
+        .let(MediaLinkParser::removeMediaLinks)
         // 移除其他常见的XML标签
         // .replace(Regex("<[^>]*>"), "")
         .trim()
+}
+
+private data class PaginationWindow(
+    val minVisibleIndex: Int,
+    val hasMoreMessages: Boolean
+)
+
+private fun isPaginationTriggerMessage(message: ChatMessage): Boolean {
+    return message.sender == "user" || message.sender == "ai" || message.sender == "summary"
+}
+
+private fun calculatePaginationWindow(
+    chatHistory: List<ChatMessage>,
+    messagesPerPage: Int,
+    depth: Int
+): PaginationWindow {
+    if (chatHistory.isEmpty()) {
+        return PaginationWindow(minVisibleIndex = 0, hasMoreMessages = false)
+    }
+
+    val safeMessagesPerPage = messagesPerPage.coerceAtLeast(1)
+    val safeDepth = depth.coerceAtLeast(1)
+
+    var cursor = chatHistory.lastIndex
+    var minVisibleIndex = 0
+
+    repeat(safeDepth) {
+        if (cursor < 0) {
+            minVisibleIndex = 0
+            return@repeat
+        }
+
+        var triggerCountInCurrentStep = 0
+        var stepStopped = false
+
+        while (cursor >= 0) {
+            val message = chatHistory[cursor]
+            if (isPaginationTriggerMessage(message)) {
+                triggerCountInCurrentStep += 1
+
+                if (message.sender == "summary") {
+                    minVisibleIndex = cursor
+                    cursor -= 1
+                    stepStopped = true
+                    break
+                }
+
+                if (triggerCountInCurrentStep >= safeMessagesPerPage) {
+                    minVisibleIndex = cursor
+                    cursor -= 1
+                    stepStopped = true
+                    break
+                }
+            }
+
+            cursor -= 1
+        }
+
+        if (!stepStopped) {
+            minVisibleIndex = 0
+            cursor = -1
+            return@repeat
+        }
+    }
+
+    return PaginationWindow(
+        minVisibleIndex = minVisibleIndex,
+        hasMoreMessages = cursor >= 0
+    )
 }
 
 enum class ChatStyle {
@@ -166,10 +243,13 @@ fun ChatArea(
                 showLoadingIndicator && chatStyle == ChatStyle.BUBBLE && lastMessage?.sender == "ai"
 
             val messagesCount = chatHistory.size
-            val maxVisibleIndex = messagesCount - 1
-            val minVisibleIndex =
-                maxOf(0, maxVisibleIndex - currentDepth.value * messagesPerPage + 1)
-            val hasMoreMessages = minVisibleIndex > 0
+            val paginationWindow = calculatePaginationWindow(
+                chatHistory = chatHistory,
+                messagesPerPage = messagesPerPage,
+                depth = currentDepth.value
+            )
+            val minVisibleIndex = paginationWindow.minVisibleIndex
+            val hasMoreMessages = paginationWindow.hasMoreMessages
 
             // "加载更多"文本 - 改为灰色文本而非按钮
             if (hasMoreMessages) {

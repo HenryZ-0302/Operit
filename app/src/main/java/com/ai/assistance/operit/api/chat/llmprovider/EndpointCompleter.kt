@@ -48,6 +48,31 @@ object EndpointCompleter {
         return endpoint
     }
 
+    private fun completeResponsesEndpoint(endpoint: String): String {
+        val trimmedEndpoint = endpoint.trim()
+        if (trimmedEndpoint.endsWith("#")) {
+            return trimmedEndpoint.removeSuffix("#")
+        }
+
+        val endpointWithoutSlash = trimmedEndpoint.removeSuffix("/")
+
+        try {
+            val url = URL(trimmedEndpoint)
+            val path = url.path.removeSuffix("/")
+
+            if (path.isEmpty()) {
+                return "$endpointWithoutSlash/v1/responses"
+            }
+
+            if (path.endsWith("/v1", ignoreCase = true)) {
+                return "$endpointWithoutSlash/responses"
+            }
+        } catch (_: Exception) {
+        }
+
+        return endpoint
+    }
+
     fun completeEndpoint(endpoint: String, providerType: ApiProviderType): String {
         val trimmedEndpoint = endpoint.trim()
         if (trimmedEndpoint.endsWith("#")) {
@@ -57,6 +82,10 @@ object EndpointCompleter {
         val endpointWithoutSlash = trimmedEndpoint.removeSuffix("/")
 
         when (providerType) {
+            ApiProviderType.OPENAI_RESPONSES -> {
+                return completeResponsesEndpoint(endpoint)
+            }
+
             ApiProviderType.ANTHROPIC,
             ApiProviderType.ANTHROPIC_GENERIC -> {
                 try {

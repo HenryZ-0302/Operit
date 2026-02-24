@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelParameter
 import com.ai.assistance.operit.data.model.ParameterCategory
@@ -72,6 +73,27 @@ class ApiPreferences private constructor(private val context: Context) {
         fun getPricePerRequestKey(providerModel: String) =
                 floatPreferencesKey("price_per_request_${providerModel.replace(":", "_")}")
 
+        private val providerNameCandidates =
+                ApiProviderType.values().map { it.name }.sortedByDescending { it.length }
+
+        private fun decodeProviderModelFromKeySuffix(encoded: String): String {
+                val matchedProvider = providerNameCandidates.firstOrNull {
+                        encoded == it || encoded.startsWith("${it}_")
+                }
+
+                return if (matchedProvider != null) {
+                        if (encoded.length == matchedProvider.length) {
+                                matchedProvider
+                        } else {
+                                "$matchedProvider:${encoded.substring(matchedProvider.length + 1)}"
+                        }
+                } else {
+                        encoded.replace("_", ":")
+                }
+        }
+
+        val USD_TO_CNY_EXCHANGE_RATE = floatPreferencesKey("usd_to_cny_exchange_rate")
+
         val ENABLE_AI_PLANNING = booleanPreferencesKey("enable_ai_planning")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
         // Default values
@@ -91,8 +113,17 @@ class ApiPreferences private constructor(private val context: Context) {
         // Key for Tools Enable/Disable
         val ENABLE_TOOLS = booleanPreferencesKey("enable_tools")
 
+        // Key for per-tool prompt visibility
+        val TOOL_PROMPT_VISIBILITY_JSON = stringPreferencesKey("tool_prompt_visibility_json")
+
         // Key for Disable Stream Output
         val DISABLE_STREAM_OUTPUT = booleanPreferencesKey("disable_stream_output")
+
+        // Key for Disable User Preference Description
+        val DISABLE_USER_PREFERENCE_DESCRIPTION = booleanPreferencesKey("disable_user_preference_description")
+
+        // Key for Disable LaTeX Description
+        val DISABLE_LATEX_DESCRIPTION = booleanPreferencesKey("disable_latex_description")
 
         // Custom System Prompt Template (Advanced Configuration)
         val CUSTOM_SYSTEM_PROMPT_TEMPLATE = stringPreferencesKey("custom_system_prompt_template")
@@ -121,6 +152,12 @@ class ApiPreferences private constructor(private val context: Context) {
         // Default value for Disable Stream Output (default false, meaning stream is enabled by default)
         const val DEFAULT_DISABLE_STREAM_OUTPUT = false
 
+        // Default value for Disable User Preference Description
+        const val DEFAULT_DISABLE_USER_PREFERENCE_DESCRIPTION = false
+
+        // Default value for Disable LaTeX Description
+        const val DEFAULT_DISABLE_LATEX_DESCRIPTION = false
+
         // Default system prompt template (empty means use built-in template)
         const val DEFAULT_SYSTEM_PROMPT_TEMPLATE = ""
 
@@ -142,6 +179,7 @@ class ApiPreferences private constructor(private val context: Context) {
         // 默认空的自定义参数列表
         const val DEFAULT_CUSTOM_PARAMETERS = "[]"
         const val DEFAULT_CUSTOM_HEADERS = "{}"
+        const val DEFAULT_TOOL_PROMPT_VISIBILITY_JSON = "{}"
 
         // API 配置默认值
         const val DEFAULT_API_ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
@@ -245,10 +283,31 @@ class ApiPreferences private constructor(private val context: Context) {
             preferences[ENABLE_TOOLS] ?: DEFAULT_ENABLE_TOOLS
         }
 
+    // Flow for per-tool prompt visibility
+    val toolPromptVisibilityFlow: Flow<Map<String, Boolean>> =
+        context.apiDataStore.data.map { preferences ->
+            val json = preferences[TOOL_PROMPT_VISIBILITY_JSON] ?: DEFAULT_TOOL_PROMPT_VISIBILITY_JSON
+            runCatching {
+                Json.decodeFromString<Map<String, Boolean>>(json)
+            }.getOrElse { emptyMap() }
+        }
+
     // Flow for Disable Stream Output
     val disableStreamOutputFlow: Flow<Boolean> =
         context.apiDataStore.data.map { preferences ->
             preferences[DISABLE_STREAM_OUTPUT] ?: DEFAULT_DISABLE_STREAM_OUTPUT
+        }
+
+    // Flow for Disable User Preference Description
+    val disableUserPreferenceDescriptionFlow: Flow<Boolean> =
+        context.apiDataStore.data.map { preferences ->
+            preferences[DISABLE_USER_PREFERENCE_DESCRIPTION] ?: DEFAULT_DISABLE_USER_PREFERENCE_DESCRIPTION
+        }
+
+    // Flow for Disable LaTeX Description
+    val disableLatexDescriptionFlow: Flow<Boolean> =
+        context.apiDataStore.data.map { preferences ->
+            preferences[DISABLE_LATEX_DESCRIPTION] ?: DEFAULT_DISABLE_LATEX_DESCRIPTION
         }
 
     // Custom System Prompt Template Flow
@@ -358,9 +417,47 @@ class ApiPreferences private constructor(private val context: Context) {
         context.apiDataStore.edit { preferences -> preferences[ENABLE_TOOLS] = isEnabled }
     }
 
+    // Save prompt visibility for a single tool
+    suspend fun saveToolPromptVisibility(toolName: String, isVisible: Boolean) {
+        context.apiDataStore.edit { preferences ->
+            val currentMap = runCatching {
+                val json = preferences[TOOL_PROMPT_VISIBILITY_JSON] ?: DEFAULT_TOOL_PROMPT_VISIBILITY_JSON
+                Json.decodeFromString<Map<String, Boolean>>(json)
+            }.getOrElse { emptyMap() }
+            preferences[TOOL_PROMPT_VISIBILITY_JSON] = Json.encodeToString(currentMap + (toolName to isVisible))
+        }
+    }
+
+    // Save prompt visibility map for all tools
+    suspend fun saveToolPromptVisibilityMap(visibilityMap: Map<String, Boolean>) {
+        context.apiDataStore.edit { preferences ->
+            preferences[TOOL_PROMPT_VISIBILITY_JSON] = Json.encodeToString(visibilityMap)
+        }
+    }
+
+    suspend fun getToolPromptVisibilityMap(): Map<String, Boolean> {
+        val preferences = context.apiDataStore.data.first()
+        val json = preferences[TOOL_PROMPT_VISIBILITY_JSON] ?: DEFAULT_TOOL_PROMPT_VISIBILITY_JSON
+        return runCatching {
+            Json.decodeFromString<Map<String, Boolean>>(json)
+        }.getOrElse { emptyMap() }
+    }
+
     // Save Disable Stream Output setting
     suspend fun saveDisableStreamOutput(isDisabled: Boolean) {
         context.apiDataStore.edit { preferences -> preferences[DISABLE_STREAM_OUTPUT] = isDisabled }
+    }
+
+    // Save Disable User Preference Description setting
+    suspend fun saveDisableUserPreferenceDescription(isDisabled: Boolean) {
+        context.apiDataStore.edit { preferences ->
+            preferences[DISABLE_USER_PREFERENCE_DESCRIPTION] = isDisabled
+        }
+    }
+
+    // Save Disable LaTeX Description setting
+    suspend fun saveDisableLatexDescription(isDisabled: Boolean) {
+        context.apiDataStore.edit { preferences -> preferences[DISABLE_LATEX_DESCRIPTION] = isDisabled }
     }
 
     // 保存自定义请求头
@@ -440,7 +537,8 @@ class ApiPreferences private constructor(private val context: Context) {
         preferences.asMap().forEach { (key, value) ->
             val keyName = key.name
             if (keyName.startsWith("token_input_")) {
-                val providerModel = keyName.removePrefix("token_input_").replace("_", ":")
+                val providerModel =
+                        decodeProviderModelFromKeySuffix(keyName.removePrefix("token_input_"))
                 val inputTokens = value as? Int ?: 0
                 val outputTokens = preferences[getTokenOutputKey(providerModel)] ?: 0
                 val cachedInputTokens = preferences[getTokenCachedInputKey(providerModel)] ?: 0
@@ -465,7 +563,8 @@ class ApiPreferences private constructor(private val context: Context) {
             preferences.asMap().forEach { (key, value) ->
                 val keyName = key.name
                 if (keyName.startsWith("token_input_")) {
-                    val providerModel = keyName.removePrefix("token_input_").replace("_", ":")
+                    val providerModel =
+                            decodeProviderModelFromKeySuffix(keyName.removePrefix("token_input_"))
                     val inputTokens = value as? Int ?: 0
                     val outputTokens = preferences[getTokenOutputKey(providerModel)] ?: 0
                     val cachedInputTokens = preferences[getTokenCachedInputKey(providerModel)] ?: 0
@@ -593,7 +692,8 @@ class ApiPreferences private constructor(private val context: Context) {
         preferences.asMap().forEach { (key, value) ->
             val keyName = key.name
             if (keyName.startsWith("request_count_")) {
-                val providerModel = keyName.removePrefix("request_count_").replace("_", ":")
+                val providerModel =
+                        decodeProviderModelFromKeySuffix(keyName.removePrefix("request_count_"))
                 val count = value as? Int ?: 0
                 if (count > 0) {
                     result[providerModel] = count
@@ -641,13 +741,13 @@ class ApiPreferences private constructor(private val context: Context) {
     // ===== Price Per Request 按次计费价格相关方法 =====
 
     /**
-     * 获取指定供应商:模型的按次计费价格（人民币）
+     * 获取指定供应商:模型的按次计费价格
      * @param providerModel 供应商:模型标识符
-     * @return 每次请求的价格，默认为0.01元
+     * @return 每次请求的价格，未设置时返回0.0
      */
     suspend fun getPricePerRequestForProviderModel(providerModel: String): Double {
         val preferences = context.apiDataStore.data.first()
-        return preferences[getPricePerRequestKey(providerModel)]?.toDouble() ?: 0.01
+        return preferences[getPricePerRequestKey(providerModel)]?.toDouble() ?: 0.0
     }
 
     /**
@@ -658,6 +758,17 @@ class ApiPreferences private constructor(private val context: Context) {
     suspend fun setPricePerRequestForProviderModel(providerModel: String, price: Double) {
         context.apiDataStore.edit { preferences ->
             preferences[getPricePerRequestKey(providerModel)] = price.toFloat()
+        }
+    }
+
+    suspend fun getUsdToCnyExchangeRate(): Double {
+        val preferences = context.apiDataStore.data.first()
+        return preferences[USD_TO_CNY_EXCHANGE_RATE]?.toDouble() ?: 7.2
+    }
+
+    suspend fun setUsdToCnyExchangeRate(rate: Double) {
+        context.apiDataStore.edit { preferences ->
+            preferences[USD_TO_CNY_EXCHANGE_RATE] = rate.toFloat()
         }
     }
 

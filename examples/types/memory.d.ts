@@ -70,6 +70,15 @@ export namespace Memory {
     function deleteMemory(title: string): Promise<string>;
 
     /**
+     * Move memories to another folder in batch
+     * @param targetFolderPath - Target folder path (empty string means uncategorized)
+     * @param titles - Optional memory titles (string array or comma-separated string)
+     * @param sourceFolderPath - Optional source folder path (empty string means uncategorized)
+     * @returns Move result as a string
+     */
+    function move(targetFolderPath: string, titles?: string[] | string, sourceFolderPath?: string): Promise<string>;
+
+    /**
      * Create a link between two memories
      * @param sourceTitle - The title of the source memory
      * @param targetTitle - The title of the target memory
@@ -79,5 +88,53 @@ export namespace Memory {
      * @returns Link creation result
      */
     function link(sourceTitle: string, targetTitle: string, linkType?: string, weight?: number, description?: string): Promise<import('./results').MemoryLinkResultData>;
+
+    /**
+     * Query memory links with optional filters
+     * @param linkId - Optional link ID (exact match)
+     * @param sourceTitle - Optional source memory title filter
+     * @param targetTitle - Optional target memory title filter
+     * @param linkType - Optional link type filter
+     * @param limit - Optional maximum number of links to return (1-200, default 20)
+     * @returns Link query result
+     */
+    function queryLinks(
+        linkId?: number,
+        sourceTitle?: string,
+        targetTitle?: string,
+        linkType?: string,
+        limit?: number
+    ): Promise<import('./results').MemoryLinkQueryResultData>;
+
+    /**
+     * Update an existing memory link
+     * @param linkId - Optional link ID (preferred locator)
+     * @param sourceTitle - Optional source memory title (used when linkId is not provided)
+     * @param targetTitle - Optional target memory title (used when linkId is not provided)
+     * @param linkType - Optional current link type (for unique resolution)
+     * @param newLinkType - Optional new link type
+     * @param weight - Optional new link strength (0.0-1.0)
+     * @param description - Optional new relationship description
+     * @returns Link update result
+     */
+    function updateLink(
+        linkId?: number,
+        sourceTitle?: string,
+        targetTitle?: string,
+        linkType?: string,
+        newLinkType?: string,
+        weight?: number,
+        description?: string
+    ): Promise<import('./results').MemoryLinkResultData>;
+
+    /**
+     * Delete an existing memory link
+     * @param linkId - Optional link ID (preferred locator)
+     * @param sourceTitle - Optional source memory title (used when linkId is not provided)
+     * @param targetTitle - Optional target memory title (used when linkId is not provided)
+     * @param linkType - Optional link type (for unique resolution)
+     * @returns Deletion result as a string
+     */
+    function deleteLink(linkId?: number, sourceTitle?: string, targetTitle?: string, linkType?: string): Promise<string>;
 }
 

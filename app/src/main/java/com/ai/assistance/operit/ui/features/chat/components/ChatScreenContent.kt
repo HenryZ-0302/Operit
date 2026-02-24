@@ -197,14 +197,22 @@ fun ChatScreenContent(
                     }
                 }
             }
-
-    LaunchedEffect(activeCharacterCard, displayedChatHistories, currentChatId) {
+    LaunchedEffect(activeCharacterCard, displayedChatHistories, currentChatId, chatHistories) {
         val activeCard = activeCharacterCard ?: return@LaunchedEffect
         if (displayedChatHistories.isEmpty()) {
             return@LaunchedEffect
         }
         val hasCurrentChatInFilter = displayedChatHistories.any { it.id == currentChatId }
-        if (currentChatId.isBlank() || !hasCurrentChatInFilter) {
+        val hasCurrentChatInAll =
+            currentChatId.isNotBlank() && chatHistories.any { it.id == currentChatId }
+        if (currentChatId.isBlank()) {
+            actualViewModel.switchChat(displayedChatHistories.first().id)
+            return@LaunchedEffect
+        }
+        if (!hasCurrentChatInFilter) {
+            if (!hasCurrentChatInAll) {
+                return@LaunchedEffect
+            }
             actualViewModel.switchChat(displayedChatHistories.first().id)
         }
     }
@@ -291,8 +299,6 @@ fun ChatScreenContent(
                                 },
                         actualViewModel = actualViewModel,
                         showChatHistorySelector = showChatHistorySelector,
-                        chatHistories = chatHistories,
-                        currentChatId = currentChatId,
                         chatHeaderTransparent = chatHeaderTransparent,
                         chatHeaderHistoryIconColor = chatHeaderHistoryIconColor,
                         chatHeaderPipIconColor = chatHeaderPipIconColor,
@@ -305,8 +311,6 @@ fun ChatScreenContent(
                 ChatScreenHeader(
                         actualViewModel = actualViewModel,
                         showChatHistorySelector = showChatHistorySelector,
-                        chatHistories = chatHistories,
-                        currentChatId = currentChatId,
                         chatHeaderTransparent = chatHeaderTransparent,
                         chatHeaderHistoryIconColor = chatHeaderHistoryIconColor,
                         chatHeaderPipIconColor = chatHeaderPipIconColor,
@@ -595,11 +599,7 @@ fun ChatScreenContent(
             ) {
                 SmallFloatingActionButton(
                     onClick = {
-                        if (isAutoReadEnabled) {
-                            actualViewModel.disableAutoRead()
-                        } else {
-                            actualViewModel.stopSpeaking()
-                        }
+                        actualViewModel.stopSpeaking()
                     },
                     containerColor = MaterialTheme.colorScheme.secondary,
                     contentColor = MaterialTheme.colorScheme.onSecondary

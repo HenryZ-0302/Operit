@@ -35,6 +35,7 @@ private:
     std::u16string endPattern_;
     bool haveEndPattern_;
     KmpMatcher endMatcher_;
+    char16_t lastChar_ = 0;
 
     bool handleDefaultCharacter(char16_t c);
     void updatePunctuationAllowance(char16_t c);

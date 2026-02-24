@@ -36,7 +36,7 @@ interface AvatarController {
 
     /**
      * Instructs the avatar to look at a specific point on the screen.
-     * This is an advanced feature that may only be supported by certain avatar types (e.g., Live2D).
+     * This is an advanced feature that may only be supported by certain avatar types.
      * Implementations for unsupported types should do nothing.
      *
      * @param x The normalized x-coordinate (-1 to 1).
@@ -51,4 +51,10 @@ interface AvatarController {
      * @param settings A map of setting keys to values.
      */
     fun updateSettings(settings: Map<String, Any>) {}
+
+    /**
+     * Updates an optional mapping from high-level emotions to model-specific animation names.
+     * Controllers that don't need this behavior can ignore it.
+     */
+    fun updateEmotionAnimationMapping(mapping: Map<AvatarEmotion, String>) {}
 } 

@@ -1,9 +1,9 @@
 [OVERALL]
-Total strings found: 1947
-Excluded logs: 1798
+Total strings found: 1939
+Excluded logs: 1793
 Excluded long prompts(>100 chars): 61
-Remaining UI strings: 88
-Files with Chinese strings: 147
+Remaining UI strings: 85
+Files with Chinese strings: 148
 
 [BY MODULE]
 
@@ -102,33 +102,30 @@ FILE: app\src\main\java\com\ai\assistance\operit\api\chat\library\ProblemLibrary
   L762:31 (30 chars) "(职业|Occupation)[:：\\s]+([^;]+)"
   L763:28 (83 chars) "(AI风格|期待的AI风格|偏好的AI风格|AI Style|Expected AI Style|Preferred AI Style)[:：\\s]+([^;]+)"
 
-FILE: app\src\main\java\com\ai\assistance\operit\core\tools\system\shell\DebuggerShellExecutor.kt
-  remaining=3 total=31 excluded_logs=9 excluded_long=19
-  L272:37 (97 chars) "\n\n                    // 等待进程结束并获取退出代码\n                    val exitCode = processClass.getMethod("
-  L361:85 (94 chars) ")\n\n                    // 构建shell命令，使用-e确保出错时立即退出\n                    val shellArgs = arrayOf("
-  L426:37 (97 chars) "\n\n                    // 等待进程结束并获取退出代码\n                    val exitCode = processClass.getMethod("
-
 FILE: app\src\main\java\com\ai\assistance\operit\data\converter\GenericJsonConverter.kt
   remaining=3 total=3 excluded_logs=0 excluded_long=0
   L203:30 (2 chars) "用户"
   L204:48 (2 chars) "助手"
   L205:23 (2 chars) "系统"
 
-FILE: app\src\main\java\com\ai\assistance\operit\data\mcp\plugins\MCPCommandGenerator.kt
-  remaining=3 total=5 excluded_logs=2 excluded_long=0
-  L68:34 (17 chars) "# 如果换源失败，将继续使用默认源"
-  L142:42 (47 chars) "# TypeScript编译后可能需要执行: node dist/index.js 或类似命令"
-  L152:34 (17 chars) "# 如果换源失败，将继续使用默认源"
-
 FILE: app\src\main\java\com\ai\assistance\operit\util\LocaleUtils.kt
   remaining=2 total=2 excluded_logs=0 excluded_long=0
   L31:63 (4 chars) "跟随系统"
   L32:43 (2 chars) "中文"
 
+FILE: app\src\main\java\com\ai\assistance\operit\data\mcp\plugins\MCPBridge.kt
+  remaining=2 total=40 excluded_logs=38 excluded_long=0
+  L539:60 (32 chars) "命令[$cmdId: $cmdType]没有收到响应（独立连接）"
+  L589:56 (26 chars) "命令[$cmdId: $cmdType]没有收到响应"
+
 FILE: app\src\main\java\com\ai\assistance\operit\util\stream\StreamGroup.kt
   remaining=2 total=7 excluded_logs=5 excluded_long=0
   L166:74 (6 chars) "标签必须设置"
   L169:77 (7 chars) "数据流必须设置"
+
+FILE: app\src\main\java\com\ai\assistance\operit\api\chat\llmprovider\LlamaProvider.kt
+  remaining=1 total=6 excluded_logs=5 excluded_long=0
+  L549:13 (76 chars) "\n已启用 Tool Call 模式。\n调用工具时，请输出顶层为 "tool_calls" 的合法 JSON。\n仅可使用以下工具名：$toolNames\n"
 
 FILE: app\src\main\java\com\ai\assistance\operit\api\chat\plan\PlanModeManager.kt
   remaining=1 total=10 excluded_logs=8 excluded_long=1
@@ -140,5 +137,5 @@ FILE: app\src\main\java\com\ai\assistance\operit\data\converter\ChatFormatDetect
 
 FILE: app\src\main\java\com\ai\assistance\operit\ui\features\workflow\viewmodel\WorkflowViewModel.kt
   remaining=1 total=1 excluded_logs=0 excluded_long=0
-  L903:30 (24 chars) ".*(打开|启动).*(对话|聊天|悬浮窗).*"
+  L915:30 (24 chars) ".*(打开|启动).*(对话|聊天|悬浮窗).*"
 

@@ -24,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import kotlin.math.roundToInt
 import androidx.compose.ui.zIndex
 import com.ai.assistance.operit.R
@@ -297,7 +299,12 @@ fun WorkspaceManager(
     }
 
     // 新的布局根节点，使用Box来支持FAB和底部面板的覆盖
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .imePadding()
+    ) {
         val isBrowserPreviewVisible = isVisible && currentFileIndex == -1 && workspaceConfig.preview.type == "browser"
 
         BackHandler(enabled = isBrowserPreviewVisible && canWebViewGoBack) {
@@ -488,6 +495,15 @@ fun WorkspaceManager(
                                 AndroidView(
                                         factory = { context ->
                                             WebView(context).apply {
+                                                setOnTouchListener { v, event ->
+                                                    when (event.action) {
+                                                        MotionEvent.ACTION_DOWN ->
+                                                            v.parent.requestDisallowInterceptTouchEvent(true)
+                                                        MotionEvent.ACTION_UP ->
+                                                            v.parent.requestDisallowInterceptTouchEvent(false)
+                                                    }
+                                                    false
+                                                }
                                                 webViewHandler.configureWebView(this, WebViewHandler.WebViewMode.WORKSPACE, "workspace_file_preview_${fileInfo.path}")
                                             }
                                          },
@@ -689,6 +705,7 @@ fun WorkspaceManager(
     }
 }
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 fun ExpandableFabMenu(
     isExpanded: Boolean,
@@ -917,10 +934,11 @@ fun CommandButtonsView(
         val tempWebView = remember {
             WebView(context).apply {
                 setOnTouchListener { v, event ->
-                    when (event.action) {
+                    when (event.actionMasked) {
                         MotionEvent.ACTION_DOWN ->
                             v.parent.requestDisallowInterceptTouchEvent(true)
-                        MotionEvent.ACTION_UP ->
+                        MotionEvent.ACTION_UP,
+                        MotionEvent.ACTION_CANCEL ->
                             v.parent.requestDisallowInterceptTouchEvent(false)
                     }
                     false
@@ -945,13 +963,16 @@ fun CommandButtonsView(
             }
         }
         
+        val nestedScrollInterop = rememberNestedScrollInteropConnection()
         Box(modifier = Modifier.fillMaxSize()) {
             AndroidView(
                 factory = { tempWebView },
                 update = { webView ->
                     webView.requestFocus()
                 },
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(nestedScrollInterop)
             )
             
             // 返回按钮

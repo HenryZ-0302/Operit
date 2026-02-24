@@ -6,8 +6,8 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.plan.PlanModeManager
-import com.ai.assistance.operit.api.chat.llmprovider.ImageLinkParser
 import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkParser
+import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkBuilder
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.MemoryQueryResultData
 import com.ai.assistance.operit.data.model.AITool
@@ -87,6 +87,7 @@ object AIMessageManager {
      */
     suspend fun buildUserMessageContent(
         messageText: String,
+        proxySenderName: String? = null,
         attachments: List<AttachmentInfo>,
         enableMemoryQuery: Boolean,
         enableWorkspaceAttachment: Boolean = false,
@@ -97,6 +98,16 @@ object AIMessageManager {
         enableDirectAudioProcessing: Boolean = false,
         enableDirectVideoProcessing: Boolean = false
     ): String {
+        val proxySenderTag =
+            if (!proxySenderName.isNullOrBlank() &&
+                !messageText.contains("<proxy_sender", ignoreCase = true)
+            ) {
+                val safeProxySenderName = proxySenderName.replace("\"", "'")
+                "<proxy_sender name=\"$safeProxySenderName\"/>"
+            } else {
+                ""
+            }
+
         // 1. 构建回复标签（如果有回复消息）
         val replyTag = replyToMessage?.let { message ->
             val cleanContent = message.content
@@ -131,7 +142,7 @@ object AIMessageManager {
                 if (enableDirectImageProcessing && attachment.mimeType.startsWith("image/", ignoreCase = true)) {
                     try {
                         val imageId = ImagePoolManager.addImage(attachment.filePath)
-                        "<link type=\"image\" id=\"$imageId\"></link>"
+                        MediaLinkBuilder.image(context, imageId)
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "添加图片到池失败: ${attachment.filePath}", e)
                         // 失败时回退到普通附件格式
@@ -151,7 +162,7 @@ object AIMessageManager {
                         if (audioId == "error") {
                             throw IllegalStateException("addMedia returned error")
                         }
-                        "<link type=\"audio\" id=\"$audioId\"></link>"
+                        MediaLinkBuilder.audio(context, audioId)
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "添加音频到池失败: ${attachment.filePath}", e)
                         val attributes = buildString {
@@ -170,7 +181,7 @@ object AIMessageManager {
                         if (videoId == "error") {
                             throw IllegalStateException("addMedia returned error")
                         }
-                        "<link type=\"video\" id=\"$videoId\"></link>"
+                        MediaLinkBuilder.video(context, videoId)
                     } catch (e: Exception) {
                         AppLogger.e(TAG, "添加视频到池失败: ${attachment.filePath}", e)
                         val attributes = buildString {
@@ -199,7 +210,7 @@ object AIMessageManager {
         } else ""
 
         // 5. 组合最终消息
-        return listOf(messageText, attachmentTags, workspaceTag, replyTag)
+        return listOf(proxySenderTag, messageText, attachmentTags, workspaceTag, replyTag)
             .filter { it.isNotBlank() }
             .joinToString(" ")
     }
@@ -222,6 +233,7 @@ object AIMessageManager {
      * @param onTokenLimitExceeded token限制超出回调。
      * @param characterName 角色名称，用于通知。
      * @param avatarUri 角色头像URI，用于通知。
+     * @param roleCardId 角色卡片ID。
      * @return 包含AI响应流的ChatMessage对象。
      */
     suspend fun sendMessage(
@@ -239,7 +251,9 @@ object AIMessageManager {
         onNonFatalError: suspend (error: String) -> Unit,
         onTokenLimitExceeded: (suspend () -> Unit)? = null,
         characterName: String? = null,
-        avatarUri: String? = null
+        avatarUri: String? = null,
+        roleCardId: String,
+        proxySenderName: String? = null
     ): SharedStream<String> {
         val chatKey = chatId ?: DEFAULT_CHAT_KEY
         lastActiveChatKey = chatKey
@@ -256,8 +270,8 @@ object AIMessageManager {
 
             val memoryAfterImageLimit = limitImageLinksInChatHistory(memory, maxImageHistoryUserTurns)
             val memoryForRequest = limitMediaLinksInChatHistory(memoryAfterImageLimit, maxMediaHistoryUserTurns)
-            val beforeImageLinkCount = memory.count { (_, content) -> ImageLinkParser.hasImageLinks(content) }
-            val afterImageLinkCount = memoryForRequest.count { (_, content) -> ImageLinkParser.hasImageLinks(content) }
+            val beforeImageLinkCount = memory.count { (_, content) -> MediaLinkParser.hasImageLinks(content) }
+            val afterImageLinkCount = memoryForRequest.count { (_, content) -> MediaLinkParser.hasImageLinks(content) }
             if (beforeImageLinkCount != afterImageLinkCount) {
                 AppLogger.d(
                     TAG,
@@ -320,6 +334,7 @@ object AIMessageManager {
             // 使用普通模式
             enhancedAiService.sendMessage(
                 message = messageContent,
+                chatId = chatId,
                 chatHistory = memoryForRequest, // Correct parameter name is chatHistory
                 workspacePath = workspacePath,
                 promptFunctionType = promptFunctionType,
@@ -332,6 +347,8 @@ object AIMessageManager {
                 onTokenLimitExceeded = onTokenLimitExceeded, // 传递回调
                 characterName = characterName,
                 avatarUri = avatarUri,
+                roleCardId = roleCardId,
+                proxySenderName = proxySenderName,
                 stream = enableStream
             ).share(
                 scope = scope,
@@ -382,8 +399,8 @@ object AIMessageManager {
             }
 
             val shouldKeepImages = limit > 0 && currentUserTurnIndex >= keepFromTurn
-            if (!shouldKeepImages && ImageLinkParser.hasImageLinks(content)) {
-                val removed = ImageLinkParser.removeImageLinks(content).trim()
+            if (!shouldKeepImages && MediaLinkParser.hasImageLinks(content)) {
+                val removed = MediaLinkParser.removeImageLinks(content).trim()
                 role to (removed.ifBlank { context.getString(R.string.ai_message_image_omitted) })
             } else {
                 role to content
@@ -470,6 +487,27 @@ object AIMessageManager {
             if (head == 0) return "..." + normalized.takeLast(tail)
             if (tail == 0) return normalized.take(head) + "..."
             return normalized.take(head) + "..." + normalized.takeLast(tail)
+        }
+
+        fun stripMediaLinksForAssistant(text: String): String {
+            var cleaned = text
+            val removedImages = MediaLinkParser.hasImageLinks(cleaned)
+            if (removedImages) {
+                cleaned = MediaLinkParser.removeImageLinks(cleaned)
+            }
+            val removedMedia = MediaLinkParser.hasMediaLinks(cleaned)
+            if (removedMedia) {
+                cleaned = MediaLinkParser.removeMediaLinks(cleaned)
+            }
+            cleaned = cleaned.trim()
+            if (cleaned.isBlank()) {
+                return when {
+                    removedImages -> context.getString(R.string.ai_message_image_omitted)
+                    removedMedia -> context.getString(R.string.ai_message_media_omitted)
+                    else -> ""
+                }
+            }
+            return cleaned
         }
 
         fun pruneUserMessageForReview(text: String): String {
@@ -609,7 +647,7 @@ object AIMessageManager {
             val cleanedContent = if (role == "user") {
                 message.content.replace(memoryTagRegex, "").trim()
             } else {
-                message.content
+                stripMediaLinksForAssistant(message.content)
             }
             if (cleanedContent.isNotBlank()) {
                 val displayContent =

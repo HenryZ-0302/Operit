@@ -13,7 +13,7 @@ import fi.iki.elonen.NanoHTTPD
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileNotFoundException
-import java.io.FileOutputStream
+import com.ai.assistance.operit.util.AssetCopyUtils
 import java.io.IOException
 import java.net.ServerSocket
 import java.net.Socket
@@ -23,6 +23,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import android.util.Base64
+import android.webkit.CookieManager
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.FilterInputStream
+import java.io.InputStream
+import java.util.Locale
 
 @Serializable
 data class FileApiEntry(val name: String, val isDirectory: Boolean)
@@ -37,6 +45,10 @@ private constructor(
 ) : NanoHTTPD(port) {
 
     private var workspaceEnv: String? = null
+    private val proxyClient = OkHttpClient.Builder()
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .build()
 
     enum class ServerType {
         WORKSPACE,
@@ -91,46 +103,9 @@ private constructor(
         }
 
         private fun copyAssetsToDirectory(context: Context, assetDir: String, destDir: File) {
-            // Always overwrite. First, delete existing files if the directory exists.
-            if (destDir.exists()) {
-                destDir.deleteRecursively()
-                AppLogger.d("LocalWebServer", "Cleared existing computer directory for refresh: ${destDir.absolutePath}")
-            }
-
-            if (!destDir.mkdirs()) {
-                AppLogger.e("LocalWebServer", "Failed to create destination directory: ${destDir.absolutePath}")
-                return
-            }
-
-            val assetManager = context.assets
             try {
-                val assets = assetManager.list(assetDir)
-                if (assets == null || assets.isEmpty()) {
-                    AppLogger.w("LocalWebServer", "No assets found in directory: $assetDir")
-                    return
-                }
-                for (asset in assets) {
-                    val sourcePath = "$assetDir/$asset"
-                    val destPath = File(destDir, asset)
-                    // Check if it's a directory by trying to list its contents
-                    val isDir = try {
-                        assetManager.list(sourcePath)?.isNotEmpty() == true
-                    } catch (e: IOException) {
-                        false
-                    }
-
-                    if (isDir) {
-                        // It's a directory, recurse
-                        copyAssetsToDirectory(context, sourcePath, destPath)
-                    } else {
-                        // It's a file, copy it
-                        assetManager.open(sourcePath).use { inputStream ->
-                            FileOutputStream(destPath).use { outputStream ->
-                                inputStream.copyTo(outputStream)
-                            }
-                        }
-                    }
-                }
+                AssetCopyUtils.copyAssetDirRecursive(context, assetDir, destDir, overwrite = true)
+                AppLogger.d("LocalWebServer", "Assets copied: $assetDir -> ${destDir.absolutePath}")
             } catch (e: IOException) {
                 AppLogger.e("LocalWebServer", "Failed to copy assets from '$assetDir'", e)
             }
@@ -341,6 +316,9 @@ private constructor(
     private fun handleApiRequest(session: IHTTPSession): Response {
         val uri = session.uri
         return when {
+            uri.startsWith("/api/proxy") -> {
+                handleProxyRequest(session)
+            }
             uri.startsWith("/api/files") -> {
                 val path = session.parameters["path"]?.get(0) ?: ""
                 listDirectory(path)
@@ -348,6 +326,88 @@ private constructor(
             else -> {
                 newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "API endpoint not found").addCorsHeaders()
             }
+        }
+    }
+
+    private fun handleProxyRequest(session: IHTTPSession): Response {
+        val targetUrl = session.parameters["url"]?.firstOrNull()?.trim().orEmpty()
+        if (targetUrl.isBlank()) {
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Missing url").addCorsHeaders(session.headers["origin"])
+        }
+        val uri = kotlin.runCatching { java.net.URI(targetUrl) }.getOrNull()
+        if (uri == null || (uri.scheme != "http" && uri.scheme != "https")) {
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "Unsupported url").addCorsHeaders(session.headers["origin"])
+        }
+
+        if (session.method == Method.OPTIONS) {
+            return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "").addCorsHeaders(session.headers["origin"])
+        }
+
+        val bodyBytes = readRequestBody(session)
+        val contentType = session.headers["content-type"]
+        val requestBody = if (session.method == Method.GET || session.method == Method.HEAD) {
+            null
+        } else {
+            bodyBytes.toRequestBody(contentType?.toMediaTypeOrNull())
+        }
+
+        val requestBuilder = Request.Builder().url(targetUrl).method(session.method.name, requestBody)
+        session.headers.forEach { (name, value) ->
+            val lower = name.lowercase(Locale.US)
+            if (lower in setOf("host", "connection", "content-length", "accept-encoding")) return@forEach
+            requestBuilder.addHeader(name, value)
+        }
+
+        val cookie = CookieManager.getInstance().getCookie(targetUrl)
+        if (!cookie.isNullOrBlank()) {
+            requestBuilder.addHeader("Cookie", cookie)
+        }
+
+        return try {
+            val response = proxyClient.newCall(requestBuilder.build()).execute()
+            val status = Response.Status.lookup(response.code) ?: Response.Status.OK
+            val body = response.body
+            val mimeType = body?.contentType()?.toString() ?: "application/octet-stream"
+            val responseStream = body?.byteStream()?.let { stream ->
+                ResponseBodyInputStream(response, stream)
+            }
+            val nanoResponse = if (responseStream != null) {
+                val contentLength = body?.contentLength() ?: -1L
+                if (contentLength >= 0) {
+                    newFixedLengthResponse(status, mimeType, responseStream, contentLength)
+                } else {
+                    newChunkedResponse(status, mimeType, responseStream)
+                }
+            } else {
+                response.close()
+                newFixedLengthResponse(status, mimeType, "")
+            }
+
+            response.headers.forEach { (name, value) ->
+                val lower = name.lowercase(Locale.US)
+                if (lower in setOf("content-length", "content-encoding", "transfer-encoding", "connection")) return@forEach
+                nanoResponse.addHeader(name, value)
+            }
+            nanoResponse.addCorsHeaders(session.headers["origin"])
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Proxy request failed: $targetUrl", e)
+            newFixedLengthResponse(Response.Status.INTERNAL_ERROR, MIME_PLAINTEXT, "Proxy error: ${e.message}").addCorsHeaders(session.headers["origin"])
+        }
+    }
+
+    private fun readRequestBody(session: IHTTPSession): ByteArray {
+        return try {
+            val tempFiles = HashMap<String, String>()
+            session.parseBody(tempFiles)
+            val postDataPath = tempFiles["postData"]
+            if (postDataPath != null) {
+                File(postDataPath).readBytes()
+            } else {
+                ByteArray(0)
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to read proxy request body", e)
+            ByteArray(0)
         }
     }
 
@@ -396,13 +456,30 @@ private constructor(
         }
     }
 
-    private fun Response.addCorsHeaders(): Response {
-        this.addHeader("Access-Control-Allow-Origin", "*")
+    private fun Response.addCorsHeaders(origin: String? = null): Response {
+        val allowOrigin = origin ?: "*"
+        this.addHeader("Access-Control-Allow-Origin", allowOrigin)
         this.addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
         this.addHeader("Access-Control-Allow-Headers", "X-Requested-With, Content-Type, Authorization, Origin, Accept")
         this.addHeader("Access-Control-Max-Age", "3600")
         this.addHeader("Access-Control-Allow-Credentials", "true")
+        if (origin != null) {
+            this.addHeader("Vary", "Origin")
+        }
         return this
+    }
+
+    private class ResponseBodyInputStream(
+        private val response: okhttp3.Response,
+        inputStream: InputStream
+    ) : FilterInputStream(inputStream) {
+        override fun close() {
+            try {
+                super.close()
+            } finally {
+                response.close()
+            }
+        }
     }
     
     /**

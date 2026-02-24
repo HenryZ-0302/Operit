@@ -11,8 +11,8 @@ enum class AvatarType {
     /** Frame-by-frame animation using WEBP format. */
     WEBP,
 
-    /** Real-time 2D animation (e.g., Live2D). */
-    LIVE2D,
+    /** Real-time 3D glTF/glb model animation. */
+    GLTF,
 
     /** 3D model animation (e.g., MikuMikuDance, VRM). */
     MMD

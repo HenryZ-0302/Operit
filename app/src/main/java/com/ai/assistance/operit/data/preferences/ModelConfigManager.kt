@@ -346,14 +346,20 @@ class ModelConfigManager(private val context: Context) {
             enableDirectVideoProcessing: Boolean,
             enableGoogleSearch: Boolean,
             enableToolCall: Boolean,
-            enableDeepseekReasoning: Boolean
+            strictToolCall: Boolean
     ): ModelConfigData {
         return updateConfigInternal(configId) {
             val resolvedEnableToolCall =
-                if (apiProviderType == ApiProviderType.MNN || apiProviderType == ApiProviderType.LLAMA_CPP) {
+                if (apiProviderType == ApiProviderType.MNN) {
                     false
                 } else {
                     enableToolCall
+                }
+            val resolvedStrictToolCall =
+                if (resolvedEnableToolCall) {
+                    strictToolCall
+                } else {
+                    false
                 }
             it.copy(
                     apiKey = apiKey,
@@ -369,7 +375,20 @@ class ModelConfigManager(private val context: Context) {
                     enableDirectVideoProcessing = enableDirectVideoProcessing,
                     enableGoogleSearch = enableGoogleSearch,
                     enableToolCall = resolvedEnableToolCall,
-                    enableDeepseekReasoning = enableDeepseekReasoning
+                    strictToolCall = resolvedStrictToolCall
+            )
+        }
+    }
+
+    suspend fun updateRequestQueueSettings(
+            configId: String,
+            requestLimitPerMinute: Int,
+            maxConcurrentRequests: Int
+    ): ModelConfigData {
+        return updateConfigInternal(configId) {
+            it.copy(
+                    requestLimitPerMinute = requestLimitPerMinute.coerceAtLeast(0),
+                    maxConcurrentRequests = maxConcurrentRequests.coerceAtLeast(0)
             )
         }
     }
@@ -486,19 +505,15 @@ class ModelConfigManager(private val context: Context) {
     suspend fun updateToolCall(configId: String, enableToolCall: Boolean): ModelConfigData {
         return updateConfigInternal(configId) {
             val resolvedEnableToolCall =
-                if (it.apiProviderType == ApiProviderType.MNN || it.apiProviderType == ApiProviderType.LLAMA_CPP) {
+                if (it.apiProviderType == ApiProviderType.MNN) {
                     false
                 } else {
                     enableToolCall
                 }
-            it.copy(enableToolCall = resolvedEnableToolCall)
-        }
-    }
-
-    // 更新 DeepSeek推理模式 配置
-    suspend fun updateDeepseekReasoning(configId: String, enableDeepseekReasoning: Boolean): ModelConfigData {
-        return updateConfigInternal(configId) {
-            it.copy(enableDeepseekReasoning = enableDeepseekReasoning)
+            it.copy(
+                    enableToolCall = resolvedEnableToolCall,
+                    strictToolCall = if (resolvedEnableToolCall) it.strictToolCall else false
+            )
         }
     }
 

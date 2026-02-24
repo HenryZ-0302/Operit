@@ -62,7 +62,6 @@ import com.ai.assistance.operit.ui.features.memory.screens.dialogs.LinkMemoryDia
 import com.ai.assistance.operit.ui.features.memory.screens.dialogs.MemoryInfoDialog
 import com.ai.assistance.operit.ui.features.memory.screens.dialogs.EdgeInfoDialog
 import com.ai.assistance.operit.ui.features.memory.screens.dialogs.EditEdgeDialog
-import com.ai.assistance.operit.ui.features.memory.screens.dialogs.ToolTestDialog
 import com.ai.assistance.operit.ui.features.memory.viewmodel.MemoryViewModel
 import com.ai.assistance.operit.ui.features.memory.viewmodel.MemoryViewModelFactory
 import kotlinx.coroutines.Dispatchers
@@ -79,18 +78,20 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.ui.features.memory.screens.dialogs.MemorySearchSettingsDialog
+import com.ai.assistance.operit.ui.features.memory.screens.dialogs.MemorySearchSimulationDialog
 
 @Composable
 fun MemorySearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
-    onTestToolClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     onMenuClick: () -> Unit
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -120,10 +121,10 @@ fun MemorySearchBar(
                 onSearch()
             })
         )
-        IconButton(onClick = onTestToolClick) {
+        IconButton(onClick = onSettingsClick) {
             Icon(
-                Icons.Default.Psychology, 
-                contentDescription = "Test AI Memory",
+                Icons.Default.Settings,
+                contentDescription = stringResource(R.string.memory_search_settings_title),
                 tint = MaterialTheme.colorScheme.secondary
             )
         }
@@ -326,7 +327,7 @@ fun MemoryScreen() {
                         keyboardController?.hide()
                         viewModel.searchMemories()
                     },
-                    onTestToolClick = { viewModel.showToolTestDialog(true) },
+                    onSettingsClick = { viewModel.showSearchSettingsDialog(true) },
                     onMenuClick = { showFolderNavigator = !showFolderNavigator }
                 )
 
@@ -335,22 +336,22 @@ fun MemoryScreen() {
                         .weight(1f)
                         .fillMaxSize()
                 ) {
-                    // 图谱区域（底层，占满整个空间）
+                    // 图谱区域（始终挂载，避免 isLoading 切换时重建 GraphVisualizer）
+                    GraphVisualizer(
+                        graph = uiState.graph,
+                        modifier = Modifier.fillMaxSize(),
+                        selectedNodeId = uiState.selectedNodeId,
+                        boxSelectedNodeIds = uiState.boxSelectedNodeIds, // 传递框选节点
+                        isBoxSelectionMode = uiState.isBoxSelectionMode, // 传递模式状态
+                        linkingNodeIds = uiState.linkingNodeIds,
+                        selectedEdgeId = uiState.selectedEdge?.id,
+                        onNodeClick = { node -> viewModel.selectNode(node) },
+                        onEdgeClick = { edge -> viewModel.selectEdge(edge) },
+                        onNodesSelected = { nodeIds -> viewModel.addNodesToSelection(nodeIds) } // 传递回调
+                    )
+
                     if (uiState.isLoading) {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    } else {
-                        GraphVisualizer(
-                            graph = uiState.graph,
-                            modifier = Modifier.fillMaxSize(),
-                            selectedNodeId = uiState.selectedNodeId,
-                            boxSelectedNodeIds = uiState.boxSelectedNodeIds, // 传递框选节点
-                            isBoxSelectionMode = uiState.isBoxSelectionMode, // 传递模式状态
-                            linkingNodeIds = uiState.linkingNodeIds,
-                            selectedEdgeId = uiState.selectedEdge?.id,
-                            onNodeClick = { node -> viewModel.selectNode(node) },
-                            onEdgeClick = { edge -> viewModel.selectEdge(edge) },
-                            onNodesSelected = { nodeIds -> viewModel.addNodesToSelection(nodeIds) } // 传递回调
-                        )
                     }
                 }
             }
@@ -382,12 +383,32 @@ fun MemoryScreen() {
             }
 
             // 对话框层
-            if (uiState.isToolTestDialogVisible) {
-                ToolTestDialog(
-                    onDismiss = { viewModel.showToolTestDialog(false) },
-                    onExecute = { query -> viewModel.testQueryTool(query) },
-                    result = uiState.toolTestResult,
-                    isLoading = uiState.isToolTestLoading
+            if (uiState.isSearchSettingsDialogVisible) {
+                MemorySearchSettingsDialog(
+                    currentConfig = uiState.searchConfig,
+                    cloudConfig = uiState.cloudEmbeddingConfig,
+                    dimensionUsage = uiState.embeddingDimensionUsage,
+                    rebuildProgress = uiState.embeddingRebuildProgress,
+                    isRebuilding = uiState.isEmbeddingRebuildRunning,
+                    onDismiss = { viewModel.showSearchSettingsDialog(false) },
+                    onSave = { config, cloudConfig ->
+                        viewModel.saveSearchSettings(config, cloudConfig)
+                        viewModel.searchMemories()
+                    },
+                    onRebuild = { viewModel.rebuildVectorIndex() },
+                    onSimulateSearch = { viewModel.openSearchSimulationDialog() }
+                )
+            }
+
+            if (uiState.isSearchSimulationDialogVisible) {
+                MemorySearchSimulationDialog(
+                    query = uiState.searchSimulationQuery,
+                    isRunning = uiState.isSearchSimulationRunning,
+                    result = uiState.searchSimulationResult,
+                    error = uiState.searchSimulationError,
+                    onQueryChange = { viewModel.onSearchSimulationQueryChange(it) },
+                    onRun = { viewModel.runSearchSimulation() },
+                    onDismiss = { viewModel.showSearchSimulationDialog(false) }
                 )
             }
 

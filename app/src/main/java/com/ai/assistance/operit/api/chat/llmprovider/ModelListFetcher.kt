@@ -46,6 +46,7 @@ object ModelListFetcher {
         val modelsUrl =
                 when (apiProviderType) {
                     ApiProviderType.OPENAI,
+                    ApiProviderType.OPENAI_RESPONSES,
                     ApiProviderType.OPENAI_GENERIC -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.ANTHROPIC,
                     ApiProviderType.ANTHROPIC_GENERIC -> "${extractBaseUrl(apiEndpoint)}/v1/models"
@@ -204,7 +205,7 @@ object ModelListFetcher {
                         val errorBody = response.body?.string() ?: context.getString(R.string.model_fetch_no_error_details)
                         val responseCode = response.code
                         response.close()
-                        if ((apiProviderType == ApiProviderType.OPENAI || apiProviderType == ApiProviderType.OPENAI_GENERIC) &&
+                        if ((apiProviderType == ApiProviderType.OPENAI || apiProviderType == ApiProviderType.OPENAI_RESPONSES || apiProviderType == ApiProviderType.OPENAI_GENERIC) &&
                                         modelsUrl.endsWith("/v1/models")) {
                             val fallbackUrl = modelsUrl.removeSuffix("/v1/models") + "/models"
                             AppLogger.w(TAG, "API请求失败，尝试兼容路径: $fallbackUrl")
@@ -256,6 +257,7 @@ object ModelListFetcher {
                             try {
                                 when (apiProviderType) {
                                     ApiProviderType.OPENAI,
+                                    ApiProviderType.OPENAI_RESPONSES,
                                     ApiProviderType.OPENAI_GENERIC,
                                     ApiProviderType.DEEPSEEK,
                                     ApiProviderType.MOONSHOT,

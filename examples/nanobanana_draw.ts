@@ -1,6 +1,10 @@
 /* METADATA
 {
-  "name": "nanobanana_draw",
+  "name": "nanobanana_draw",
+  "display_name": {
+      "zh": "Nanobanana 绘图",
+      "en": "Nanobanana Draw"
+  },
   "description": {
     "zh": "使用 Nano Banana API (基于Grsai的api服务/https://grsai.com/) 根据提示词画图，支持文生图和图生图（可传入参考图片URL或本地图片路径；本地图片会先上传到图床以获得公网URL），将图片保存到本地 /sdcard/Download/Operit/draws/ 目录，并返回 Markdown 图片提示。",
     "en": "Generate images using the Nano Banana API (via Grsai service / https://grsai.com/). Supports text-to-image and image-to-image (you can provide reference image URLs or local image paths; local images will be uploaded first to get public URLs). Saves images to /sdcard/Download/Operit/draws/ and returns a Markdown image reference."
@@ -25,7 +29,7 @@
         { "name": "image_paths", "description": { "zh": "参考图本地路径数组（图生图，会先上传图床再进行生成），支持格式：字符串数组['/sdcard/...'] 或 JSON字符串 或 逗号分隔，可选", "en": "Reference local image path list for img2img (will be uploaded first). Accepts: string array ['/sdcard/...'], or JSON string, or comma-separated list (optional)." }, "type": "array", "required": false },
         { "name": "file_name", "description": { "zh": "自定义保存到本地的文件名（不含路径和扩展名）", "en": "Custom output file name (without path or extension)" }, "type": "string", "required": false },
         { "name": "poll_interval_ms", "description": { "zh": "轮询间隔（毫秒），默认 5000", "en": "Polling interval (milliseconds), default 5000" }, "type": "number", "required": false },
-        { "name": "max_wait_time_ms", "description": { "zh": "最长等待时间（毫秒）。默认 5 分钟；当 image_size=4K 时默认 15 分钟", "en": "Max wait time (milliseconds). Default 5 minutes; default 15 minutes when image_size=4K." }, "type": "number", "required": false }
+        { "name": "max_wait_time_ms", "description": { "zh": "最长等待时间（毫秒）。默认 10 分钟", "en": "Max wait time (milliseconds). Default 10 minutes." }, "type": "number", "required": false }
       ]
     }
   ]
@@ -33,7 +37,12 @@
 */
 
 const nanobananaDraw = (function () {
-    const client = OkHttp.newClient();
+    const HTTP_TIMEOUT_MS = 600000;
+    const client = OkHttp.newBuilder()
+        .connectTimeout(HTTP_TIMEOUT_MS)
+        .readTimeout(HTTP_TIMEOUT_MS)
+        .writeTimeout(HTTP_TIMEOUT_MS)
+        .build();
 
     const BEEIMG_UPLOAD_ENDPOINT = "https://beeimg.com/api/upload/file/json/";
 
@@ -48,7 +57,7 @@ const nanobananaDraw = (function () {
 
     // 轮询配置
     const POLL_INTERVAL = 5000;      // 每5秒查询一次
-    const MAX_WAIT_TIME = 300000;    // 最多等待5分钟
+    const MAX_WAIT_TIME = 600000;    // 最多等待10分钟
 
     function isRecord(value: unknown): value is Record<string, unknown> {
         return typeof value === "object" && value !== null;
@@ -387,7 +396,7 @@ const nanobananaDraw = (function () {
 
         const pollIntervalMs = normalizePositiveInt(params.poll_interval_ms, POLL_INTERVAL);
         const normalizedImageSize = params.image_size ? params.image_size.trim().toUpperCase() : "";
-        const defaultMaxWaitTimeMs = normalizedImageSize === "4K" ? 900000 : MAX_WAIT_TIME;
+        const defaultMaxWaitTimeMs = normalizedImageSize === "4K" ? 600000 : MAX_WAIT_TIME;
         const maxWaitTimeMs = normalizePositiveInt(params.max_wait_time_ms, defaultMaxWaitTimeMs);
 
         // 添加辅助函数来解析URL数组

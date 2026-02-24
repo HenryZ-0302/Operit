@@ -44,7 +44,7 @@ object SystemToolPrompts {
                 name = "sleep",
                 description = "Demonstration tool that pauses briefly.",
                 parametersStructured = listOf(
-                    ToolParameterSchema(name = "duration_ms", type = "integer", description = "milliseconds, default 1000, max 10000", required = false, default = "1000")
+                    ToolParameterSchema(name = "duration_ms", type = "integer", description = "milliseconds, default 1000, >= 0", required = false, default = "1000")
                 )
             ),
             ToolPrompt(
@@ -69,7 +69,7 @@ object SystemToolPrompts {
                 name = "sleep",
                 description = "演示工具，短暂暂停。",
                 parametersStructured = listOf(
-                    ToolParameterSchema(name = "duration_ms", type = "integer", description = "毫秒，默认1000，最大10000", required = false, default = "1000")
+                    ToolParameterSchema(name = "duration_ms", type = "integer", description = "毫秒，默认1000，>= 0", required = false, default = "1000")
                 )
             ),
             ToolPrompt(
@@ -438,7 +438,7 @@ object SystemToolPrompts {
         tools = listOf(
             ToolPrompt(
                 name = "visit_web",
-                description = "Visit a webpage and extract its content. Two modes: (1) Provide `url` to visit a new page. (2) Follow a link from a previous visit by providing `visit_key` + `link_number`. The returned text often includes a `Results:` section like `[1] ...`, `[2] ...` — those bracketed numbers are 1-based indices. Use that exact number as `link_number` (range: 1..links.length). If you need images, set `include_image_links=true` and the tool will return an `Images:` section with 1-based indices. IMPORTANT: do NOT use `link_number` to download images; instead use `download_file` with `visit_key` + `image_number`.",
+                description = "Visit a webpage and extract information (including optional image links). Two modes: (1) Provide `url` to visit a new page. (2) Follow a link from a previous visit by providing `visit_key` + `link_number`. The returned text often includes a `Results:` section like `[1] ...`, `[2] ...` — those bracketed numbers are 1-based indices. Use that exact number as `link_number` (range: 1..links.length). If you need images, set `include_image_links=true` and the tool will return an `Images:` section with 1-based indices. IMPORTANT: do NOT use `link_number` to download images; instead use `download_file` with `visit_key` + `image_number`. NOTE: this tool is browsing-only/read-only and does not perform interactive actions such as login, click, fill, submit, or workflow automation.",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "url", type = "string", description = "optional, webpage URL", required = false),
                     ToolParameterSchema(name = "visit_key", type = "string", description = "optional, string, the visitKey from a previous visit_web result", required = false),
@@ -457,7 +457,7 @@ object SystemToolPrompts {
         tools = listOf(
             ToolPrompt(
                 name = "visit_web",
-                description = "访问网页并提取内容。有两种用法：1）提供 `url` 访问新页面。2）提供上一次 visit_web 返回的 `visit_key` + `link_number`，用来继续访问结果里的某个链接。返回文本通常会包含 `Results:` 段落，形如 `[1] ...`、`[2] ...` —— 中括号里的数字是从 1 开始的编号，请把该编号原样作为 `link_number`（范围：1..links.length），不要按 0 起始。若需要图片，请设置 `include_image_links=true`，工具会额外返回 `Images:` 段落以及从 1 开始的图片编号。重要：下载图片不要用 `link_number` 乱点页面链接；请使用 `download_file` 的 `visit_key` + `image_number` 按图片编号下载。",
+                description = "访问网页并提取信息（可选包含图片链接）。有两种用法：1）提供 `url` 访问新页面。2）提供上一次 visit_web 返回的 `visit_key` + `link_number`，用来继续访问结果里的某个链接。返回文本通常会包含 `Results:` 段落，形如 `[1] ...`、`[2] ...` —— 中括号里的数字是从 1 开始的编号，请把该编号原样作为 `link_number`（范围：1..links.length），不要按 0 起始。若需要图片，请设置 `include_image_links=true`，工具会额外返回 `Images:` 段落以及从 1 开始的图片编号。重要：下载图片不要用 `link_number` 乱点页面链接；请使用 `download_file` 的 `visit_key` + `image_number` 按图片编号下载。注意：该工具仅支持浏览/读取操作，不执行登录、点击、填写、提交等交互自动化。",
                 parametersStructured = listOf(
                     ToolParameterSchema(name = "url", type = "string", description = "可选, 网页URL", required = false),
                     ToolParameterSchema(name = "visit_key", type = "string", description = "可选, 字符串, 上一次 visit_web 返回的 visitKey", required = false),
@@ -682,6 +682,67 @@ object SystemToolPrompts {
             safBookmarkNames = safBookmarkNames
         ) + internalToolCategoriesCn
     }
+
+    data class ManageableToolPrompt(
+        val categoryName: String,
+        val name: String,
+        val description: String
+    )
+
+    private fun applyToolVisibility(
+        categories: List<SystemToolPromptCategory>,
+        toolVisibility: Map<String, Boolean>
+    ): List<SystemToolPromptCategory> {
+        if (toolVisibility.isEmpty()) return categories
+        return categories.mapNotNull { category ->
+            val visibleTools = category.tools.filter { tool ->
+                toolVisibility[tool.name] ?: true
+            }
+            if (visibleTools.isEmpty()) {
+                null
+            } else {
+                category.copy(tools = visibleTools)
+            }
+        }
+    }
+
+    fun getManageableToolPrompts(useEnglish: Boolean): List<ManageableToolPrompt> {
+        val baseCategories = if (useEnglish) {
+            listOf(basicTools, fileSystemTools, httpTools, memoryTools)
+        } else {
+            listOf(basicToolsCn, fileSystemToolsCn, httpToolsCn, memoryToolsCn)
+        }
+
+        return baseCategories
+            .flatMap { category ->
+                category.tools.map { tool ->
+                    ManageableToolPrompt(
+                        categoryName = category.categoryName,
+                        name = tool.name,
+                        description = tool.description
+                    )
+                }
+            }
+            .distinctBy { it.name }
+    }
+
+    fun generateMemoryToolsPromptEn(
+        toolVisibility: Map<String, Boolean> = emptyMap()
+    ): String {
+        return applyToolVisibility(listOf(memoryTools), toolVisibility)
+            .firstOrNull()
+            ?.toString()
+            .orEmpty()
+    }
+
+    fun generateMemoryToolsPromptCn(
+        toolVisibility: Map<String, Boolean> = emptyMap()
+    ): String {
+        return applyToolVisibility(listOf(memoryToolsCn), toolVisibility)
+            .firstOrNull()
+            ?.toString()
+            .orEmpty()
+    }
     
     /**
      * 生成完整的工具提示词文本（英文）
@@ -694,7 +755,8 @@ object SystemToolPrompts {
         hasBackendVideoRecognition: Boolean = false,
         chatModelHasDirectAudio: Boolean = false,
         chatModelHasDirectVideo: Boolean = false,
-        safBookmarkNames: List<String> = emptyList()
+        safBookmarkNames: List<String> = emptyList(),
+        toolVisibility: Map<String, Boolean> = emptyMap()
     ): String {
         val categories = if (includeMemoryTools) {
             getAIAllCategoriesEn(
@@ -719,7 +781,7 @@ object SystemToolPrompts {
                 .filter { it.categoryName != "Memory and Memory Library Tools" }
         }
 
-        return categories.joinToString("\n\n") { it.toString() }
+        return applyToolVisibility(categories, toolVisibility).joinToString("\n\n") { it.toString() }
     }
     
     /**
@@ -733,7 +795,8 @@ object SystemToolPrompts {
         hasBackendVideoRecognition: Boolean = false,
         chatModelHasDirectAudio: Boolean = false,
         chatModelHasDirectVideo: Boolean = false,
-        safBookmarkNames: List<String> = emptyList()
+        safBookmarkNames: List<String> = emptyList(),
+        toolVisibility: Map<String, Boolean> = emptyMap()
     ): String {
         val categories = if (includeMemoryTools) {
             getAIAllCategoriesCn(
@@ -758,6 +821,6 @@ object SystemToolPrompts {
                 .filter { it.categoryName != "记忆与记忆库工具" }
         }
 
-        return categories.joinToString("\n\n") { it.toString() }
+        return applyToolVisibility(categories, toolVisibility).joinToString("\n\n") { it.toString() }
     }
 }

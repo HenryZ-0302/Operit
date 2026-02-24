@@ -30,8 +30,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.core.tools.packTool.PackageManager
 import com.ai.assistance.operit.ui.features.toolbox.screens.apppermissions.AppPermissionsScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.ffmpegtoolbox.FFmpegToolboxScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.FileManagerScreen
@@ -47,6 +50,8 @@ import com.ai.assistance.operit.R
 import androidx.compose.ui.res.stringResource
 import com.ai.assistance.operit.terminal.TerminalManager
 import com.ai.assistance.operit.terminal.rememberTerminalEnv
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // 工具类别
 enum class ToolCategory {
@@ -93,19 +98,35 @@ fun ToolboxScreen(
         onProcessLimitRemoverSelected: () -> Unit,
         onHtmlPackagerSelected: () -> Unit,
         onAutoGlmOneClickSelected: () -> Unit,
-        onAutoGlmToolSelected: () -> Unit
+        onAutoGlmToolSelected: () -> Unit,
+        onSqlViewerSelected: () -> Unit,
+        onTokenConfigSelected: () -> Unit,
+        onToolPkgComposeDslSelected: (containerPackageName: String, uiModuleId: String, title: String) -> Unit
 ) {
         // 屏幕配置信息，用于响应式布局
         val configuration = LocalConfiguration.current
-        val screenWidth = configuration.screenWidthDp.dp
-
-        // 根据屏幕宽度决定每行显示的卡片数量
-        val columnsCount =
-                when {
-                        screenWidth > 840.dp -> 3 // 大屏幕设备显示3列
-                        screenWidth > 600.dp -> 2 // 中等屏幕设备显示2列
-                        else -> 2 // 小屏幕设备显示2列
+        val context = LocalContext.current
+        val packageManager =
+                remember {
+                        PackageManager.getInstance(
+                                context,
+                                AIToolHandler.getInstance(context)
+                        )
                 }
+        var dynamicUiModules by
+                remember {
+                        mutableStateOf<List<PackageManager.ToolPkgToolboxUiModule>>(emptyList())
+                }
+
+        LaunchedEffect(configuration) {
+                dynamicUiModules =
+                        withContext(Dispatchers.IO) {
+                                packageManager.getToolPkgToolboxUiModules(
+                                        runtime = "compose_dsl",
+                                        resolveContext = context
+                                )
+                        }
+        }
 
         // 当前选中的分类过滤器
         var selectedCategory by remember { mutableStateOf(ToolCategory.ALL) }
@@ -197,6 +218,20 @@ fun ToolboxScreen(
                                 onClick = onLogcatSelected
                         ),
                         Tool(
+                                name = stringResource(R.string.tool_sql_viewer),
+                                icon = Icons.Default.TableView,
+                                description = stringResource(R.string.tool_sql_viewer_desc),
+                                category = ToolCategory.DEVELOPMENT,
+                                onClick = onSqlViewerSelected
+                        ),
+                        Tool(
+                                name = stringResource(R.string.token_config),
+                                icon = Icons.Default.Token,
+                                description = stringResource(R.string.token_config_title),
+                                category = ToolCategory.SYSTEM,
+                                onClick = onTokenConfigSelected
+                        ),
+                        Tool(
                                 name = stringResource(R.string.tool_process_limit_remover),
                                 icon = Icons.Default.LockOpen,
                                 description = stringResource(R.string.tool_process_limit_remover_desc),
@@ -225,13 +260,33 @@ fun ToolboxScreen(
                                 onClick = onAutoGlmToolSelected
                         )
                 )
+        val dynamicTools =
+                dynamicUiModules.map { module ->
+                        Tool(
+                                name = module.title,
+                                icon = Icons.Default.Extension,
+                                description =
+                                        module.description.ifBlank {
+                                                module.containerPackageName
+                                        },
+                                category = ToolCategory.DEVELOPMENT,
+                                onClick = {
+                                        onToolPkgComposeDslSelected(
+                                                module.containerPackageName,
+                                                module.uiModuleId,
+                                                module.title
+                                        )
+                                }
+                        )
+                }
+        val allTools = tools + dynamicTools
 
         // 根据选中的分类过滤工具
         val filteredTools =
                 if (selectedCategory == ToolCategory.ALL) {
-                        tools
+                        allTools
                 } else {
-                        tools.filter { it.category == selectedCategory }
+                        allTools.filter { it.category == selectedCategory }
                 }
 
         Box(modifier = Modifier.fillMaxSize()) {
@@ -247,7 +302,7 @@ fun ToolboxScreen(
 
                         // 工具网格
                         LazyVerticalGrid(
-                                columns = GridCells.Adaptive(minSize = 120.dp),
+                                columns = GridCells.Adaptive(minSize = 156.dp),
                                 contentPadding = PaddingValues(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -383,7 +438,7 @@ fun ToolCard(tool: Tool) {
                                 isPressed = false
                         }
                 },
-                modifier = Modifier.defaultMinSize(minHeight = 140.dp).scale(scale),
+                modifier = Modifier.fillMaxWidth().height(156.dp).scale(scale),
                 colors =
                         CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation =
@@ -450,7 +505,10 @@ fun ToolCard(tool: Tool) {
                                 text = tool.name,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                minLines = 1,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                         )
 
                         Text(
@@ -459,7 +517,9 @@ fun ToolCard(tool: Tool) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(horizontal = 2.dp),
-                                maxLines = 2
+                                minLines = 1,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                         )
                 }
         }

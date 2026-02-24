@@ -65,6 +65,31 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "input_in_terminal_session",
+                            description = "Write input to a terminal session. At least one of input or control is required. Typical usage is sending input first, then control=enter to submit.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "terminal session id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "input",
+                                        type = "string",
+                                        description = "text to write to the terminal (can include newlines)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "control",
+                                        type = "string",
+                                        description = "control key or modifier (e.g. enter/tab/esc/up/down/left/right/home/end/pageup/pagedown, or ctrl with input=c for Ctrl+C)",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "close_terminal_session",
                             description = "Close a terminal session.",
                             parametersStructured =
@@ -74,6 +99,263 @@ object SystemToolPromptsInternal {
                                         type = "string",
                                         description = "terminal session id",
                                         required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "get_terminal_session_screen",
+                            description = "Get only the current visible PTY screen content for a terminal session (single screen, no scrollback/history).",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "terminal session id",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "start_web",
+                            description = "Start a persistent web session and open a floating browser window.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "url",
+                                        type = "string",
+                                        description = "optional, initial URL to open",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "headers",
+                                        type = "string",
+                                        description = "optional, JSON object string for request headers",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "user_agent",
+                                        type = "string",
+                                        description = "optional, custom user agent",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "session_name",
+                                        type = "string",
+                                        description = "optional, label shown in the floating window title",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "stop_web",
+                            description = "Stop one web session or all web sessions.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "optional when close_all=true, web session id",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "close_all",
+                                        type = "boolean",
+                                        description = "optional, stop all sessions when true",
+                                        required = false,
+                                        default = "false"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_navigate",
+                            description = "Navigate a web session to a URL.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "web session id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "url",
+                                        type = "string",
+                                        description = "target URL",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "headers",
+                                        type = "string",
+                                        description = "optional, JSON object string for request headers",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_eval",
+                            description = "Run JavaScript in a web session.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "web session id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "script",
+                                        type = "string",
+                                        description = "JavaScript source code",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "optional, script timeout in milliseconds",
+                                        required = false,
+                                        default = "10000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_click",
+                            description = "Click an element by snapshot ref.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "optional, web session id",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "ref",
+                                        type = "string",
+                                        description = "required, exact target element ref from web_snapshot output",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "element",
+                                        type = "string",
+                                        description = "optional, human-readable element description",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "button",
+                                        type = "string",
+                                        description = "optional, left/right/middle",
+                                        required = false,
+                                        default = "left"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "modifiers",
+                                        type = "string",
+                                        description = "optional JSON array, only Alt/Control/ControlOrMeta/Meta/Shift",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "doubleClick",
+                                        type = "boolean",
+                                        description = "optional, perform double click",
+                                        required = false,
+                                        default = "false"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_fill",
+                            description = "Fill an input element by CSS selector.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "web session id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "selector",
+                                        type = "string",
+                                        description = "CSS selector",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "value",
+                                        type = "string",
+                                        description = "value to set",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_file_upload",
+                            description = "Upload one or multiple files to an active file chooser in a web session. `paths` is optional; omit it to cancel the file chooser.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "optional, web session id",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "paths",
+                                        type = "string",
+                                        description = "optional JSON array of absolute file paths, e.g. [\"/sdcard/Download/a.txt\"]",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_wait_for",
+                            description = "Wait for page ready or selector appearance in a web session.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "web session id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "selector",
+                                        type = "string",
+                                        description = "optional, CSS selector to wait for",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "optional, wait timeout in milliseconds",
+                                        required = false,
+                                        default = "10000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_snapshot",
+                            description = "Capture current page snapshot text from a web session.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "web session id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "include_links",
+                                        type = "boolean",
+                                        description = "optional, include link list",
+                                        required = false,
+                                        default = "true"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "include_images",
+                                        type = "boolean",
+                                        description = "optional, include image list",
+                                        required = false,
+                                        default = "false"
                                     )
                                 )
                         ),
@@ -254,6 +536,17 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "link_type", type = "string", description = "optional, string, the type of relationship such as \"related\", \"causes\", \"explains\", \"part_of\", \"contradicts\", etc.", required = false, default = "\"related\""),
                                 ToolParameterSchema(name = "weight", type = "number", description = "optional, float 0.0-1.0, the strength of the link with 1.0 being strongest", required = false, default = "0.7"),
                                 ToolParameterSchema(name = "description", type = "string", description = "optional, string, additional context about the relationship", required = false, default = "\"\"")
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "query_memory_links",
+                            description = "Queries links in the memory graph. Supports filtering by link_id, source_title, target_title, and link_type. Use this before updating/deleting links to precisely identify targets.",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "link_id", type = "integer", description = "optional, exact link id", required = false),
+                                ToolParameterSchema(name = "source_title", type = "string", description = "optional, exact source memory title", required = false),
+                                ToolParameterSchema(name = "target_title", type = "string", description = "optional, exact target memory title", required = false),
+                                ToolParameterSchema(name = "link_type", type = "string", description = "optional, relation type filter", required = false),
+                                ToolParameterSchema(name = "limit", type = "integer", description = "optional, int 1-200, maximum links to return", required = false, default = "20")
                             )
                         ),
                         ToolPrompt(
@@ -589,12 +882,19 @@ object SystemToolPromptsInternal {
                                         name = "wake_launched",
                                         type = "boolean",
                                         description = "optional, true if launched by wake word so UI can adjust behavior",
-                                        required = false
+                                        required = false,
+                                        default = "false"
                                     ),
                                     ToolParameterSchema(
                                         name = "timeout_ms",
                                         type = "integer",
                                         description = "optional, auto close the floating window after this timeout (milliseconds). <=0 disables auto-exit.",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "keep_if_exists",
+                                        type = "boolean",
+                                        description = "optional, if true and service already running, do not force floating window mode change",
                                         required = false
                                     )
                                 )
@@ -614,13 +914,95 @@ object SystemToolPromptsInternal {
                                         type = "string",
                                         description = "optional group name for the new chat",
                                         required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "set_as_current_chat",
+                                        type = "boolean",
+                                        description = "optional, whether to switch to the new chat (default true)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "character_card_id",
+                                        type = "string",
+                                        description = "optional, character card id to bind for the new chat",
+                                        required = false
                                     )
                                 )
                         ),
                         ToolPrompt(
                             name = "list_chats",
-                            description = "List chats.",
-                            parametersStructured = listOf()
+                            description = "List chats (supports filtering and sorting).",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "query",
+                                        type = "string",
+                                        description = "optional, title keyword filter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "match",
+                                        type = "string",
+                                        description = "optional, contains | exact | regex (default contains)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "limit",
+                                        type = "integer",
+                                        description = "optional, max results (default 50)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "sort_by",
+                                        type = "string",
+                                        description = "optional, updatedAt | createdAt | messageCount (default updatedAt)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "sort_order",
+                                        type = "string",
+                                        description = "optional, asc | desc (default desc)",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "find_chat",
+                            description = "Find a chat by title and return its info.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "query",
+                                        type = "string",
+                                        description = "title keyword/regex",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "match",
+                                        type = "string",
+                                        description = "optional, contains | exact | regex (default contains)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "index",
+                                        type = "integer",
+                                        description = "optional, pick Nth match (default 0)",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "agent_status",
+                            description = "Check a chat's input processing status.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "target chat id",
+                                        required = true
+                                    )
+                                )
                         ),
                         ToolPrompt(
                             name = "switch_chat",
@@ -651,8 +1033,25 @@ object SystemToolPromptsInternal {
                                         type = "string",
                                         description = "optional, target chat id",
                                         required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "role_card_id",
+                                        type = "string",
+                                        description = "optional, role card id to use for this send",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "sender_name",
+                                        type = "string",
+                                        description = "optional, display name of the sender when AI sends as user",
+                                        required = false
                                     )
                                 )
+                        ),
+                        ToolPrompt(
+                            name = "list_character_cards",
+                            description = "List all role cards.",
+                            parametersStructured = listOf()
                         ),
                         ToolPrompt(
                             name = "get_chat_messages",
@@ -1258,13 +1657,13 @@ object SystemToolPromptsInternal {
                     listOf(
                         ToolPrompt(
                             name = "ffmpeg_execute",
-                            description = "Execute an FFmpeg command.",
+                            description = "Execute an FFmpeg command (arguments only; do not include the leading ffmpeg).",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
                                         name = "command",
                                         type = "string",
-                                        description = "ffmpeg command",
+                                        description = "FFmpeg command arguments only, without the leading ffmpeg",
                                         required = true
                                     )
                                 )
@@ -1318,7 +1717,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "video_codec",
                                         type = "string",
-                                        description = "optional",
+                                        description = "optional, use h264 for H.264 encoding",
                                         required = false
                                     )
                                 )
@@ -1386,6 +1785,31 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "input_in_terminal_session",
+                            description = "向终端会话写入输入。input 与 control 至少传一个。通常先发送 input，再发送 control=enter 提交内容。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "终端会话 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "input",
+                                        type = "string",
+                                        description = "要写入终端的文本（可包含换行）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "control",
+                                        type = "string",
+                                        description = "控制键或修饰键（如 enter/tab/esc/up/down/left/right/home/end/pageup/pagedown，或 control=ctrl 且 input=c 表示 Ctrl+C）",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "close_terminal_session",
                             description = "关闭终端会话。",
                             parametersStructured =
@@ -1395,6 +1819,283 @@ object SystemToolPromptsInternal {
                                         type = "string",
                                         description = "终端会话 ID",
                                         required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "get_terminal_session_screen",
+                            description = "获取终端会话当前可见 PTY 屏幕内容（仅一屏，不包含历史滚动缓冲）。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "终端会话 ID",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "start_web",
+                            description = "启动持久化网页会话并打开悬浮浏览窗口。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "url",
+                                        type = "string",
+                                        description = "可选，初始打开的 URL",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "headers",
+                                        type = "string",
+                                        description = "可选，请求头 JSON 对象字符串",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "user_agent",
+                                        type = "string",
+                                        description = "可选，自定义 User-Agent",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "session_name",
+                                        type = "string",
+                                        description = "可选，会话显示名称",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "stop_web",
+                            description = "停止一个网页会话或全部网页会话。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "可选，close_all=true 时可省略",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "close_all",
+                                        type = "boolean",
+                                        description = "可选，为 true 时停止全部会话",
+                                        required = false,
+                                        default = "false"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_navigate",
+                            description = "让网页会话跳转到指定 URL。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "网页会话 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "url",
+                                        type = "string",
+                                        description = "目标 URL",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "headers",
+                                        type = "string",
+                                        description = "可选，请求头 JSON 对象字符串",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_eval",
+                            description = "在网页会话中执行 JavaScript。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "网页会话 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "script",
+                                        type = "string",
+                                        description = "JavaScript 脚本",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "可选，超时时间（毫秒）",
+                                        required = false,
+                                        default = "10000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_click",
+                            description = "按快照 ref 或 CSS 选择器点击元素。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "可选，网页会话 ID",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "ref",
+                                        type = "string",
+                                        description = "可选，来自 web_snapshot 输出的元素引用",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "element",
+                                        type = "string",
+                                        description = "可选，人类可读元素描述",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "selector",
+                                        type = "string",
+                                        description = "可选，CSS 选择器（提供 ref 时可省略）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "index",
+                                        type = "integer",
+                                        description = "可选，匹配元素中的 0 基索引",
+                                        required = false,
+                                        default = "0"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "button",
+                                        type = "string",
+                                        description = "可选，left/right/middle",
+                                        required = false,
+                                        default = "left"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "modifiers",
+                                        type = "string",
+                                        description = "可选，修饰键 JSON 数组：Alt/Control/ControlOrMeta/Meta/Shift",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "double_click",
+                                        type = "boolean",
+                                        description = "可选，是否双击",
+                                        required = false,
+                                        default = "false"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "可选，动作可交互检查超时（毫秒）",
+                                        required = false,
+                                        default = "10000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_fill",
+                            description = "按 CSS 选择器填写输入框。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "网页会话 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "selector",
+                                        type = "string",
+                                        description = "CSS 选择器",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "value",
+                                        type = "string",
+                                        description = "要写入的值",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_file_upload",
+                            description = "向网页会话中的文件选择器上传一个或多个文件。`paths` 为可选，不传时会取消 file chooser。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "可选，网页会话 ID",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "paths",
+                                        type = "string",
+                                        description = "可选，绝对路径数组的 JSON 字符串，例如 [\"/sdcard/Download/a.txt\"]",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_wait_for",
+                            description = "等待页面就绪或等待元素出现。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "网页会话 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "selector",
+                                        type = "string",
+                                        description = "可选，等待出现的 CSS 选择器",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "可选，超时时间（毫秒）",
+                                        required = false,
+                                        default = "10000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "web_snapshot",
+                            description = "抓取当前网页快照文本。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "session_id",
+                                        type = "string",
+                                        description = "网页会话 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "include_links",
+                                        type = "boolean",
+                                        description = "可选，是否包含链接列表",
+                                        required = false,
+                                        default = "true"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "include_images",
+                                        type = "boolean",
+                                        description = "可选，是否包含图片列表",
+                                        required = false,
+                                        default = "false"
                                     )
                                 )
                         ),
@@ -1575,6 +2276,17 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "link_type", type = "string", description = "可选, 字符串, 关系类型，如\"related\"（相关）、\"causes\"（导致）、\"explains\"（解释）、\"part_of\"（部分）、\"contradicts\"（矛盾）等", required = false, default = "\"related\""),
                                 ToolParameterSchema(name = "weight", type = "number", description = "可选, 浮点数 0.0-1.0, 链接强度，1.0表示最强", required = false, default = "0.7"),
                                 ToolParameterSchema(name = "description", type = "string", description = "可选, 字符串, 关于关系的额外上下文", required = false, default = "\"\"")
+                            )
+                        ),
+                        ToolPrompt(
+                            name = "query_memory_links",
+                            description = "查询记忆图谱中的链接。支持按 link_id、source_title、target_title、link_type 过滤。适合在更新/删除链接前先精确定位目标。",
+                            parametersStructured = listOf(
+                                ToolParameterSchema(name = "link_id", type = "integer", description = "可选, 精确链接ID", required = false),
+                                ToolParameterSchema(name = "source_title", type = "string", description = "可选, 源记忆精确标题", required = false),
+                                ToolParameterSchema(name = "target_title", type = "string", description = "可选, 目标记忆精确标题", required = false),
+                                ToolParameterSchema(name = "link_type", type = "string", description = "可选, 关系类型过滤", required = false),
+                                ToolParameterSchema(name = "limit", type = "integer", description = "可选, 整数 1-200, 返回链接数量上限", required = false, default = "20")
                             )
                         ),
                         ToolPrompt(
@@ -1910,12 +2622,19 @@ object SystemToolPromptsInternal {
                                         name = "wake_launched",
                                         type = "boolean",
                                         description = "可选，若由唤醒词启动则为 true，以便 UI 调整行为",
-                                        required = false
+                                        required = false,
+                                        default = "false"
                                     ),
                                     ToolParameterSchema(
                                         name = "timeout_ms",
                                         type = "integer",
-                                        description = "可选，超时后自动关闭悬浮窗（毫秒）。<=0 表示不自动关闭。",
+                                        description = "可选，超时后自动关闭悬浮窗（毫秒），<=0 禁用自动关闭",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "keep_if_exists",
+                                        type = "boolean",
+                                        description = "可选，若服务已在运行则不强制切换悬浮窗模式",
                                         required = false
                                     )
                                 )
@@ -1935,13 +2654,95 @@ object SystemToolPromptsInternal {
                                         type = "string",
                                         description = "新对话分组名（可选）",
                                         required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "set_as_current_chat",
+                                        type = "boolean",
+                                        description = "可选，是否切换到新对话（默认 true）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "character_card_id",
+                                        type = "string",
+                                        description = "可选，创建对话时绑定的角色卡 ID",
+                                        required = false
                                     )
                                 )
                         ),
                         ToolPrompt(
                             name = "list_chats",
-                            description = "列出所有对话。",
-                            parametersStructured = listOf()
+                            description = "列出所有对话（支持筛选与排序）。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "query",
+                                        type = "string",
+                                        description = "可选，标题关键字筛选",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "match",
+                                        type = "string",
+                                        description = "可选，contains | exact | regex（默认 contains）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "limit",
+                                        type = "integer",
+                                        description = "可选，最多返回条数（默认 50）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "sort_by",
+                                        type = "string",
+                                        description = "可选，updatedAt | createdAt | messageCount（默认 updatedAt）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "sort_order",
+                                        type = "string",
+                                        description = "可选，asc | desc（默认 desc）",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "find_chat",
+                            description = "按标题查找对话并返回其信息。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "query",
+                                        type = "string",
+                                        description = "标题关键字/正则",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "match",
+                                        type = "string",
+                                        description = "可选，contains | exact | regex（默认 contains）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "index",
+                                        type = "integer",
+                                        description = "可选，选择第 N 个匹配（默认 0）",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "agent_status",
+                            description = "查询对话的输入处理状态。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "目标对话 ID",
+                                        required = true
+                                    )
+                                )
                         ),
                         ToolPrompt(
                             name = "switch_chat",
@@ -1972,8 +2773,25 @@ object SystemToolPromptsInternal {
                                         type = "string",
                                         description = "可选，目标对话 ID",
                                         required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "role_card_id",
+                                        type = "string",
+                                        description = "可选，本次发送使用的角色卡 ID",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "sender_name",
+                                        type = "string",
+                                        description = "可选，当以用户身份发送时的显示名称",
+                                        required = false
                                     )
                                 )
+                        ),
+                        ToolPrompt(
+                            name = "list_character_cards",
+                            description = "列出所有角色卡。",
+                            parametersStructured = listOf()
                         ),
                         ToolPrompt(
                             name = "get_chat_messages",
@@ -2579,13 +3397,13 @@ object SystemToolPromptsInternal {
                     listOf(
                         ToolPrompt(
                             name = "ffmpeg_execute",
-                            description = "执行 FFmpeg 命令。",
+                            description = "执行 FFmpeg 命令（仅填写参数，不要包含前缀 ffmpeg）。",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
                                         name = "command",
                                         type = "string",
-                                        description = "FFmpeg 命令",
+                                        description = "仅填写 FFmpeg 命令参数，不要包含前缀 ffmpeg",
                                         required = true
                                     )
                                 )
@@ -2639,7 +3457,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "video_codec",
                                         type = "string",
-                                        description = "可选",
+                                        description = "可选，H.264 编码请使用 h264",
                                         required = false
                                     )
                                 )

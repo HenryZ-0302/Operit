@@ -1,5 +1,3 @@
-# 首款直接接入autoglm api的移动端app
-
 <div align="center">
   <a href="README.md">中文版</a> | <span>English</span>
 </div>
@@ -38,7 +36,7 @@
 
 ## 🌟 Project Introduction
 
-**Operit AI** is the first fully functional AI assistant application on mobile devices that runs **completely standalone** (except for external API calls) on your Android device. It features powerful **tool-calling capabilities**, **Deep Search**, an **intelligent Memory Vault**, and supports highly customizable features like **User Personality** and **Character Cards**. It's more than just a chat interface—it's an **all-in-one assistant** deeply integrated with Android permissions and various tools, now featuring a built-in **Ubuntu 24 Environment** for unprecedented functionality.
+**Operit AI** is the first fully functional AI assistant application on mobile devices that runs **completely standalone** (except for external API calls) on your Android device. It features powerful **tool-calling capabilities**, **Deep Search**, **workflows & automation**, an **intelligent Memory Vault**, and highly customizable **User Personality** and **Character Cards**, with **MNN/llama.cpp local inference**, an **MCP/Skill ecosystem**, and a **multi-language UI**. It's more than just a chat interface—it's an **all-in-one assistant** deeply integrated with Android permissions and various tools, now featuring a built-in **Ubuntu 24 Environment** for unprecedented functionality.
 
 ---
 
@@ -52,22 +50,22 @@
 Complete Ubuntu 24 system with support for vim, MCP, Python, and more—run complex Linux commands and automation tasks on your phone
 
 ### 🧠 Intelligent Memory System
-AI automatically categorizes and manages memories, intelligently searches conversation history, remembers your preferences and habits for personalized service
+AI automatically categorizes memories, supports time-based query/import/export/auto-summary, and intelligently searches conversation history
 
 ### 🗣️ Voice Interaction
-Natural continuous conversations with local/cloud TTS support, custom voice tones, and floating voice orb for instant access
+Natural continuous conversations with local/cloud TTS + local STT, custom voice tones, voice/specific-audio wake-up, and auto read-aloud
 
 </td>
 <td width="50%">
 
 ### 🤖 Local AI Models
-Support for MNN local models—run AI completely offline to protect your privacy
+Support for MNN / llama.cpp local models (GGUF)—run AI completely offline to protect your privacy
 
 ### 🎭 Personality & Character Cards
-Customize AI personality and speaking style, import/export character cards, with independent conversation history for each character
+Customize AI personality and speaking style, with character card backup/export (Tavern/JSON)/QR sharing and independent histories; supports AI-to-AI chats
 
 ### 🔌 Rich Tool Ecosystem
-40+ built-in tools + MCP marketplace plugins for file operations, network requests, system control, media processing, and more
+40+ built-in tools + MCP/Skill marketplace plugins + toolkits/workflows, including AutoGLM auto-click agent, drawing/image search, AI-to-AI & self-awareness tools, scheduled tasks, and a prompt marketplace
 
 </td>
 </tr>
@@ -85,9 +83,12 @@ Customize AI personality and speaking style, import/export character cards, with
 | 🐧 **Linux Environment** | Complete Ubuntu 24 with apt package management, Python/Node.js runtime, custom repositories |
 | 📁 **File System** | Read/write files, search, compress/decompress, format conversion, Git integration, syntax checking |
 | 🌐 **Network Tools** | HTTP requests, web access, file upload/download, web development and export |
-| ⚙️ **System Operations** | App installation, permission management, UI automation via Accessibility / ADB / Root (supports adb root virtual display / multi-display) |
-| 🎬 **Media Processing** | Video conversion, frame extraction, OCR recognition, camera capture |
-| 🔍 **Search Engines** | Deep search, DuckDuckGo, Tavily, Baidu Maps integration |
+| ⚙️ **System Operations** | App installation, permission management, UI automation via Accessibility / ADB / Root (includes AutoGLM auto-click agent, supports adb root virtual display / multi-display) |
+| 🎬 **Media Processing** | Video conversion, frame extraction, OCR/vision understanding, camera capture, audio/video reading |
+| 🧑‍💻 **Developer & Terminal** | Web workspace/one-click packaging, code editing/syntax highlight, terminal SSH/Chroot/vim, Ctrl shortcuts |
+| 🎨 **AI Creation** | Drawing toolkits (OpenAI/Qwen/NanoBanana), image search/download |
+| 🔍 **Search Engines** | Deep search, DuckDuckGo, Tavily, Google Scholar, Bing, Sogou, Quark, Baidu Maps |
+| 🧩 **Toolkits & Workflows** | Toolkit ecosystem/package management, workflow automation, scheduled triggers, voice wake-up triggers |
 
 </details>
 
@@ -95,9 +96,14 @@ Customize AI personality and speaking style, import/export character cards, with
 <summary><b>🎨 Interface Customization (Click to expand)</b></summary>
 
 - ✨ **Theme System**: Customize colors, fonts, spacing, padding
-- 🎭 **Desktop Pet**: WebP animation support, custom expressions, floating window display
+- � **Multi-language UI**: Chinese/English coverage with system locale auto-switch
+- 🔤 **Fonts & Typography**: Global font size and chat padding controls
+- �🎭 **Desktop Pet**: WebP animation support, custom expressions, floating window display
 - 📱 **Layout Optimization**: Hide status bar, custom toolbar, tablet adaptation
-- 🎨 **Markdown Rendering**: LaTeX formulas, code highlighting, tables, Mermaid diagrams
+- 🎨 **Markdown Rendering**: LaTeX formulas (left/right scroll), code highlighting, tables, Mermaid diagrams
+- 🧾 **Information Display**: Thinking fold, HTML block preview, code/thinking max height
+- 🪟 **Floating Window UX**: Avatar hide in bubble mode, screen selection OCR, full-screen preview
+- 🧮 **Analytics**: Token usage stats with model pie chart
 
 </details>
 
@@ -105,9 +111,35 @@ Customize AI personality and speaking style, import/export character cards, with
 <summary><b>🔗 Integration Capabilities (Click to expand)</b></summary>
 
 - 🤖 **Tasker Integration**: Trigger custom AI agent events for deep automation
-- 🌐 **MCP Marketplace**: One-click plugin installation, remote MCP, auto-description, uvx/npx support
+- 🌐 **MCP/Skill Marketplace**: One-click plugin installation, remote MCP, auto-description, uvx/npx support
 - 🔌 **Multi-Model Support**: OpenAI, Claude, Gemini, Bailing, OpenRouter, LMStudio
+- 🧪 **Model & Prompt Management**: Multi configs/param customization, prompt marketplace
+- 🔐 **Permissions**: Per-tool authorization and safety prompts
+- 🔑 **Key Pool & Stats**: Batch test/import, token usage stats
+- 🗂️ **Workspace Binding**: SAF / SFTP / SSH workspace binding and file access
+- 🖱️ **Auto-Click Agent**: AutoGLM + UI Tree dual pipeline for automation
 - 📊 **Parallel Tools**: Read-only tools execute in parallel for faster response
+
+</details>
+
+<details>
+<summary><b>💬 Chat & Memory Management (Click to expand)</b></summary>
+
+- 🧠 **Memory Vault**: Auto categorization/search, time queries, import/export, attachment memories
+- 💬 **Chat Management**: Auto-summary + editor, history folders/branches/migration, chat lock, per-character history
+- ⚡ **Parallel Conversations**: Parallel chat processing with toolkit state decisions
+- 🤖 **Character Interaction**: Character card chats and history, thinking fold display
+- 📦 **Chat Records**: Multi-format import/export, history backup and restore
+
+</details>
+
+<details>
+<summary><b>💾 Data & Backup (Click to expand)</b></summary>
+
+- 🗂️ **Global/Auto Backup**: Scheduled DB backup with corruption recovery (excluding MCP/Skill/terminal/packages)
+- 🎭 **Character Cards**: Backup, export (Tavern/JSON), QR sharing
+- 🧷 **Workspaces**: SAF/SFTP/SSH binding, code editing/syntax highlight, Git ignore
+- 🧰 **Skill Management**: Skill toggles, repo parsing, cached downloads
 
 </details>
 
@@ -166,7 +198,18 @@ Rich MCP ecosystem
 <tr><th>Version</th><th>Release Date</th><th>Core Updates</th></tr>
 
 <tr>
-<td><b>v1.8.0</b><br><sub>Latest</sub></td>
+<td><b>v1.8.1</b><br><sub>Latest</sub></td>
+<td>2026-02-03</td>
+<td>
+• <b>Local Llama.cpp</b>: GGUF local inference support and related tools<br>
+• <b>Tools & UI</b>: Image search/download, HTML block preview, code/thinking max height, avatar hide in bubble mode, token pie chart, thinking fold display<br>
+• <b>Data & Backup</b>: Global backup (excluding MCP/skill/terminal/packages) + character card backup/export/share, skill enable/disable, key pool import/test, workspace SAF binding support<br>
+• <b>Fixes</b>: Voice echo capture, token stats in floating window, character editor keyboard overlap, deep search token spike, MCP startup, workflow floating window exit, table truncation, silicon flow voice interruptions
+</td>
+</tr>
+
+<tr>
+<td><b>v1.8.0</b></td>
 <td>2026-01-13</td>
 <td>
 • <b>Workflow System</b>: Supports computation/input/output/execution with voice wake-up triggers<br>

@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class ApiProviderType {
         OPENAI, // OpenAI (GPT系列)
+        OPENAI_RESPONSES, // OpenAI Responses API
         OPENAI_GENERIC, // OpenAI通用（自定义端点）
         ANTHROPIC, // Anthropic (Claude系列)
         ANTHROPIC_GENERIC, // Anthropic通用（自定义端点）
@@ -115,9 +116,11 @@ data class ModelConfigData(
 
         // Tool Call配置
         val enableToolCall: Boolean = false, // 是否启用Tool Call接口调用工具（使用模型原生工具调用而非XML格式）
+        val strictToolCall: Boolean = false, // 严格Tool Call模式（用于Tool Call支持不稳定时的兼容代理）
 
-        // DeepSeek特定配置
-        val enableDeepseekReasoning: Boolean = false // 是否启用DeepSeek推理模式（将<think>内容作为reasoning_content发送）
+        // 请求频率限制配置
+        val requestLimitPerMinute: Int = 0, // 每分钟最大请求次数，0表示不限流
+        val maxConcurrentRequests: Int = 0 // 最大并发请求数，0表示不限制
 )
 
 /** 简化版的模型配置数据，用于列表显示 */

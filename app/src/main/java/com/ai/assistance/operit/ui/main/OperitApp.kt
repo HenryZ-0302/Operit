@@ -24,13 +24,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.compose.rememberNavController
 import com.ai.assistance.operit.core.tools.AIToolHandler
+import com.ai.assistance.operit.data.announcement.RemoteAnnouncementDisplay
+import com.ai.assistance.operit.data.announcement.RemoteAnnouncementRepository
 import com.ai.assistance.operit.data.mcp.MCPRepository
 import com.ai.assistance.operit.data.preferences.ApiPreferences
-import com.ai.assistance.operit.data.preferences.ChatAnnouncementPreferences
 import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
+import com.ai.assistance.operit.data.preferences.RemoteAnnouncementPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.ui.common.NavItem
-import com.ai.assistance.operit.ui.features.announcement.ChatBindingAnnouncementDialog
+import com.ai.assistance.operit.ui.features.announcement.RemoteAnnouncementDialog
 import com.ai.assistance.operit.ui.main.layout.PhoneLayout
 import com.ai.assistance.operit.ui.main.layout.TabletLayout
 import com.ai.assistance.operit.ui.main.screens.OperitRouter
@@ -56,7 +58,8 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val announcementPreferences = remember { ChatAnnouncementPreferences(context) }
+    val remoteAnnouncementRepository = remember { RemoteAnnouncementRepository() }
+    val remoteAnnouncementPreferences = remember { RemoteAnnouncementPreferences(context) }
 
     // Navigation state - using a custom back stack
     var selectedItem by remember { mutableStateOf(initialNavItem) }
@@ -124,6 +127,11 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
             currentScreen = previousScreen
             // Update the selected NavItem if the previous screen has one.
             previousScreen.navItem?.let { navItem -> selectedItem = navItem }
+        } else if (currentScreen !is Screen.AiChat) {
+            // 一级页面（如设置）在无返回栈时，返回到聊天首页而不是直接退出应用
+            isNavigatingBack = true
+            currentScreen = Screen.AiChat
+            selectedItem = NavItem.AiChat
         }
     }
 
@@ -133,8 +141,8 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     }
 
     // Register system back handler to use our custom back stack.
-    // 只在返回栈不为空且当前屏幕不是AI对话时启用返回处理
-    BackHandler(enabled = backStack.isNotEmpty() && currentScreen !is Screen.AiChat, onBack = { goBack() })
+    // 只要不在AI对话页，统一由应用内处理返回逻辑
+    BackHandler(enabled = currentScreen !is Screen.AiChat, onBack = { goBack() })
 
     // 修改canGoBack的判断逻辑，只有当前屏幕是二级屏幕时才显示返回键
     val canGoBack = currentScreen.isSecondaryScreen
@@ -156,13 +164,13 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
     // - 600dp and above: tablet
     val useTabletLayout = screenWidthDp >= 600
 
-    var showChatBindingAnnouncement by remember {
-        mutableStateOf(announcementPreferences.shouldShowChatBindingAnnouncement())
-    }
+    var remoteAnnouncement by remember { mutableStateOf<RemoteAnnouncementDisplay?>(null) }
 
-    fun dismissChatBindingAnnouncement() {
-        announcementPreferences.setChatBindingAnnouncementAcknowledged()
-        showChatBindingAnnouncement = false
+    fun dismissRemoteAnnouncement() {
+        remoteAnnouncement?.let { announcement ->
+            remoteAnnouncementPreferences.setAcknowledgedVersion(announcement.version)
+        }
+        remoteAnnouncement = null
     }
 
     // Navigation items grouped by category
@@ -173,8 +181,7 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                 NavItem.AiChat,
                 NavItem.AssistantConfig,
                 NavItem.Packages,
-                NavItem.MemoryBase,
-                NavItem.TokenConfig
+                NavItem.MemoryBase
             )
         ),
         NavGroup(
@@ -209,6 +216,16 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
             isNetworkAvailable = NetworkUtils.isNetworkAvailable(context)
             networkType = NetworkUtils.getNetworkType(context)
             delay(10000) // Check every 10 seconds
+        }
+    }
+
+    // Fetch remote announcement when network becomes available.
+    LaunchedEffect(isNetworkAvailable) {
+        if (!isNetworkAvailable || remoteAnnouncement != null) return@LaunchedEffect
+
+        val announcement = remoteAnnouncementRepository.fetchDisplayableAnnouncement()
+        if (announcement != null && remoteAnnouncementPreferences.shouldShow(announcement.version)) {
+            remoteAnnouncement = announcement
         }
     }
 
@@ -254,10 +271,10 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                     collapsedTabletSidebarWidth = collapsedTabletSidebarWidth,
                     onScreenChange = { screen -> navigateTo(screen) },
                     onNavItemChange = { item ->
-                        navigateTo(
-                            OperitRouter.getScreenForNavItem(item),
-                            fromDrawer = true
-                        )
+                        selectedItem = item
+                    },
+                    onDrawerItemSelected = { screen, _ ->
+                        navigateTo(screen, fromDrawer = true)
                     },
                     onToggleSidebar = {
                         isTabletSidebarExpanded = !isTabletSidebarExpanded
@@ -284,10 +301,10 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
                     showFpsCounter = showFpsCounter,
                     onScreenChange = { screen -> navigateTo(screen) },
                     onNavItemChange = { item ->
-                        navigateTo(
-                            OperitRouter.getScreenForNavItem(item),
-                            fromDrawer = true
-                        )
+                        selectedItem = item
+                    },
+                    onDrawerItemSelected = { screen, _ ->
+                        navigateTo(screen, fromDrawer = true)
                     },
                     navigateToTokenConfig = ::navigateToTokenConfig,
                     canGoBack = canGoBack,
@@ -298,9 +315,13 @@ fun OperitApp(initialNavItem: NavItem = NavItem.AiChat, toolHandler: AIToolHandl
             }
         }
 
-        if (showChatBindingAnnouncement) {
-            ChatBindingAnnouncementDialog(
-                onAcknowledge = { dismissChatBindingAnnouncement() }
+        remoteAnnouncement?.let { announcement ->
+            RemoteAnnouncementDialog(
+                title = announcement.title,
+                body = announcement.body,
+                acknowledgeText = announcement.acknowledgeText,
+                countdownSeconds = announcement.countdownSec,
+                onAcknowledge = { dismissRemoteAnnouncement() }
             )
         }
     }

@@ -4,12 +4,14 @@ import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.core.tools.MemoryQueryResultData
 import com.ai.assistance.operit.core.tools.MemoryLinkResultData
+import com.ai.assistance.operit.core.tools.MemoryLinkQueryResultData
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.ToolExecutor
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.Memory
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.model.ToolValidationResult
+import com.ai.assistance.operit.data.preferences.MemorySearchSettingsPreferences
 import com.ai.assistance.operit.data.repository.MemoryRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -28,9 +30,16 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
         private const val TAG = "MemoryQueryToolExecutor"
     }
 
+    private val activeProfileId by lazy {
+        runBlocking { preferencesManager.activeProfileIdFlow.first() }
+    }
+
     private val memoryRepository by lazy {
-        val profileId = runBlocking { preferencesManager.activeProfileIdFlow.first() }
-        MemoryRepository(context, profileId)
+        MemoryRepository(context, activeProfileId)
+    }
+
+    private val memorySearchSettingsPreferences by lazy {
+        MemorySearchSettingsPreferences(context, activeProfileId)
     }
 
     override fun invoke(tool: AITool): ToolResult = runBlocking {
@@ -40,8 +49,12 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
             "create_memory" -> executeCreateMemory(tool)
             "update_memory" -> executeUpdateMemory(tool)
             "delete_memory" -> executeDeleteMemory(tool)
+            "move_memory" -> executeMoveMemory(tool)
             "update_user_preferences" -> executeUpdateUserPreferences(tool)
             "link_memories" -> executeLinkMemories(tool)
+            "query_memory_links" -> executeQueryMemoryLinks(tool)
+            "update_memory_link" -> executeUpdateMemoryLink(tool)
+            "delete_memory_link" -> executeDeleteMemoryLink(tool)
             else -> ToolResult(
                 toolName = tool.name,
                 success = false,
@@ -54,7 +67,8 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
     private suspend fun executeQueryMemory(tool: AITool): ToolResult {
         val query = tool.parameters.find { it.name == "query" }?.value ?: ""
         val folderPath = tool.parameters.find { it.name == "folder_path" }?.value
-        val threshold = tool.parameters.find { it.name == "threshold" }?.value?.toFloatOrNull() ?: 0.25f
+        val settings = memorySearchSettingsPreferences.load()
+        val threshold = tool.parameters.find { it.name == "threshold" }?.value?.toFloatOrNull() ?: settings.semanticThreshold
         val limitParam = tool.parameters.find { it.name == "limit" }?.value
         val limit = limitParam?.toIntOrNull()
         val startTimeParam = tool.parameters.find { it.name == "start_time" }?.value
@@ -109,7 +123,7 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
 
         AppLogger.d(
             TAG,
-            "Executing memory query: '$query' in folder: '${folderPath ?: "All"}', start_time: ${startTimeMs ?: "null"}, end_time: ${endTimeMs ?: "null"}, threshold: $validThreshold, limit: $validLimit"
+            "Executing memory query: '$query' in folder: '${folderPath ?: "All"}', start_time: ${startTimeMs ?: "null"}, end_time: ${endTimeMs ?: "null"}, threshold: $validThreshold, limit: $validLimit, mode=${settings.scoreMode}, keywordWeight=${settings.keywordWeight}, vectorWeight=${settings.vectorWeight}, edgeWeight=${settings.edgeWeight}"
         )
 
         return try {
@@ -117,6 +131,10 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
                 query = query,
                 folderPath = folderPath,
                 semanticThreshold = validThreshold,
+                scoreMode = settings.scoreMode,
+                keywordWeight = settings.keywordWeight,
+                semanticWeight = settings.vectorWeight,
+                edgeWeight = settings.edgeWeight,
                 createdAtStartMs = startTimeMs,
                 createdAtEndMs = endTimeMs
             )
@@ -618,6 +636,402 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
         }
     }
 
+    private suspend fun executeQueryMemoryLinks(tool: AITool): ToolResult {
+        val linkIdRaw = tool.parameters.find { it.name == "link_id" }?.value
+        val linkId = linkIdRaw?.toLongOrNull()
+        if (!linkIdRaw.isNullOrBlank() && linkId == null) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Invalid link_id. Expected integer."
+            )
+        }
+
+        val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value?.trim()
+        val targetTitle = tool.parameters.find { it.name == "target_title" }?.value?.trim()
+        val linkType = tool.parameters.find { it.name == "link_type" }?.value?.trim()?.takeIf { it.isNotEmpty() }
+        val limitRaw = tool.parameters.find { it.name == "limit" }?.value
+        val parsedLimit = limitRaw?.toIntOrNull()
+        if (!limitRaw.isNullOrBlank() && parsedLimit == null) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Invalid limit. Expected integer."
+            )
+        }
+        val limit = (parsedLimit ?: 20).coerceIn(1, 200)
+
+        return try {
+            val sourceMemoryId = if (!sourceTitle.isNullOrBlank()) {
+                memoryRepository.findMemoryByTitle(sourceTitle)?.id ?: return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Source memory not found with title: $sourceTitle"
+                )
+            } else {
+                null
+            }
+
+            val targetMemoryId = if (!targetTitle.isNullOrBlank()) {
+                memoryRepository.findMemoryByTitle(targetTitle)?.id ?: return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Target memory not found with title: $targetTitle"
+                )
+            } else {
+                null
+            }
+
+            val links = memoryRepository.queryMemoryLinks(
+                linkId = linkId,
+                sourceMemoryId = sourceMemoryId,
+                targetMemoryId = targetMemoryId,
+                linkType = linkType,
+                limit = limit
+            )
+
+            val linkInfos = links.mapNotNull { link ->
+                val source = link.source.target
+                val target = link.target.target
+                if (source == null || target == null) {
+                    null
+                } else {
+                    MemoryLinkQueryResultData.LinkInfo(
+                        linkId = link.id,
+                        sourceTitle = source.title,
+                        targetTitle = target.title,
+                        linkType = link.type,
+                        weight = link.weight,
+                        description = link.description
+                    )
+                }
+            }
+
+            ToolResult(
+                toolName = tool.name,
+                success = true,
+                result = MemoryLinkQueryResultData(
+                    totalCount = linkInfos.size,
+                    links = linkInfos
+                )
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to query memory links", e)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Failed to query memory links: ${e.message}"
+            )
+        }
+    }
+
+    private suspend fun executeMoveMemory(tool: AITool): ToolResult {
+        val targetFolderPath = tool.parameters.find { it.name == "target_folder_path" }?.value
+        val sourceFolderPath = tool.parameters.find { it.name == "source_folder_path" }?.value
+        val hasSourceFolderParam = tool.parameters.any { it.name == "source_folder_path" }
+        val titlesRaw = tool.parameters.find { it.name == "titles" }?.value
+        val titles = parseTitlesParam(titlesRaw)
+
+        if (targetFolderPath == null) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "target_folder_path parameter is required"
+            )
+        }
+
+        if (titles.isEmpty() && !hasSourceFolderParam) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Provide titles and/or source_folder_path to select memories to move"
+            )
+        }
+
+        AppLogger.d(
+            TAG,
+            "Moving memories. target_folder_path='$targetFolderPath', source_folder_path='${sourceFolderPath ?: ""}', has_source_folder_param=$hasSourceFolderParam, titles_count=${titles.size}"
+        )
+
+        return try {
+            val selectedByTitle = if (titles.isNotEmpty()) {
+                titles.flatMap { title -> memoryRepository.findMemoriesByTitle(title) }
+            } else {
+                emptyList()
+            }
+            val selectedByFolder = if (hasSourceFolderParam) {
+                memoryRepository.getMemoriesByFolderPath(sourceFolderPath ?: "")
+            } else {
+                emptyList()
+            }
+
+            val selected = when {
+                titles.isNotEmpty() && hasSourceFolderParam -> {
+                    val folderIds = selectedByFolder.map { it.id }.toHashSet()
+                    selectedByTitle.filter { folderIds.contains(it.id) }
+                }
+                titles.isNotEmpty() -> selectedByTitle
+                else -> selectedByFolder
+            }
+
+            val uniqueMemories = LinkedHashMap<Long, Memory>()
+            selected.forEach { uniqueMemories[it.id] = it }
+            val memoryIds = uniqueMemories.keys.toList()
+
+            if (memoryIds.isEmpty()) {
+                return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "No matching memories found to move"
+                )
+            }
+
+            val moved = memoryRepository.moveMemoriesToFolder(memoryIds, targetFolderPath)
+            if (!moved) {
+                return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Failed to move selected memories"
+                )
+            }
+
+            val destination = if (targetFolderPath.isBlank()) "uncategorized" else targetFolderPath
+            ToolResult(
+                toolName = tool.name,
+                success = true,
+                result = StringResultData("Successfully moved ${memoryIds.size} memories to '$destination'")
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to move memories", e)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Failed to move memories: ${e.message}"
+            )
+        }
+    }
+
+    private fun parseTitlesParam(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return raw
+            .split(',', '\n', '|')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
+
+    private suspend fun executeUpdateMemoryLink(tool: AITool): ToolResult {
+        val linkId = tool.parameters.find { it.name == "link_id" }?.value?.toLongOrNull()
+        val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value
+        val targetTitle = tool.parameters.find { it.name == "target_title" }?.value
+        val locatorLinkType = tool.parameters.find { it.name == "link_type" }?.value
+
+        val newLinkType = tool.parameters.find { it.name == "new_link_type" }?.value
+        val newWeightParam = tool.parameters.find { it.name == "weight" }?.value
+        val newWeight = newWeightParam?.toFloatOrNull()
+        val newDescription = tool.parameters.find { it.name == "description" }?.value
+
+        if (newLinkType.isNullOrBlank() && newWeight == null && newDescription == null) {
+            return ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "At least one of new_link_type, weight, description must be provided"
+            )
+        }
+
+        return try {
+            val link = if (linkId != null) {
+                memoryRepository.findLinkById(linkId)
+            } else {
+                if (sourceTitle.isNullOrBlank() || targetTitle.isNullOrBlank()) {
+                    return ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Provide link_id, or provide both source_title and target_title"
+                    )
+                }
+
+                val sourceMemory = memoryRepository.findMemoryByTitle(sourceTitle)
+                    ?: return ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Source memory not found with title: $sourceTitle"
+                    )
+                val targetMemory = memoryRepository.findMemoryByTitle(targetTitle)
+                    ?: return ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Target memory not found with title: $targetTitle"
+                    )
+
+                val candidates = sourceMemory.links.filter {
+                    it.target.target?.id == targetMemory.id &&
+                        (locatorLinkType.isNullOrBlank() || it.type == locatorLinkType)
+                }
+                when {
+                    candidates.isEmpty() -> null
+                    candidates.size > 1 -> {
+                        return ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = StringResultData(""),
+                            error = "Multiple links matched. Provide link_id or a more specific link_type."
+                        )
+                    }
+                    else -> candidates.first()
+                }
+            }
+
+            if (link == null) {
+                return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = if (linkId != null) "Link not found with id: $linkId" else "No matching link found"
+                )
+            }
+
+            val updated = memoryRepository.updateLink(
+                linkId = link.id,
+                type = newLinkType ?: link.type,
+                weight = (newWeight ?: link.weight).coerceIn(0.0f, 1.0f),
+                description = newDescription ?: link.description
+            )
+
+            if (updated == null) {
+                return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Failed to update memory link"
+                )
+            }
+
+            val source = updated.source.target?.title ?: sourceTitle ?: ""
+            val target = updated.target.target?.title ?: targetTitle ?: ""
+
+            ToolResult(
+                toolName = tool.name,
+                success = true,
+                result = MemoryLinkResultData(
+                    sourceTitle = source,
+                    targetTitle = target,
+                    linkType = updated.type,
+                    weight = updated.weight,
+                    description = updated.description
+                )
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to update memory link", e)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Failed to update memory link: ${e.message}"
+            )
+        }
+    }
+
+    private suspend fun executeDeleteMemoryLink(tool: AITool): ToolResult {
+        val linkId = tool.parameters.find { it.name == "link_id" }?.value?.toLongOrNull()
+        val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value
+        val targetTitle = tool.parameters.find { it.name == "target_title" }?.value
+        val locatorLinkType = tool.parameters.find { it.name == "link_type" }?.value
+
+        return try {
+            val resolvedLinkId = if (linkId != null) {
+                linkId
+            } else {
+                if (sourceTitle.isNullOrBlank() || targetTitle.isNullOrBlank()) {
+                    return ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Provide link_id, or provide both source_title and target_title"
+                    )
+                }
+
+                val sourceMemory = memoryRepository.findMemoryByTitle(sourceTitle)
+                    ?: return ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Source memory not found with title: $sourceTitle"
+                    )
+                val targetMemory = memoryRepository.findMemoryByTitle(targetTitle)
+                    ?: return ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Target memory not found with title: $targetTitle"
+                    )
+
+                val candidates = sourceMemory.links.filter {
+                    it.target.target?.id == targetMemory.id &&
+                        (locatorLinkType.isNullOrBlank() || it.type == locatorLinkType)
+                }
+
+                when {
+                    candidates.isEmpty() -> {
+                        return ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = StringResultData(""),
+                            error = "No matching link found"
+                        )
+                    }
+                    candidates.size > 1 -> {
+                        return ToolResult(
+                            toolName = tool.name,
+                            success = false,
+                            result = StringResultData(""),
+                            error = "Multiple links matched. Provide link_id or a more specific link_type."
+                        )
+                    }
+                    else -> candidates.first().id
+                }
+            }
+
+            val deleted = memoryRepository.deleteLink(resolvedLinkId)
+            if (!deleted) {
+                return ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error = "Failed to delete memory link with id: $resolvedLinkId"
+                )
+            }
+
+            ToolResult(
+                toolName = tool.name,
+                success = true,
+                result = StringResultData("Successfully deleted memory link: $resolvedLinkId")
+            )
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to delete memory link", e)
+            ToolResult(
+                toolName = tool.name,
+                success = false,
+                result = StringResultData(""),
+                error = "Failed to delete memory link: ${e.message}"
+            )
+        }
+    }
+
     private suspend fun buildResultData(memories: List<Memory>, query: String, limit: Int): MemoryQueryResultData = withContext(Dispatchers.IO) {
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         // 当 limit > 20 时，只返回标题和截断内容
@@ -699,10 +1113,12 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
 
 
     override fun validateParameters(tool: AITool): ToolValidationResult {
-        val query = tool.parameters.find { it.name == "query" }?.value
-        if (query.isNullOrBlank()) {
-            return ToolValidationResult(valid = false, errorMessage = "Missing or empty required parameter: query")
+        if (tool.name == "query_memory") {
+            val query = tool.parameters.find { it.name == "query" }?.value
+            if (query.isNullOrBlank()) {
+                return ToolValidationResult(valid = false, errorMessage = "Missing or empty required parameter: query")
+            }
         }
         return ToolValidationResult(valid = true)
     }
-} 
+}

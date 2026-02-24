@@ -19,6 +19,10 @@ fun createAndGetDefaultWorkspace(context: Context, chatId: String, projectType: 
 
     // 根据项目类型复制模板文件并创建配置
     when (projectType) {
+        "android" -> {
+            copyTemplateFiles(context, webContentDir, "android")
+            createProjectConfigIfNeeded(context, webContentDir, ProjectType.ANDROID)
+        }
         "node" -> {
             copyTemplateFiles(context, webContentDir, "node")
             createProjectConfigIfNeeded(context, webContentDir, ProjectType.NODE)
@@ -80,7 +84,7 @@ fun ensureWorkspaceDirExists(path: String): File {
 }
 
 private enum class ProjectType {
-    WEB, NODE, TYPESCRIPT, PYTHON, JAVA, GO, OFFICE, BLANK
+    WEB, ANDROID, NODE, TYPESCRIPT, PYTHON, JAVA, GO, OFFICE, BLANK
 }
 
 /**
@@ -104,6 +108,70 @@ private fun generateBlankProjectConfig(context: Context): String {
         "previewButtonLabel": ""
     },
     "commands": [],
+    "export": {
+        "enabled": false
+    }
+}
+""".trimIndent()
+}
+
+/**
+ * 生成Android项目配置JSON
+ */
+private fun generateAndroidProjectConfig(context: Context): String {
+    return """
+{
+    "projectType": "android",
+    "title": "${context.getString(R.string.workspace_project_android_title)}",
+    "description": "${context.getString(R.string.workspace_project_android_description)}",
+    "server": {
+        "enabled": false,
+        "port": 8080,
+        "autoStart": false
+    },
+    "preview": {
+        "type": "terminal",
+        "url": "",
+        "showPreviewButton": false,
+        "previewButtonLabel": ""
+    },
+    "commands": [
+        {
+            "id": "android_setup_env",
+            "label": "${context.getString(R.string.workspace_cmd_android_setup_env)}",
+            "command": "bash setup_android_env.sh",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_assemble_debug",
+            "label": "${context.getString(R.string.workspace_cmd_android_assemble_debug)}",
+            "command": "./gradlew assembleDebug",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_install_debug",
+            "label": "${context.getString(R.string.workspace_cmd_android_install_debug)}",
+            "command": "./gradlew installDebug",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_lint",
+            "label": "${context.getString(R.string.workspace_cmd_android_lint)}",
+            "command": "./gradlew lint",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "gradle_test",
+            "label": "${context.getString(R.string.workspace_cmd_android_test)}",
+            "command": "./gradlew test",
+            "workingDir": ".",
+            "shell": true
+        }
+    ],
     "export": {
         "enabled": false
     }
@@ -573,6 +641,7 @@ private fun createProjectConfigIfNeeded(context: Context, workspaceDir: File, pr
     if (!configFile.exists()) {
         val configContent = when (projectType) {
             ProjectType.WEB -> generateWebProjectConfig(context)
+            ProjectType.ANDROID -> generateAndroidProjectConfig(context)
             ProjectType.NODE -> generateNodeProjectConfig(context)
             ProjectType.TYPESCRIPT -> generateTypeScriptProjectConfig(context)
             ProjectType.PYTHON -> generatePythonProjectConfig(context)

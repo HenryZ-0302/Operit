@@ -50,6 +50,7 @@ import com.ai.assistance.operit.api.chat.llmprovider.EndpointCompleter
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.api.chat.llmprovider.LlamaProvider
 import com.ai.assistance.operit.api.chat.llmprovider.ModelListFetcher
+import com.ai.assistance.operit.data.collects.ApiProviderConfigs
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.model.ModelOption
@@ -92,37 +93,17 @@ fun ModelApiSettingsSection(
 
     // 获取每个提供商的默认模型名称
     fun getDefaultModelName(providerType: ApiProviderType): String {
-        return when (providerType) {
-            ApiProviderType.OPENAI -> "gpt-4o"
-            ApiProviderType.OPENAI_GENERIC -> ""
-            ApiProviderType.ANTHROPIC -> "claude-3-opus-20240229"
-            ApiProviderType.ANTHROPIC_GENERIC -> ""
-            ApiProviderType.GOOGLE -> "gemini-2.0-flash"
-            ApiProviderType.GEMINI_GENERIC -> "gemini-2.0-flash"
-            ApiProviderType.DEEPSEEK -> "deepseek-chat"
-            ApiProviderType.BAIDU -> "ernie-bot-4"
-            ApiProviderType.ALIYUN -> "qwen-max"
-            ApiProviderType.XUNFEI -> "spark3.5"
-            ApiProviderType.ZHIPU -> "glm-4.5"
-            ApiProviderType.BAICHUAN -> "baichuan4"
-            ApiProviderType.MOONSHOT -> "moonshot-v1-128k"
-            ApiProviderType.MISTRAL -> "codestral-latest"
-            ApiProviderType.SILICONFLOW -> "yi-1.5-34b"
-            ApiProviderType.OPENROUTER -> "google/gemini-pro"
-            ApiProviderType.INFINIAI -> "infini-mini"
-            ApiProviderType.ALIPAY_BAILING -> "Ling-1T"
-            ApiProviderType.DOUBAO -> "Doubao-pro-4k"
-            ApiProviderType.LMSTUDIO -> "meta-llama-3.1-8b-instruct"
-            ApiProviderType.MNN -> ""
-            ApiProviderType.LLAMA_CPP -> ""
-            ApiProviderType.PPINFRA -> "gpt-4o-mini"
-            ApiProviderType.OTHER -> ""
-        }
+        return ApiProviderConfigs.getDefaultModelName(providerType)
+    }
+
+    fun getEndpointOptions(providerType: ApiProviderType): List<Pair<String, String>>? {
+        return ApiProviderConfigs.getEndpointOptions(providerType)
+            ?.map { it.endpoint to it.label }
     }
 
     // 检查当前模型名称是否是某个提供商的默认值
     fun isDefaultModelName(modelName: String): Boolean {
-        return ApiProviderType.values().any { getDefaultModelName(it) == modelName }
+        return ApiProviderConfigs.isDefaultModelName(modelName)
     }
 
     // API编辑状态
@@ -130,7 +111,8 @@ fun ModelApiSettingsSection(
     var apiKeyInput by remember(config.id) { mutableStateOf(config.apiKey) }
     var modelNameInput by remember(config.id) { mutableStateOf(config.modelName) }
     var selectedApiProvider by remember(config.id) { mutableStateOf(config.apiProviderType) }
-    
+    var hasInitializedProviderEndpointSync by remember(config.id) { mutableStateOf(false) }
+
     // MNN特定配置状态
     var mnnForwardTypeInput by remember(config.id) { mutableStateOf(config.mnnForwardType) }
     var mnnThreadCountInput by remember(config.id) { mutableStateOf(config.mnnThreadCount.toString()) }
@@ -151,13 +133,18 @@ fun ModelApiSettingsSection(
     
     // Tool Call配置状态
     var enableToolCallInput by remember(config.id) { mutableStateOf(config.enableToolCall) }
-    
-    // DeepSeek推理模式配置状态 (仅DeepSeek)
-    var enableDeepseekReasoningInput by remember(config.id) { mutableStateOf(config.enableDeepseekReasoning) }
+    var strictToolCallInput by remember(config.id) { mutableStateOf(config.strictToolCall) }
 
     LaunchedEffect(config.id, selectedApiProvider) {
-        if (selectedApiProvider == ApiProviderType.MNN || selectedApiProvider == ApiProviderType.LLAMA_CPP) {
+        if (selectedApiProvider == ApiProviderType.MNN) {
             enableToolCallInput = false
+            strictToolCallInput = false
+        }
+    }
+
+    LaunchedEffect(enableToolCallInput) {
+        if (!enableToolCallInput) {
+            strictToolCallInput = false
         }
     }
 
@@ -175,7 +162,7 @@ fun ModelApiSettingsSection(
         val enableDirectVideoProcessing: Boolean,
         val enableGoogleSearch: Boolean,
         val enableToolCall: Boolean,
-        val enableDeepseekReasoning: Boolean,
+        val strictToolCall: Boolean,
     )
 
     // 保存设置的通用函数
@@ -197,7 +184,7 @@ fun ModelApiSettingsSection(
                     enableDirectVideoProcessing = state.enableDirectVideoProcessing,
                     enableGoogleSearch = state.enableGoogleSearch,
                     enableToolCall = state.enableToolCall,
-                    enableDeepseekReasoning = state.enableDeepseekReasoning,
+                    strictToolCall = state.strictToolCall,
                 )
 
                 EnhancedAIService.refreshAllServices(
@@ -222,7 +209,7 @@ fun ModelApiSettingsSection(
             enableDirectVideoProcessing = enableDirectVideoProcessingInput,
             enableGoogleSearch = enableGoogleSearchInput,
             enableToolCall = enableToolCallInput,
-            enableDeepseekReasoning = enableDeepseekReasoningInput,
+            strictToolCall = strictToolCallInput,
         )
 
         modelApiSettingsSaveScope.launch {
@@ -275,7 +262,7 @@ fun ModelApiSettingsSection(
                 enableDirectVideoProcessing = enableDirectVideoProcessingInput,
                 enableGoogleSearch = enableGoogleSearchInput,
                 enableToolCall = enableToolCallInput,
-                enableDeepseekReasoning = enableDeepseekReasoningInput,
+                strictToolCall = strictToolCallInput,
             )
         }
             .drop(1)
@@ -308,47 +295,18 @@ fun ModelApiSettingsSection(
 
     // 根据API提供商获取默认的API端点URL
     fun getDefaultApiEndpoint(providerType: ApiProviderType): String {
-        return when (providerType) {
-            ApiProviderType.OPENAI -> "https://api.openai.com/v1/chat/completions"
-            ApiProviderType.ANTHROPIC -> "https://api.anthropic.com/v1/messages"
-            ApiProviderType.ANTHROPIC_GENERIC -> ""
-            ApiProviderType.GOOGLE -> "https://generativelanguage.googleapis.com/v1beta/models"
-            // Gemini通用交给用户自定义端点
-            ApiProviderType.GEMINI_GENERIC -> ""
-            ApiProviderType.DEEPSEEK -> "https://api.deepseek.com/v1/chat/completions"
-            ApiProviderType.BAIDU ->
-                    "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions"
-            ApiProviderType.ALIYUN ->
-                    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-            ApiProviderType.XUNFEI -> "https://spark-api-open.xf-yun.com/v2/chat/completions"
-            ApiProviderType.ZHIPU ->
-                    "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-            ApiProviderType.BAICHUAN -> "https://api.baichuan-ai.com/v1/chat/completions"
-            ApiProviderType.MOONSHOT -> "https://api.moonshot.cn/v1/chat/completions"
-            ApiProviderType.MISTRAL -> "https://codestral.mistral.ai/v1/chat/completions"
-            ApiProviderType.SILICONFLOW -> "https://api.siliconflow.cn/v1/chat/completions"
-            ApiProviderType.OPENROUTER -> "https://openrouter.ai/api/v1/chat/completions"
-            ApiProviderType.INFINIAI -> "https://cloud.infini-ai.com/maas/v1/chat/completions"
-            ApiProviderType.ALIPAY_BAILING -> "https://api.tbox.cn/api/llm/v1/chat/completions"
-            ApiProviderType.DOUBAO -> "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
-            ApiProviderType.LMSTUDIO -> "http://localhost:1234/v1/chat/completions"
-            ApiProviderType.MNN -> "" // MNN本地推理不需要endpoint
-            ApiProviderType.LLAMA_CPP -> "" // llama.cpp本地推理不需要endpoint
-            ApiProviderType.PPINFRA -> "https://api.ppinfra.com/openai/v1/chat/completions"
-            ApiProviderType.OPENAI_GENERIC -> ""
-            ApiProviderType.OTHER -> ""
-        }
+        return ApiProviderConfigs.getDefaultApiEndpoint(providerType)
     }
 
     // 添加一个函数检查当前API端点是否为某个提供商的默认端点
     fun isDefaultApiEndpoint(endpoint: String): Boolean {
-        return ApiProviderType.values().any { getDefaultApiEndpoint(it) == endpoint }
+        return ApiProviderConfigs.isDefaultApiEndpoint(endpoint)
     }
 
     // 当API提供商改变时更新端点
     LaunchedEffect(selectedApiProvider) {
         AppLogger.d("ModelApiSettingsSection", "API提供商改变")
-        if (selectedApiProvider == ApiProviderType.OPENAI || selectedApiProvider == ApiProviderType.OPENAI_GENERIC || selectedApiProvider == ApiProviderType.GOOGLE
+        if (selectedApiProvider == ApiProviderType.OPENAI || selectedApiProvider == ApiProviderType.OPENAI_RESPONSES || selectedApiProvider == ApiProviderType.OPENAI_GENERIC || selectedApiProvider == ApiProviderType.GOOGLE
             || selectedApiProvider == ApiProviderType.GEMINI_GENERIC
             || selectedApiProvider == ApiProviderType.ANTHROPIC || selectedApiProvider == ApiProviderType.ANTHROPIC_GENERIC || selectedApiProvider == ApiProviderType.MISTRAL) {
             val inChina = LocationUtils.isDeviceInMainlandChina(context)
@@ -361,6 +319,13 @@ fun ModelApiSettingsSection(
             }
         } else {
             showRegionWarning = false
+        }
+
+        val shouldSyncEndpointByProviderChange = hasInitializedProviderEndpointSync
+        hasInitializedProviderEndpointSync = true
+        if (!shouldSyncEndpointByProviderChange) {
+            // 首次进入页面时保留持久化配置，避免把用户已选择的端点覆盖成默认值。
+            return@LaunchedEffect
         }
 
         // 非通用供应商（有强制端点的）切换时，强制重置为该供应商默认端点，避免从“其他供应商”等通用配置带入自定义值
@@ -451,6 +416,7 @@ fun ModelApiSettingsSection(
 
             val isMnnProvider = selectedApiProvider == ApiProviderType.MNN
             val isLlamaProvider = selectedApiProvider == ApiProviderType.LLAMA_CPP
+            val endpointOptions = getEndpointOptions(selectedApiProvider)
             if (isMnnProvider) {
                 MnnSettingsBlock(
                         mnnForwardTypeInput = mnnForwardTypeInput,
@@ -479,6 +445,64 @@ fun ModelApiSettingsSection(
                     }
                 )
             } else {
+                if (endpointOptions != null) {
+                    var showEndpointDialog by remember { mutableStateOf(false) }
+
+                    SettingsTextField(
+                        title = stringResource(R.string.api_endpoint),
+                        subtitle = stringResource(R.string.api_endpoint_placeholder),
+                        value = apiEndpointInput,
+                        onValueChange = {},
+                        enabled = true,
+                        readOnly = true,
+                        onClick = { showEndpointDialog = true },
+                        trailingContent = {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    )
+
+                    if (showEndpointDialog) {
+                        Dialog(onDismissRequest = { showEndpointDialog = false }) {
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = stringResource(R.string.api_endpoint),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    endpointOptions.forEach { (endpoint, label) ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    apiEndpointInput = endpoint
+                                                    showEndpointDialog = false
+                                                }
+                                                .padding(vertical = 10.dp, horizontal = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = endpoint,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
                 SettingsTextField(
                         title = stringResource(R.string.api_endpoint),
                         subtitle = stringResource(R.string.api_endpoint_placeholder),
@@ -492,6 +516,7 @@ fun ModelApiSettingsSection(
                                 imeAction = ImeAction.Next
                         )
                 )
+                }
 
             val completedEndpoint = EndpointCompleter.completeEndpoint(apiEndpointInput, selectedApiProvider)
             if (completedEndpoint != apiEndpointInput) {
@@ -724,19 +749,24 @@ fun ModelApiSettingsSection(
                 title = stringResource(R.string.enable_tool_call),
                 subtitle = stringResource(R.string.enable_tool_call_desc),
                 checked = enableToolCallInput,
-                onCheckedChange = { enableToolCallInput = it },
-                enabled = selectedApiProvider != ApiProviderType.MNN && selectedApiProvider != ApiProviderType.LLAMA_CPP
+                onCheckedChange = {
+                    enableToolCallInput = it
+                    if (!it) {
+                        strictToolCallInput = false
+                    }
+                },
+                enabled = selectedApiProvider != ApiProviderType.MNN
             )
-            
-            // DeepSeek推理模式开关 (仅DeepSeek)
-            if (selectedApiProvider == ApiProviderType.DEEPSEEK) {
+
+            if (enableToolCallInput && selectedApiProvider != ApiProviderType.MNN) {
                 SettingsSwitchRow(
-                        title = stringResource(R.string.enable_deepseek_reasoning),
-                        subtitle = stringResource(R.string.enable_deepseek_reasoning_desc),
-                            checked = enableDeepseekReasoningInput,
-                            onCheckedChange = { enableDeepseekReasoningInput = it }
-                    )
+                    title = stringResource(R.string.strict_tool_call),
+                    subtitle = stringResource(R.string.strict_tool_call_desc),
+                    checked = strictToolCallInput,
+                    onCheckedChange = { strictToolCallInput = it }
+                )
             }
+
         }
     }
 
@@ -1029,6 +1059,7 @@ fun ModelApiSettingsSection(
 private fun getProviderDisplayName(provider: ApiProviderType, context: android.content.Context): String {
     return when (provider) {
         ApiProviderType.OPENAI -> context.getString(R.string.provider_openai)
+        ApiProviderType.OPENAI_RESPONSES -> context.getString(R.string.provider_openai_responses)
         ApiProviderType.OPENAI_GENERIC -> context.getString(R.string.provider_openai_generic)
         ApiProviderType.ANTHROPIC -> context.getString(R.string.provider_anthropic)
         ApiProviderType.ANTHROPIC_GENERIC -> context.getString(R.string.provider_anthropic_generic)
@@ -1125,6 +1156,7 @@ internal fun SettingsTextField(
     onValueChange: (String) -> Unit,
     placeholder: String = "",
     enabled: Boolean = true,
+    readOnly: Boolean = false,
     singleLine: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
@@ -1132,14 +1164,24 @@ internal fun SettingsTextField(
     interactionSource: MutableInteractionSource? = null,
     valueFilter: ((String) -> String)? = null,
     trailingContent: @Composable (() -> Unit)? = null,
-    unitText: String? = null
+    unitText: String? = null,
+    onClick: (() -> Unit)? = null
 ) {
     val focusManager = LocalFocusManager.current
     val backgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
     val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+    val inputEnabled = enabled && !readOnly
 
     Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (onClick != null) {
+                        Modifier.clickable { onClick() }
+                    } else {
+                        Modifier
+                    }
+                ),
             shape = RoundedCornerShape(10.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
     ) {
@@ -1171,12 +1213,12 @@ internal fun SettingsTextField(
                     BasicTextField(
                             value = value,
                             onValueChange = { newValue ->
-                                if (!enabled) return@BasicTextField
+                                if (!inputEnabled) return@BasicTextField
                                 val filtered = valueFilter?.invoke(newValue) ?: newValue
                                 onValueChange(filtered)
                             },
                             singleLine = singleLine,
-                            enabled = enabled,
+                            enabled = inputEnabled,
                             keyboardOptions = keyboardOptions,
                             keyboardActions = keyboardActions,
                             visualTransformation = visualTransformation,
@@ -1606,6 +1648,7 @@ private fun ApiProviderDialog(
 private fun getProviderColor(provider: ApiProviderType): androidx.compose.ui.graphics.Color {
     return when (provider) {
         ApiProviderType.OPENAI -> MaterialTheme.colorScheme.primary
+        ApiProviderType.OPENAI_RESPONSES -> MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)
         ApiProviderType.OPENAI_GENERIC -> MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
         ApiProviderType.ANTHROPIC -> MaterialTheme.colorScheme.tertiary
         ApiProviderType.ANTHROPIC_GENERIC -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f)

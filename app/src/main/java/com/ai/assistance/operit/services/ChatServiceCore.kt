@@ -134,7 +134,7 @@ class ChatServiceCore(
             context = context,
             coroutineScope = coroutineScope,
             getEnhancedAiService = { enhancedAiService },
-            getChatHistory = { chatHistoryDelegate.chatHistory.value },
+            getChatHistory = { chatId -> chatHistoryDelegate.getChatHistory(chatId) },
             addMessageToChat = { chatId, message ->
                 chatHistoryDelegate.addMessageToChat(message, chatId)
             },
@@ -193,8 +193,20 @@ class ChatServiceCore(
     // ========== 消息处理相关 ==========
 
     /** 发送用户消息（使用 MessageCoordinationDelegate，包含总结逻辑） */
-    fun sendUserMessage(promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT) {
-        messageCoordinationDelegate.sendUserMessage(promptFunctionType)
+    fun sendUserMessage(
+        promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT,
+        roleCardIdOverride: String? = null,
+        chatIdOverride: String? = null,
+        messageTextOverride: String? = null,
+        proxySenderNameOverride: String? = null
+    ) {
+        messageCoordinationDelegate.sendUserMessage(
+            promptFunctionType = promptFunctionType,
+            roleCardIdOverride = roleCardIdOverride,
+            chatIdOverride = chatIdOverride,
+            messageTextOverride = messageTextOverride,
+            proxySenderNameOverride = proxySenderNameOverride
+        )
     }
 
     /** 取消当前消息 */
@@ -228,18 +240,38 @@ class ChatServiceCore(
     fun createNewChat(
         characterCardName: String? = null,
         group: String? = null,
-        inheritGroupFromCurrent: Boolean = true
+        inheritGroupFromCurrent: Boolean = true,
+        setAsCurrentChat: Boolean = true,
+        characterCardId: String? = null
     ) {
         chatHistoryDelegate.createNewChat(
             characterCardName = characterCardName,
             group = group,
-            inheritGroupFromCurrent = inheritGroupFromCurrent
+            inheritGroupFromCurrent = inheritGroupFromCurrent,
+            setAsCurrentChat = setAsCurrentChat,
+            characterCardId = characterCardId
         )
     }
 
     /** 切换聊天 */
     fun switchChat(chatId: String) {
         chatHistoryDelegate.switchChat(chatId)
+    }
+
+    /**
+     * 切换聊天（仅切换本地状态，不写回全局 currentChatId）。
+     * 悬浮窗可用此方法在窗口内切换会话，但不影响主界面。
+     */
+    fun switchChatLocal(chatId: String) {
+        chatHistoryDelegate.switchChat(chatId, syncToGlobal = false)
+    }
+
+    /**
+     * 将当前本地 chatId 写回全局 currentChatId，用于“返回主应用”时同步。
+     */
+    fun syncCurrentChatIdToGlobal() {
+        val chatId = chatHistoryDelegate.currentChatId.value ?: return
+        chatHistoryDelegate.switchChat(chatId, syncToGlobal = true)
     }
 
     /** 删除聊天历史 */

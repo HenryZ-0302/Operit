@@ -4,6 +4,7 @@ import android.content.Context
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.defaultTool.ToolGetter
 import com.ai.assistance.operit.data.model.AITool
+import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.integrations.tasker.triggerAIAgentAction
 import com.ai.assistance.operit.services.FloatingChatService
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * This file contains all tool registrations centralized for easier maintenance and integration It
@@ -147,6 +149,33 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
+    handler.registerTool(
+            name = "input_in_terminal_session",
+            dangerCheck = { true },
+            descriptionGenerator = { tool ->
+                val sessionId = tool.parameters.find { it.name == "session_id" }?.value
+                val control = tool.parameters.find { it.name == "control" }?.value ?: "-"
+                s(R.string.toolreg_input_in_terminal_session_desc, sessionId ?: "", control)
+            },
+            executor = { tool ->
+                val terminalTool = ToolGetter.getTerminalCommandExecutor(context)
+                terminalTool.inputInSession(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "get_terminal_session_screen",
+            dangerCheck = { false },
+            descriptionGenerator = { tool ->
+                val sessionId = tool.parameters.find { it.name == "session_id" }?.value ?: ""
+                s(R.string.toolreg_get_terminal_session_screen_desc, sessionId)
+            },
+            executor = { tool ->
+                val terminalTool = ToolGetter.getTerminalCommandExecutor(context)
+                terminalTool.getSessionScreen(tool)
+            }
+    )
+
     // 注册问题库查询工具
     handler.registerTool(
             name = "query_memory",
@@ -250,6 +279,30 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
+    // 注册批量移动记忆工具
+    handler.registerTool(
+            name = "move_memory",
+            dangerCheck = null,
+            descriptionGenerator = { tool ->
+                val sourceFolder = tool.parameters.find { it.name == "source_folder_path" }?.value
+                val targetFolder = tool.parameters.find { it.name == "target_folder_path" }?.value ?: ""
+                val titles = tool.parameters.find { it.name == "titles" }?.value
+                when {
+                    !titles.isNullOrBlank() && !sourceFolder.isNullOrBlank() ->
+                        "Move selected memories from '$sourceFolder' to '$targetFolder'"
+                    !titles.isNullOrBlank() ->
+                        "Move selected memories to '$targetFolder'"
+                    !sourceFolder.isNullOrBlank() ->
+                        "Move memories from '$sourceFolder' to '$targetFolder'"
+                    else -> "Move memories to '$targetFolder'"
+                }
+            },
+            executor = { tool ->
+                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
+                memoryTool.invoke(tool)
+            }
+    )
+
     // 注册链接记忆工具
     handler.registerTool(
             name = "link_memories",
@@ -259,6 +312,70 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
                 val targetTitle = tool.parameters.find { it.name == "target_title" }?.value ?: ""
                 val linkType = tool.parameters.find { it.name == "link_type" }?.value ?: "related"
                 s(R.string.toolreg_link_memories_desc, sourceTitle, targetTitle, linkType)
+            },
+            executor = { tool ->
+                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
+                memoryTool.invoke(tool)
+            }
+    )
+
+    // 注册查询记忆链接工具
+    handler.registerTool(
+            name = "query_memory_links",
+            dangerCheck = null,
+            descriptionGenerator = { tool ->
+                val linkId = tool.parameters.find { it.name == "link_id" }?.value
+                val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value
+                val targetTitle = tool.parameters.find { it.name == "target_title" }?.value
+                val linkType = tool.parameters.find { it.name == "link_type" }?.value
+                val locator = when {
+                    !linkId.isNullOrBlank() -> "link_id=$linkId"
+                    !sourceTitle.isNullOrBlank() || !targetTitle.isNullOrBlank() -> "${sourceTitle ?: "*"} -> ${targetTitle ?: "*"}"
+                    else -> "all links"
+                }
+                "Query memory links: $locator${if (!linkType.isNullOrBlank()) ", type=$linkType" else ""}"
+            },
+            executor = { tool ->
+                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
+                memoryTool.invoke(tool)
+            }
+    )
+
+    // 注册更新记忆链接工具
+    handler.registerTool(
+            name = "update_memory_link",
+            dangerCheck = null,
+            descriptionGenerator = { tool ->
+                val linkId = tool.parameters.find { it.name == "link_id" }?.value
+                val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value
+                val targetTitle = tool.parameters.find { it.name == "target_title" }?.value
+                val locator = when {
+                    !linkId.isNullOrBlank() -> "link_id=$linkId"
+                    !sourceTitle.isNullOrBlank() && !targetTitle.isNullOrBlank() -> "$sourceTitle -> $targetTitle"
+                    else -> "unknown link"
+                }
+                "Update memory link: $locator"
+            },
+            executor = { tool ->
+                val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
+                memoryTool.invoke(tool)
+            }
+    )
+
+    // 注册删除记忆链接工具
+    handler.registerTool(
+            name = "delete_memory_link",
+            dangerCheck = null,
+            descriptionGenerator = { tool ->
+                val linkId = tool.parameters.find { it.name == "link_id" }?.value
+                val sourceTitle = tool.parameters.find { it.name == "source_title" }?.value
+                val targetTitle = tool.parameters.find { it.name == "target_title" }?.value
+                val locator = when {
+                    !linkId.isNullOrBlank() -> "link_id=$linkId"
+                    !sourceTitle.isNullOrBlank() && !targetTitle.isNullOrBlank() -> "$sourceTitle -> $targetTitle"
+                    else -> "unknown link"
+                }
+                "Delete memory link: $locator"
             },
             executor = { tool ->
                 val memoryTool = ToolGetter.getMemoryQueryToolExecutor(context)
@@ -278,6 +395,118 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
                 handler
                     .getOrCreatePackageManager()
                     .executeUsePackageTool(tool.name, packageName)
+            }
+    )
+
+    handler.registerTool(
+            name = "package_proxy",
+            descriptionGenerator = { tool ->
+                val targetToolName = tool.parameters.find { it.name == "tool_name" }?.value ?: ""
+                "Proxy call to package tool: $targetToolName"
+            },
+            executor = { tool ->
+                val allowedParamNames = setOf("tool_name", "params")
+                val unknownParamNames = tool.parameters.map { it.name }.filter { it !in allowedParamNames }
+                if (unknownParamNames.isNotEmpty()) {
+                    return@registerTool ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Unexpected parameters: ${unknownParamNames.joinToString(", ")}. Only tool_name and params are allowed"
+                    )
+                }
+
+                val toolNameParams = tool.parameters.filter { it.name == "tool_name" }
+                if (toolNameParams.size != 1) {
+                    return@registerTool ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Exactly one tool_name parameter is required"
+                    )
+                }
+                val targetToolName = toolNameParams.first().value.trim()
+                if (targetToolName.isBlank()) {
+                    return@registerTool ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Missing required parameter: tool_name"
+                    )
+                }
+
+                if (targetToolName == "package_proxy") {
+                    return@registerTool ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "tool_name cannot be package_proxy"
+                    )
+                }
+
+                if (!targetToolName.contains(':')) {
+                    return@registerTool ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "tool_name must use packageName:toolName format"
+                    )
+                }
+
+                val paramsParams = tool.parameters.filter { it.name == "params" }
+                if (paramsParams.size != 1) {
+                    return@registerTool ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "Exactly one params parameter is required"
+                    )
+                }
+                val paramsRaw = paramsParams.first().value.trim()
+                if (paramsRaw.isBlank()) {
+                    return@registerTool ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "params must be a JSON object"
+                    )
+                }
+
+                val paramsObject = try {
+                    JSONObject(paramsRaw)
+                } catch (_: Exception) {
+                    return@registerTool ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = "params must be a valid JSON object"
+                    )
+                }
+
+                val forwardedParameters = mutableListOf<ToolParameter>()
+                val keys = paramsObject.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = paramsObject.opt(key)
+                    val valueString = when (value) {
+                        null, JSONObject.NULL -> "null"
+                        is String -> value
+                        else -> value.toString()
+                    }
+                    forwardedParameters.add(ToolParameter(name = key, value = valueString))
+                }
+
+                val proxiedTool = AITool(
+                    name = targetToolName,
+                    parameters = forwardedParameters
+                )
+                val proxiedResult = handler.executeTool(proxiedTool)
+                ToolResult(
+                    toolName = targetToolName,
+                    success = proxiedResult.success,
+                    result = proxiedResult.result,
+                    error = proxiedResult.error
+                )
             }
     )
 
@@ -335,6 +564,129 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             }
     )
 
+    handler.registerTool(
+            name = "start_web",
+            descriptionGenerator = { tool ->
+                val url = tool.parameters.find { it.name == "url" }?.value
+                if (url.isNullOrBlank()) "Start a web session" else "Start a web session at $url"
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "stop_web",
+            descriptionGenerator = { tool ->
+                val closeAll = tool.parameters.find { it.name == "close_all" }?.value
+                val sessionId = tool.parameters.find { it.name == "session_id" }?.value
+                if (closeAll.equals("true", ignoreCase = true)) {
+                    "Stop all web sessions"
+                } else {
+                    "Stop web session: ${sessionId ?: "(missing session_id)"}"
+                }
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_navigate",
+            descriptionGenerator = { tool ->
+                val sessionId = tool.parameters.find { it.name == "session_id" }?.value ?: ""
+                val url = tool.parameters.find { it.name == "url" }?.value ?: ""
+                "Navigate web session ${sessionId.take(8)} to $url"
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_eval",
+            descriptionGenerator = { tool ->
+                val sessionId = tool.parameters.find { it.name == "session_id" }?.value ?: ""
+                "Evaluate JavaScript in web session ${sessionId.take(8)}"
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_click",
+            descriptionGenerator = { tool ->
+                val ref = tool.parameters.find { it.name == "ref" }?.value ?: ""
+                "Click element by ref: $ref"
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_fill",
+            descriptionGenerator = { tool ->
+                val selector = tool.parameters.find { it.name == "selector" }?.value ?: ""
+                "Fill element: $selector"
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_file_upload",
+            descriptionGenerator = { tool ->
+                val sessionId = tool.parameters.find { it.name == "session_id" }?.value
+                val rawPaths = tool.parameters.find { it.name == "paths" }?.value
+                if (rawPaths.isNullOrBlank()) {
+                    "Resolve file chooser in web session ${sessionId?.take(8) ?: "(active)"} with cancel"
+                } else {
+                    "Resolve file chooser in web session ${sessionId?.take(8) ?: "(active)"} with provided paths"
+                }
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_wait_for",
+            descriptionGenerator = { tool ->
+                val selector = tool.parameters.find { it.name == "selector" }?.value
+                if (selector.isNullOrBlank()) {
+                    "Wait for web page load"
+                } else {
+                    "Wait for selector: $selector"
+                }
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
+    handler.registerTool(
+            name = "web_snapshot",
+            descriptionGenerator = { tool ->
+                val sessionId = tool.parameters.find { it.name == "session_id" }?.value ?: ""
+                "Snapshot web session ${sessionId.take(8)}"
+            },
+            executor = { tool ->
+                val webSessionTool = ToolGetter.getWebSessionTools(context)
+                webSessionTool.invoke(tool)
+            }
+    )
+
     // 休眠工具
     handler.registerTool(
             name = "sleep",
@@ -349,17 +701,17 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
                         tool.parameters.find { it.name == "duration_ms" }?.value?.toIntOrNull()
                                 ?: 1000
 
-                val limitedDuration = durationMs.coerceIn(0, 10000) // Limit to max 10 seconds
+                val safeDuration = durationMs.coerceAtLeast(0)
 
                 // Use runBlocking with Dispatchers.IO to ensure sleep happens on background thread
                 runBlocking(Dispatchers.IO) {
-                    delay(limitedDuration.toLong())
+                    delay(safeDuration.toLong())
                 }
 
                 ToolResult(
                         toolName = tool.name,
                         success = true,
-                        result = StringResultData("Slept for ${limitedDuration}ms")
+                        result = StringResultData("Slept for ${safeDuration}ms")
                 )
             }
     )
@@ -581,6 +933,26 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
             executor = { tool -> runBlocking(Dispatchers.IO) { chatManagerTool.listChats(tool) } }
     )
 
+    // 查找对话
+    handler.registerTool(
+            name = "find_chat",
+            descriptionGenerator = { tool ->
+                val query = tool.parameters.find { it.name == "query" }?.value ?: ""
+                s(R.string.toolreg_find_chat_desc, query)
+            },
+            executor = { tool -> runBlocking(Dispatchers.IO) { chatManagerTool.findChat(tool) } }
+    )
+
+    // 查询对话输入状态
+    handler.registerTool(
+            name = "agent_status",
+            descriptionGenerator = { tool ->
+                val chatId = tool.parameters.find { it.name == "chat_id" }?.value ?: ""
+                s(R.string.toolreg_agent_status_desc, chatId)
+            },
+            executor = { tool -> runBlocking(Dispatchers.IO) { chatManagerTool.agentStatus(tool) } }
+    )
+
     // 切换对话
     handler.registerTool(
             name = "switch_chat",
@@ -600,6 +972,13 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
                 s(R.string.toolreg_send_message_to_ai_desc, preview)
             },
             executor = { tool -> runBlocking(Dispatchers.IO) { chatManagerTool.sendMessageToAI(tool) } }
+    )
+
+    // 列出所有角色卡
+    handler.registerTool(
+            name = "list_character_cards",
+            descriptionGenerator = { _ -> s(R.string. toolreg_list_character_cards_desc) },
+            executor = { tool -> runBlocking(Dispatchers.IO) { chatManagerTool.listCharacterCards(tool) } }
     )
 
     handler.registerTool(

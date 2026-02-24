@@ -12,7 +12,7 @@ ffmpeg.js
 file_converter.js
 google_search.js
 github.js
-history_chat.js
+extended_chat.js
 nanobanana_draw.js
 qwen_draw.js
 super_admin.js
@@ -20,8 +20,13 @@ system_tools.js
 tasker.js
 tavily.js
 time.js
-various_output.js
+pollinations_draw.js
 various_search.js
 workflow.js
 xai_draw.js
 openai_draw.js
+all_about_myself.js
+vflow_trigger.js
+web.js
+windows_control
+zhipu_draw.js

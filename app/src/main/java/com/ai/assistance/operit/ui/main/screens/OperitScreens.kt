@@ -68,9 +68,11 @@ import com.ai.assistance.operit.ui.features.toolbox.screens.StreamMarkdownDemoSc
 import com.ai.assistance.operit.ui.features.toolbox.screens.TerminalAutoConfigToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.TerminalToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.ToolboxScreen
+import com.ai.assistance.operit.ui.features.toolbox.screens.ToolPkgComposeDslToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.UIDebuggerToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.DefaultAssistantGuideToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.ProcessLimitRemoverToolScreen
+import com.ai.assistance.operit.ui.features.toolbox.screens.sqlviewer.SqlViewerToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.ffmpegtoolbox.FFmpegToolboxScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.htmlpackager.HtmlPackagerScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.speechtotext.SpeechToTextToolScreen
@@ -141,6 +143,7 @@ sealed class Screen(
                     onNavigateToUserPreferences = { navigateTo(UserPreferencesSettings) },
                     onNavigateToModelConfig = { navigateTo(ModelConfig) },
                     onNavigateToModelPrompts = { navigateTo(ModelPromptsSettings) },
+                    onNavigateToPackageManager = { navigateTo(Packages) },
                     onLoading = onLoading,
                     onError = onError,
                     onGestureConsumed = onGestureConsumed
@@ -396,7 +399,18 @@ sealed class Screen(
                     onProcessLimitRemoverSelected = { navigateTo(ProcessLimitRemover) },
                     onHtmlPackagerSelected = { navigateTo(HtmlPackager) },
                     onAutoGlmOneClickSelected = { navigateTo(AutoGlmOneClick) },
-                    onAutoGlmToolSelected = { navigateTo(AutoGlmTool) }
+                    onAutoGlmToolSelected = { navigateTo(AutoGlmTool) },
+                    onSqlViewerSelected = { navigateTo(SqlViewer) },
+                    onTokenConfigSelected = { navigateTo(TokenConfig) },
+                    onToolPkgComposeDslSelected = { containerPackageName, uiModuleId, title ->
+                        navigateTo(
+                            ToolPkgComposeDsl(
+                                containerPackageName = containerPackageName,
+                                uiModuleId = uiModuleId,
+                                title = title
+                            )
+                        )
+                    }
             )
         }
     }
@@ -1022,6 +1036,34 @@ sealed class Screen(
         }
     }
 
+    data class ToolPkgComposeDsl(
+        val containerPackageName: String,
+        val uiModuleId: String,
+        val title: String
+    ) : Screen(parentScreen = Toolbox, navItem = NavItem.Toolbox) {
+        @Composable
+        override fun Content(
+                navController: NavController,
+                navigateTo: ScreenNavigationHandler,
+                updateNavItem: NavItemChangeHandler,
+                onGoBack: () -> Unit,
+                hasBackgroundImage: Boolean,
+                onLoading: (Boolean) -> Unit,
+                onError: (String) -> Unit,
+                onGestureConsumed: (Boolean) -> Unit
+        ) {
+            ToolPkgComposeDslToolScreen(
+                navController = navController,
+                containerPackageName = containerPackageName,
+                uiModuleId = uiModuleId,
+                fallbackTitle = title
+            )
+        }
+
+        @Composable
+        override fun getTitle(): String = title
+    }
+
     // Toolbox secondary screens
 
     data object FileManager :
@@ -1157,6 +1199,23 @@ sealed class Screen(
                 onGestureConsumed: (Boolean) -> Unit
         ) {
             LogcatToolScreen(navController = navController)
+        }
+    }
+
+    data object SqlViewer :
+            Screen(parentScreen = Toolbox, navItem = NavItem.Toolbox, titleRes = R.string.screen_title_sql_viewer) {
+        @Composable
+        override fun Content(
+                navController: NavController,
+                navigateTo: ScreenNavigationHandler,
+                updateNavItem: NavItemChangeHandler,
+                onGoBack: () -> Unit,
+                hasBackgroundImage: Boolean,
+                onLoading: (Boolean) -> Unit,
+                onError: (String) -> Unit,
+                onGestureConsumed: (Boolean) -> Unit
+        ) {
+            SqlViewerToolScreen(navController = navController)
         }
     }
 
@@ -1361,7 +1420,7 @@ sealed class Screen(
 
     // 获取屏幕标题
     @Composable
-    fun getTitle(): String = titleRes?.let { stringResource(it) } ?: ""
+    open fun getTitle(): String = titleRes?.let { stringResource(it) } ?: ""
 
     // 判断是否为二级屏幕
     val isSecondaryScreen: Boolean

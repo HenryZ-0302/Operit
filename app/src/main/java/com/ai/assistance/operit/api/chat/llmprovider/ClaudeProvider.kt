@@ -323,9 +323,9 @@ class ClaudeProvider(
         }
         
         // 检查是否包含图片链接
-        if (ImageLinkParser.hasImageLinks(textAfterMediaRemoval)) {
-            val imageLinks = ImageLinkParser.extractImageLinks(textAfterMediaRemoval)
-            val textWithoutLinks = ImageLinkParser.removeImageLinks(textAfterMediaRemoval).trim()
+        if (MediaLinkParser.hasImageLinks(textAfterMediaRemoval)) {
+            val imageLinks = MediaLinkParser.extractImageLinks(textAfterMediaRemoval)
+            val textWithoutLinks = MediaLinkParser.removeImageLinks(textAfterMediaRemoval).trim()
             
             // 添加图片
             imageLinks.forEach { link ->

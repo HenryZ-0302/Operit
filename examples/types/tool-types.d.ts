@@ -11,11 +11,11 @@ import {
     SleepResultData, SystemSettingData, AppOperationData, AppListData,
     DeviceInfoResultData, NotificationData, LocationData,
     UIPageResultData, UIActionResultData, CombinedOperationResultData, AutomationExecutionResultData,
-    CalculationResultData, FFmpegResultData, ADBResultData, IntentResultData, TerminalCommandResultData,
+    CalculationResultData, FFmpegResultData, ADBResultData, IntentResultData, TerminalCommandResultData, TerminalSessionScreenResultData,
     FilePartContentData, FileApplyResultData, WorkflowListResultData, WorkflowResultData, WorkflowDetailResultData,
-    StringResultData, ChatServiceStartResultData, ChatCreationResultData, ChatListResultData,
-    ChatSwitchResultData, MessageSendResultData, MemoryLinkResultData, GrepResultData,
-    ChatMessagesResultData
+    StringResultData, ChatServiceStartResultData, ChatCreationResultData, ChatListResultData, ChatFindResultData, AgentStatusResultData,
+    ChatSwitchResultData, MessageSendResultData, MemoryLinkResultData, MemoryLinkQueryResultData, GrepResultData,
+    ChatMessagesResultData, CharacterCardListResultData
 } from './results';
 
 /**
@@ -49,6 +49,15 @@ export interface ToolResultMap {
     // Network operations
     'http_request': HttpResponseData;
     'visit_web': VisitWebResultData;
+    'start_web': StringResultData;
+    'stop_web': StringResultData;
+    'web_navigate': StringResultData;
+    'web_eval': StringResultData;
+    'web_click': StringResultData;
+    'web_fill': StringResultData;
+    'web_wait_for': StringResultData;
+    'web_snapshot': StringResultData;
+    'web_file_upload': StringResultData;
     'multipart_request': HttpResponseData;
     'manage_cookies': HttpResponseData;
 
@@ -99,6 +108,7 @@ export interface ToolResultMap {
 
     // Terminal operations
     'execute_terminal': TerminalCommandResultData;
+    'get_terminal_session_screen': TerminalSessionScreenResultData;
 
     // Workflow operations
     'get_all_workflows': WorkflowListResultData;
@@ -113,10 +123,15 @@ export interface ToolResultMap {
     'start_chat_service': ChatServiceStartResultData;
     'create_new_chat': ChatCreationResultData;
     'list_chats': ChatListResultData;
+    'find_chat': ChatFindResultData;
+    'agent_status': AgentStatusResultData;
     'switch_chat': ChatSwitchResultData;
+
     'send_message_to_ai': MessageSendResultData;
+    'list_character_cards': CharacterCardListResultData;
     'get_chat_messages': ChatMessagesResultData;
 
     // Memory operations
     'link_memories': MemoryLinkResultData;
+    'query_memory_links': MemoryLinkQueryResultData;
 } 

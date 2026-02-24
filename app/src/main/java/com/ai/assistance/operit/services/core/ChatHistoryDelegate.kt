@@ -53,6 +53,14 @@ class ChatHistoryDelegate(
     private val _chatHistory = MutableStateFlow<List<ChatMessage>>(emptyList())
     val chatHistory: StateFlow<List<ChatMessage>> = _chatHistory.asStateFlow()
 
+    suspend fun getChatHistory(chatId: String): List<ChatMessage> {
+        return if (chatId == _currentChatId.value) {
+            _chatHistory.value
+        } else {
+            chatHistoryManager.loadChatMessages(chatId)
+        }
+    }
+
     private val _showChatHistorySelector = MutableStateFlow(false)
     val showChatHistorySelector: StateFlow<Boolean> = _showChatHistorySelector.asStateFlow()
 
@@ -198,10 +206,16 @@ class ChatHistoryDelegate(
                 return@withLock
             }
 
+            val boundCardName = _chatHistories.value.firstOrNull { it.id == chatId }?.characterCardName
+            val boundCard = boundCardName?.let { characterCardManager.findCharacterCardByName(it) }
             val activeCard = characterCardManager.activeCharacterCardFlow.first()
-            val opening = activeCard.openingStatement
-            val roleName = activeCard.name
-            AppLogger.d(TAG, "获取角色卡信息 - 名称: $roleName, 开场白长度: ${opening.length}, 是否为空: ${opening.isBlank()}")
+            val effectiveCard = boundCard ?: activeCard
+            val opening = effectiveCard.openingStatement
+            val roleName = effectiveCard.name
+            if (boundCard == null && boundCardName != null) {
+                AppLogger.w(TAG, "绑定角色卡未找到，回退使用当前活跃角色卡: $boundCardName")
+            }
+            AppLogger.d(TAG, "获取角色卡信息 - 名称: $roleName, 开场白长度: ${opening.length}, 是否为空: ${opening.isBlank()}, 绑定角色卡: $boundCardName")
 
             // 使用数据库中的消息作为基准，但优先使用内存中的消息（如果已加载）
             val currentMessages = if (_chatHistory.value.isNotEmpty() && _chatHistory.value.size >= dbMessages.size) {
@@ -213,25 +227,33 @@ class ChatHistoryDelegate(
             AppLogger.d(TAG, "当前消息数量: ${currentMessages.size}, 现有AI消息索引: $existingIndex")
 
             if (existingIndex >= 0) {
+                val existing = currentMessages[existingIndex]
+                val isOpeningMessage = existing.provider.isBlank() && existing.modelName.isBlank()
                 if (opening.isNotBlank()) {
-                    val existing = currentMessages[existingIndex]
-                    if (existing.content != opening || existing.roleName != roleName) {
-                        AppLogger.d(TAG, "更新现有开场白消息 - 原内容长度: ${existing.content.length}, 新内容长度: ${opening.length}, 原角色名: ${existing.roleName}, 新角色名: $roleName")
-                        val updated = existing.copy(content = opening, roleName = roleName)
-                        currentMessages[existingIndex] = updated
-                        _chatHistory.value = currentMessages
-                        chatHistoryManager.updateMessage(chatId, updated)
-                        AppLogger.d(TAG, "开场白消息更新完成")
+                    if (isOpeningMessage) {
+                        if (existing.content != opening || existing.roleName != roleName) {
+                            AppLogger.d(TAG, "更新现有开场白消息 - 原内容长度: ${existing.content.length}, 新内容长度: ${opening.length}, 原角色名: ${existing.roleName}, 新角色名: $roleName")
+                            val updated = existing.copy(content = opening, roleName = roleName)
+                            currentMessages[existingIndex] = updated
+                            _chatHistory.value = currentMessages
+                            chatHistoryManager.updateMessage(chatId, updated)
+                            AppLogger.d(TAG, "开场白消息更新完成")
+                        } else {
+                            AppLogger.d(TAG, "开场白内容未变化，无需更新")
+                        }
                     } else {
-                        AppLogger.d(TAG, "开场白内容未变化，无需更新")
+                        AppLogger.d(TAG, "已有AI消息非开场白，跳过同步")
                     }
                 } else {
-                    val existing = currentMessages[existingIndex]
-                    AppLogger.d(TAG, "开场白为空，删除现有AI消息，时间戳: ${existing.timestamp}")
-                    currentMessages.removeAt(existingIndex)
-                    _chatHistory.value = currentMessages
-                    chatHistoryManager.deleteMessage(chatId, existing.timestamp)
-                    AppLogger.d(TAG, "AI消息删除完成")
+                    if (isOpeningMessage) {
+                        AppLogger.d(TAG, "开场白为空，删除现有AI开场白消息，时间戳: ${existing.timestamp}")
+                        currentMessages.removeAt(existingIndex)
+                        _chatHistory.value = currentMessages
+                        chatHistoryManager.deleteMessage(chatId, existing.timestamp)
+                        AppLogger.d(TAG, "AI消息删除完成")
+                    } else {
+                        AppLogger.d(TAG, "开场白为空但现有AI消息非开场白，跳过删除")
+                    }
                 }
             } else if (opening.isNotBlank()) {
                 val openingMessage = ChatMessage(
@@ -268,7 +290,9 @@ class ChatHistoryDelegate(
     fun createNewChat(
         characterCardName: String? = null,
         group: String? = null,
-        inheritGroupFromCurrent: Boolean = true
+        inheritGroupFromCurrent: Boolean = true,
+        setAsCurrentChat: Boolean = true,
+        characterCardId: String? = null
     ) {
         coroutineScope.launch {
             val (inputTokens, outputTokens, windowSize) = getChatStatistics()
@@ -280,24 +304,30 @@ class ChatHistoryDelegate(
             
             // 获取当前活跃的角色卡
             val activeCard = characterCardManager.activeCharacterCardFlow.first()
+            val resolvedCard =
+                characterCardId
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { characterCardManager.getCharacterCard(it) }
+                    ?: activeCard
             
-            // 确定角色卡名称：如果参数指定了则使用参数，否则使用当前活跃的角色卡
-            val effectiveCharacterCardName = characterCardName ?: activeCard.name
+            // 确定角色卡名称：如果参数指定了则使用参数，否则使用目标角色卡
+            val effectiveCharacterCardName = characterCardName ?: resolvedCard.name
             
             // 创建新对话，如果有当前对话则继承其分组，并绑定角色卡
             val newChat = chatHistoryManager.createNewChat(
                 group = group,
                 inheritGroupFromChatId = inheritGroupFromChatId,
-                characterCardName = effectiveCharacterCardName
+                characterCardName = effectiveCharacterCardName,
+                setAsCurrentChat = setAsCurrentChat
             )
             
             // --- 新增：检查并添加开场白（只在使用活跃角色卡时添加） ---
-            if (characterCardName == null && activeCard.openingStatement.isNotBlank()) {
+            if (characterCardName == null && resolvedCard.openingStatement.isNotBlank()) {
                 val openingMessage = ChatMessage(
                     sender = "ai",
-                    content = activeCard.openingStatement,
+                    content = resolvedCard.openingStatement,
                     timestamp = System.currentTimeMillis(),
-                    roleName = activeCard.name, // 使用角色卡的名称
+                    roleName = resolvedCard.name, // 使用角色卡的名称
                     provider = "", // 开场白不是AI生成，使用空值
                     modelName = "" // 开场白不是AI生成，使用空值
                 )
@@ -315,32 +345,41 @@ class ChatHistoryDelegate(
             
             // 现在通过标准流程切换到新对话，让collector处理消息加载
             // 这样可以避免竞态条件
-            chatHistoryManager.setCurrentChatId(newChat.id)
-            // _currentChatId.value will be updated by the collector
-            // loadChatMessages will also be called by the collector
+            if (setAsCurrentChat) {
+                chatHistoryManager.setCurrentChatId(newChat.id)
+                // _currentChatId.value will be updated by the collector
+                // loadChatMessages will also be called by the collector
 
-            onTokenStatisticsLoaded(newChat.id, 0, 0, 0)
+                onTokenStatisticsLoaded(newChat.id, 0, 0, 0)
+            }
         }
     }
 
     /** 切换聊天 */
-    fun switchChat(chatId: String) {
+    fun switchChat(chatId: String, syncToGlobal: Boolean = true) {
         coroutineScope.launch {
             // 切换对话时，禁止添加消息
             allowAddMessage.set(false)
-            AppLogger.d(TAG, "切换对话到 $chatId，已禁止添加消息")
-            
+            AppLogger.d(TAG, "切换对话到 $chatId (syncToGlobal=$syncToGlobal)，已禁止添加消息")
+
             val (inputTokens, outputTokens, windowSize) = getChatStatistics()
             saveCurrentChat(inputTokens, outputTokens, windowSize) // 切换前使用正确的窗口大小保存
 
-            chatHistoryManager.setCurrentChatId(chatId)
-            // _currentChatId.value will be updated by the collector, no need to set it here.
-            // loadChatMessages(chatId) is also called by the collector.
+            if (syncToGlobal) {
+                chatHistoryManager.setCurrentChatId(chatId)
+                // _currentChatId.value will be updated by the collector, no need to set it here.
+                // loadChatMessages(chatId) is also called by the collector.
 
-            // 等待切换完成后再滚动到底部
-            withTimeoutOrNull(500) {
-                _currentChatId.first { it == chatId }
+                // 等待切换完成后再滚动到底部
+                withTimeoutOrNull(500) {
+                    _currentChatId.first { it == chatId }
+                }
+            } else {
+                // 本地切换：只更新内存态（供悬浮窗使用），不写回 DataStore。
+                _currentChatId.value = chatId
+                loadChatMessages(chatId)
             }
+
             onScrollToBottom()
         }
     }
@@ -587,16 +626,20 @@ class ChatHistoryDelegate(
      *   - 不存在：追加到内存，并持久化。
      */
     suspend fun addMessageToChat(message: ChatMessage, chatIdOverride: String? = null) {
-        // 如果当前不允许添加消息（正在切换对话），则忽略
-        if (!allowAddMessage.get()) {
-            AppLogger.d(TAG, "当前不允许添加消息（正在切换对话），忽略消息: timestamp=${message.timestamp}")
-            return
-        }
-        
         historyUpdateMutex.withLock {
             val targetChatId = chatIdOverride ?: _currentChatId.value ?: return@withLock
 
             val isCurrentChat = (targetChatId == _currentChatId.value)
+
+            // 仅在切换当前会话时阻止写入，后台会话仍允许写入
+            if (isCurrentChat && !allowAddMessage.get()) {
+                AppLogger.d(
+                    TAG,
+                    "当前会话正在切换，跳过内存刷新但继续持久化消息: timestamp=${message.timestamp}"
+                )
+                chatHistoryManager.updateMessage(targetChatId, message)
+                return@withLock
+            }
 
             if (!isCurrentChat) {
                     // 非当前会话：使用“更新或插入”语义，避免每个chunk都插入新消息

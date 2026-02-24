@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.AutoMode
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Check
@@ -93,6 +95,7 @@ fun PackageManagerScreen(
     // State for script execution
     var showScriptExecution by remember { mutableStateOf(false) }
     var selectedTool by remember { mutableStateOf<PackageTool?>(null) }
+    var selectedToolPackageName by remember { mutableStateOf<String?>(null) }
     var scriptExecutionResult by remember { mutableStateOf<ToolResult?>(null) }
 
     // State for snackbar
@@ -114,7 +117,9 @@ fun PackageManagerScreen(
             val imported = importedPackages.value.toSet()
 
             imported
-                .mapNotNull { packageName -> packagesMap[packageName] }
+                .mapNotNull { packageName ->
+                    packagesMap[packageName] ?: packageManager.getPackageTools(packageName)
+                }
                 .sortedBy { it.name }
                 .associate { toolPackage ->
                     toolPackage.name to toolPackage.env
@@ -161,7 +166,11 @@ fun PackageManagerScreen(
                         when (selectedTab) {
                             PackageTab.PACKAGES -> {
                                 val fileNameNonNull = fileName ?: return@launch
-                                if (!fileNameNonNull.endsWith(".js")) {
+                                val lowerFileName = fileNameNonNull.lowercase()
+                                val supported =
+                                    lowerFileName.endsWith(".js") ||
+                                        lowerFileName.endsWith(".toolpkg")
+                                if (!supported) {
                                     snackbarHostState.showSnackbar(message = context.getString(R.string.package_js_only))
                                     return@launch
                                 }
@@ -178,7 +187,7 @@ fun PackageManagerScreen(
 
                                         packageManager.importPackageFromExternalStorage(tempFile.absolutePath)
 
-                                        val available = packageManager.getAvailablePackages()
+                                        val available = packageManager.getTopLevelAvailablePackages(forceRefresh = true)
                                         val imported = packageManager.getImportedPackages()
                                         val errors = packageManager.getPackageLoadErrors()
 
@@ -220,7 +229,7 @@ fun PackageManagerScreen(
         try {
             val loadResult =
                 withContext(Dispatchers.IO) {
-                    val available = packageManager.getAvailablePackages()
+                    val available = packageManager.getTopLevelAvailablePackages(forceRefresh = true)
                     val imported = packageManager.getImportedPackages()
                     val errors = packageManager.getPackageLoadErrors()
                     Triple(available, imported, errors)
@@ -462,24 +471,41 @@ fun PackageManagerScreen(
                                 ) {
                                     val packages = availablePackages.value
 
-                                    val automaticPackages = packages.filterKeys {
+                                    fun isDrawPackage(packageName: String): Boolean {
+                                        val normalizedName = packageName.lowercase()
+                                        return normalizedName.endsWith("_draw") || normalizedName.endsWith("draw")
+                                    }
+
+                                    val toolPkgPackages =
+                                        packages.filterKeys { packageManager.isToolPkgContainer(it) }
+                                    val nonToolPkgPackages =
+                                        packages.filterKeys { !packageManager.isToolPkgContainer(it) }
+                                    val drawPackages = nonToolPkgPackages.filterKeys { isDrawPackage(it) }
+                                    val nonDrawPackages = nonToolPkgPackages.filterKeys { !isDrawPackage(it) }
+                                    val automaticPackages = nonDrawPackages.filterKeys {
                                         it.lowercase().startsWith("automatic")
                                     }
-                                    val experimentalPackages = packages.filterKeys {
+                                    val experimentalPackages = nonDrawPackages.filterKeys {
                                         it.lowercase().startsWith("experimental")
                                     }
-                                    val otherPackages = packages.filterKeys {
+                                    val otherPackages = nonDrawPackages.filterKeys {
                                         !it.lowercase().startsWith("automatic") && !it.lowercase()
                                             .startsWith("experimental")
                                     }
 
                                     val groupedPackages =
                                         linkedMapOf<String, Map<String, ToolPackage>>()
+                                    if (toolPkgPackages.isNotEmpty()) {
+                                        groupedPackages["ToolPkg"] = toolPkgPackages
+                                    }
                                     if (automaticPackages.isNotEmpty()) {
                                         groupedPackages["Automatic"] = automaticPackages
                                     }
                                     if (experimentalPackages.isNotEmpty()) {
                                         groupedPackages["Experimental"] = experimentalPackages
+                                    }
+                                    if (drawPackages.isNotEmpty()) {
+                                        groupedPackages["Draw"] = drawPackages
                                     }
                                     if (otherPackages.isNotEmpty()) {
                                         groupedPackages["Other"] = otherPackages
@@ -488,7 +514,9 @@ fun PackageManagerScreen(
                                     // 在Composable上下文中预先获取颜色
                                     val automaticColor = MaterialTheme.colorScheme.primary
                                     val experimentalColor = MaterialTheme.colorScheme.tertiary
-                                    val otherColor = MaterialTheme.colorScheme.secondary
+                                    val drawColor = MaterialTheme.colorScheme.secondary
+                                    val toolPkgColor = MaterialTheme.colorScheme.primary
+                                    val otherColor = MaterialTheme.colorScheme.onSurfaceVariant
 
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize(),
@@ -499,6 +527,8 @@ fun PackageManagerScreen(
                                             val categoryColor = when (category) {
                                                 "Automatic" -> automaticColor
                                                 "Experimental" -> experimentalColor
+                                                "Draw" -> drawColor
+                                                "ToolPkg" -> toolPkgColor
                                                 else -> otherColor
                                             }
 
@@ -507,16 +537,24 @@ fun PackageManagerScreen(
                                                 key = { it }) { packageName ->
                                                 val isFirstInCategory =
                                                     packageName == packagesInCategory.keys.first()
+                                                val categoryTagText =
+                                                    if (category == "ToolPkg") {
+                                                        context.getString(R.string.package_category_plugin)
+                                                    } else {
+                                                        category
+                                                    }
 
                                                 PackageListItemWithTag(
                                                     packageName = packageName,
                                                     toolPackage = packagesInCategory[packageName],
+                                                    packageManager = packageManager,
                                                     isImported = visibleImportedPackages.value.contains(
                                                         packageName
                                                     ),
-                                                    categoryTag = if (isFirstInCategory) category else null,
+                                                    categoryTag = if (isFirstInCategory) categoryTagText else null,
                                                     category = category, // 传递完整的分类信息
                                                     categoryColor = categoryColor,
+                                                    isProminent = category == "ToolPkg",
                                                     onPackageClick = {
                                                         selectedPackage = packageName
                                                         showDetails = true
@@ -590,7 +628,7 @@ fun PackageManagerScreen(
                     }
 
                     PackageTab.SKILLS -> {
-                        SkillManagerScreen(
+                        SkillConfigScreen(
                             skillRepository = skillRepository,
                             snackbarHostState = snackbarHostState,
                             onNavigateToSkillMarket = onNavigateToSkillMarket
@@ -613,11 +651,19 @@ fun PackageManagerScreen(
                         ?: "",
                     toolPackage = availablePackages.value[selectedPackage],
                     packageManager = packageManager,
-                    onRunScript = { tool ->
+                    onRunScript = { toolPackageName, tool ->
+                        selectedToolPackageName = toolPackageName
                         selectedTool = tool
                         showScriptExecution = true
                     },
-                    onDismiss = { showDetails = false },
+                    onDismiss = {
+                        showDetails = false
+                        scope.launch {
+                            val imported = withContext(Dispatchers.IO) { packageManager.getImportedPackages() }
+                            importedPackages.value = imported
+                            visibleImportedPackages.value = imported.toList()
+                        }
+                    },
                     onPackageDeleted = {
                         showDetails = false
                         scope.launch {
@@ -629,7 +675,7 @@ fun PackageManagerScreen(
                             isLoading = true
                             val loadResult =
                                 withContext(Dispatchers.IO) {
-                                    val available = packageManager.getAvailablePackages()
+                                    val available = packageManager.getTopLevelAvailablePackages(forceRefresh = true)
                                     val imported = packageManager.getImportedPackages()
                                     available to imported
                                 }
@@ -651,7 +697,7 @@ fun PackageManagerScreen(
             // Script Execution Dialog
             if (showScriptExecution && selectedTool != null && selectedPackage != null) {
                 ScriptExecutionDialog(
-                    packageName = selectedPackage!!,
+                    packageName = selectedToolPackageName ?: selectedPackage!!,
                     tool = selectedTool!!,
                     packageManager = packageManager,
                     initialResult = scriptExecutionResult,
@@ -659,6 +705,7 @@ fun PackageManagerScreen(
                     onDismiss = {
                         showScriptExecution = false
                         scriptExecutionResult = null
+                        selectedToolPackageName = null
                     }
                 )
             }
@@ -939,32 +986,79 @@ private fun PackageEnvironmentVariablesDialog(
 private fun PackageListItemWithTag(
     packageName: String,
     toolPackage: ToolPackage?,
+    packageManager: PackageManager,
     isImported: Boolean,
     categoryTag: String?,
     category: String, // 新增分类参数
     categoryColor: Color,
+    isProminent: Boolean = false,
     onPackageClick: () -> Unit,
     onToggleImport: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    Surface(
-        onClick = onPackageClick,
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface
-    ) {
-        Column {
-            // 分类标签（仅在有标签时显示）
-            if (categoryTag != null) {
-                Row(
-                    modifier = Modifier
+    val containerDisplayName =
+        if (packageManager.isToolPkgContainer(packageName)) {
+            packageManager
+                .getToolPkgContainerDetails(
+                    packageName = packageName,
+                    resolveContext = context
+                )
+                ?.displayName
+                ?.takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+    val packageDisplayName =
+        toolPackage
+            ?.displayName
+            ?.resolve(context)
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    val displayName = containerDisplayName ?: packageDisplayName ?: toolPackage?.name ?: packageName
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // 分类标签（仅在有标签时显示）
+        if (categoryTag != null) {
+            Row(
+                modifier =
+                    Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                        .padding(
+                            horizontal = if (isProminent) 4.dp else 16.dp,
+                            vertical = if (isProminent) 8.dp else 6.dp
+                        ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (isProminent) {
                     Surface(
-                        modifier = Modifier
-                            .width(3.dp)
-                            .height(12.dp),
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.36f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Apps,
+                                contentDescription = null,
+                                modifier = Modifier.size(12.dp),
+                                tint = categoryColor
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = categoryTag,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = categoryColor,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                } else {
+                    Surface(
+                        modifier =
+                            Modifier
+                                .width(3.dp)
+                                .height(12.dp),
                         color = categoryColor,
                         shape = RoundedCornerShape(1.5.dp)
                     ) {}
@@ -977,21 +1071,46 @@ private fun PackageListItemWithTag(
                     )
                 }
             }
+        }
 
+        Surface(
+            onClick = onPackageClick,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .then(if (isProminent) Modifier.padding(horizontal = 4.dp) else Modifier),
+            color =
+                if (isProminent) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.24f)
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+            tonalElevation = if (isProminent) 2.dp else 0.dp,
+            shadowElevation = 0.dp,
+            shape = if (isProminent) RoundedCornerShape(14.dp) else RoundedCornerShape(0.dp)
+        ) {
             // 主要内容行
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = 16.dp,
-                        vertical = if (categoryTag != null) 4.dp else 8.dp
-                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical =
+                                if (isProminent) {
+                                    if (categoryTag != null) 10.dp else 12.dp
+                                } else {
+                                    if (categoryTag != null) 4.dp else 8.dp
+                                }
+                        ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = when (category) {
                         "Automatic" -> Icons.Default.AutoMode
                         "Experimental" -> Icons.Default.Science
+                        "Draw" -> Icons.Default.Palette
+                        "ToolPkg" -> Icons.Default.Apps
                         "Other" -> Icons.Default.Widgets
                         else -> Icons.Default.Extension
                     },
@@ -1002,9 +1121,9 @@ private fun PackageListItemWithTag(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = toolPackage?.name ?: packageName,
+                        text = displayName,
                         style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = if (isProminent) FontWeight.SemiBold else FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

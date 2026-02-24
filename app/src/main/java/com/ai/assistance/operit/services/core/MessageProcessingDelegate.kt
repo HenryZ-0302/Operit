@@ -7,6 +7,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.core.chat.AIMessageManager
+import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.agent.PhoneAgentJobRegistry
 import com.ai.assistance.operit.data.model.*
 import com.ai.assistance.operit.data.model.InputProcessingState as EnhancedInputProcessingState
@@ -20,6 +21,7 @@ import com.ai.assistance.operit.data.preferences.WaifuPreferences
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.ui.floating.ui.fullscreen.XmlTextProcessor
 import com.ai.assistance.operit.ui.features.chat.webview.workspace.WorkspaceBackupManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -44,7 +46,7 @@ class MessageProcessingDelegate(
         private val context: Context,
         private val coroutineScope: CoroutineScope,
         private val getEnhancedAiService: () -> EnhancedAIService?,
-        private val getChatHistory: () -> List<ChatMessage>,
+        private val getChatHistory: suspend (String) -> List<ChatMessage>,
         private val addMessageToChat: suspend (String, ChatMessage) -> Unit,
         private val saveCurrentChat: () -> Unit,
         private val showErrorMessage: (String) -> Unit,
@@ -58,6 +60,11 @@ class MessageProcessingDelegate(
     companion object {
         private const val TAG = "MessageProcessingDelegate"
         private const val STREAM_SCROLL_THROTTLE_MS = 200L
+
+        private val sharedIsLoading = MutableStateFlow(false)
+        private val sharedActiveStreamingChatIds = MutableStateFlow<Set<String>>(emptySet())
+        private val loadingByInstance = ConcurrentHashMap<String, Boolean>()
+        private val activeChatIdsByInstance = ConcurrentHashMap<String, Set<String>>()
     }
 
     // 角色卡管理器
@@ -72,11 +79,9 @@ class MessageProcessingDelegate(
     private val _userMessage = MutableStateFlow(TextFieldValue(""))
     val userMessage: StateFlow<TextFieldValue> = _userMessage.asStateFlow()
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    val isLoading: StateFlow<Boolean> = sharedIsLoading.asStateFlow()
 
-    private val _activeStreamingChatIds = MutableStateFlow<Set<String>>(emptySet())
-    val activeStreamingChatIds: StateFlow<Set<String>> = _activeStreamingChatIds.asStateFlow()
+    val activeStreamingChatIds: StateFlow<Set<String>> = sharedActiveStreamingChatIds.asStateFlow()
 
     private val _inputProcessingStateByChatId =
         MutableStateFlow<Map<String, EnhancedInputProcessingState>>(emptyMap())
@@ -101,6 +106,8 @@ class MessageProcessingDelegate(
     private val lastScrollEmitMsByChatKey = ConcurrentHashMap<String, AtomicLong>()
     private val suppressIdleCompletedStateByChatId = ConcurrentHashMap<String, Boolean>()
     private val pendingAsyncSummaryUiByChatId = ConcurrentHashMap<String, Boolean>()
+
+    private val instanceKey = "MPD-${System.identityHashCode(this)}"
 
     private fun chatKey(chatId: String?): String = chatId ?: "__DEFAULT_CHAT__"
 
@@ -133,8 +140,13 @@ class MessageProcessingDelegate(
             .filter { it != "__DEFAULT_CHAT__" }
             .toSet()
 
-        _activeStreamingChatIds.value = activeChatIds
-        _isLoading.value = anyLoading
+        loadingByInstance[instanceKey] = anyLoading
+        activeChatIdsByInstance[instanceKey] = activeChatIds
+
+        sharedActiveStreamingChatIds.value = activeChatIdsByInstance.values
+            .flatten()
+            .toSet()
+        sharedIsLoading.value = loadingByInstance.values.any { it }
     }
 
     private fun setChatInputProcessingState(chatId: String?, state: EnhancedInputProcessingState) {
@@ -217,9 +229,12 @@ class MessageProcessingDelegate(
     fun sendUserMessage(
             attachments: List<AttachmentInfo> = emptyList(),
             chatId: String,
+            messageTextOverride: String? = null,
+            proxySenderNameOverride: String? = null,
             workspacePath: String? = null,
             workspaceEnv: String? = null,
             promptFunctionType: PromptFunctionType = PromptFunctionType.CHAT,
+            roleCardId: String,
             enableThinking: Boolean = false,
             thinkingGuidance: Boolean = false,
             enableMemoryQuery: Boolean = true, // 新增参数
@@ -230,23 +245,26 @@ class MessageProcessingDelegate(
             isAutoContinuation: Boolean = false, // 标识是否为自动续写
             enableSummary: Boolean = true
     ) {
-        if (_userMessage.value.text.isBlank() && attachments.isEmpty() && !isAutoContinuation) return
+        val rawMessageText = messageTextOverride ?: _userMessage.value.text
+        if (rawMessageText.isBlank() && attachments.isEmpty() && !isAutoContinuation) return
         val chatRuntime = runtimeFor(chatId)
         if (chatRuntime.isLoading.value) {
             return
         }
 
-        val originalMessageText = _userMessage.value.text.trim()
+        val originalMessageText = rawMessageText.trim()
         var messageText = originalMessageText
         
-        _userMessage.value = TextFieldValue("")
+        if (messageTextOverride == null) {
+            _userMessage.value = TextFieldValue("")
+        }
         chatRuntime.isLoading.value = true
         updateGlobalLoadingState()
         setChatInputProcessingState(chatId, EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing)))
 
         coroutineScope.launch(Dispatchers.IO) {
             // 检查这是否是聊天中的第一条用户消息（忽略AI的开场白）
-            val isFirstMessage = getChatHistory().none { it.sender == "user" }
+            val isFirstMessage = getChatHistory(chatId).none { it.sender == "user" }
             if (isFirstMessage && chatId != null) {
                 val newTitle =
                     when {
@@ -271,6 +289,7 @@ class MessageProcessingDelegate(
             // 1. 使用 AIMessageManager 构建最终消息
             val finalMessageContent = AIMessageManager.buildUserMessageContent(
                 messageText,
+                proxySenderNameOverride,
                 attachments,
                 enableMemoryQuery,
                 enableWorkspaceAttachment,
@@ -294,24 +313,29 @@ class MessageProcessingDelegate(
                 roleName = context.getString(R.string.message_role_user) // 用户消息的角色名固定为"用户"
             )
 
-            // 在发送消息前，同步工作区状态
+            val toolHandler = AIToolHandler.getInstance(context)
+            var workspaceToolHookSession: WorkspaceBackupManager.WorkspaceToolHookSession? = null
+
+            // 在消息发送期间临时挂载 workspace hook，结束后卸载
             if (!workspacePath.isNullOrBlank()) {
-                setChatInputProcessingState(
-                    chatId,
-                    EnhancedInputProcessingState.Processing(context.getString(R.string.message_workspace_backing_up))
-                )
                 try {
-                    AppLogger.d(TAG, "Syncing workspace state for timestamp ${userMessage.timestamp}")
-                    WorkspaceBackupManager.getInstance(context).syncState(workspacePath, userMessage.timestamp, workspaceEnv)
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Workspace sync failed", e)
-                    // 报告一个非致命错误，不会中断消息流程
-                    _nonFatalErrorEvent.emit(context.getString(R.string.message_workspace_sync_failed, e.message))
-                } finally {
-                    setChatInputProcessingState(
-                        chatId,
-                        EnhancedInputProcessingState.Processing(context.getString(R.string.message_processing))
+                    val session =
+                        WorkspaceBackupManager.getInstance(context)
+                            .createWorkspaceToolHookSession(
+                                workspacePath = workspacePath,
+                                workspaceEnv = workspaceEnv,
+                                messageTimestamp = userMessage.timestamp,
+                                chatId = chatId
+                            )
+                    workspaceToolHookSession = session
+                    toolHandler.addToolHook(session)
+                    AppLogger.d(
+                        TAG,
+                        "Workspace hook attached for timestamp=${userMessage.timestamp}, path=$workspacePath"
                     )
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Failed to attach workspace hook", e)
+                    _nonFatalErrorEvent.emit(context.getString(R.string.message_workspace_sync_failed, e.message))
                 }
             }
 
@@ -327,6 +351,7 @@ class MessageProcessingDelegate(
             var shouldNotifyTurnComplete = false
             var isWaifuModeEnabled = false
             var didStreamAutoRead = false
+            val effectiveRoleCardId = roleCardId
             try {
                 // if (!NetworkUtils.isNetworkAvailable(context)) {
                 //     withContext(Dispatchers.Main) { showErrorMessage("网络连接不可用") }
@@ -375,18 +400,20 @@ class MessageProcessingDelegate(
                 val startTime = System.currentTimeMillis()
                 val deferred = CompletableDeferred<Unit>()
 
+                val userPreferencesManager = UserPreferencesManager.getInstance(context)
+
                 // 获取角色信息用于通知
                 val (characterName, avatarUri) = try {
-                    val activeCard = characterCardManager.activeCharacterCardFlow.first()
-                    val userPreferencesManager = UserPreferencesManager.getInstance(context)
-                    val avatar = userPreferencesManager.getAiAvatarForCharacterCardFlow(activeCard.id).first()
-                    Pair(activeCard.name, avatar)
+                    val roleCard = characterCardManager.getCharacterCardFlow(effectiveRoleCardId).first()
+                    val avatar =
+                        userPreferencesManager.getAiAvatarForCharacterCardFlow(roleCard.id).first()
+                    Pair(roleCard.name, avatar)
                 } catch (e: Exception) {
                     AppLogger.e(TAG, "获取角色信息失败: ${e.message}", e)
                     Pair(null, null)
                 }
 
-                val chatHistory = getChatHistory()
+                val chatHistory = getChatHistory(activeChatId)
 
                 // 根据enableSummary控制Token阈值检查和Token超限回调
                 val effectiveMaxTokens = if (enableSummary) maxTokens else 0
@@ -420,7 +447,9 @@ class MessageProcessingDelegate(
                     },
                     onTokenLimitExceeded = effectiveOnTokenLimitExceeded,
                     characterName = characterName,
-                    avatarUri = avatarUri
+                    avatarUri = avatarUri,
+                    roleCardId = effectiveRoleCardId,
+                    proxySenderName = proxySenderNameOverride
                 )
 
                 // 将字符串流共享，以便多个收集器可以使用
@@ -445,7 +474,7 @@ class MessageProcessingDelegate(
 
                 // 获取当前激活角色卡的名称
                 val currentRoleName = try {
-                    characterCardManager.activeCharacterCardFlow.first().name
+                    characterCardManager.getCharacterCardFlow(effectiveRoleCardId).first().name
                 } catch (e: Exception) {
                     "Operit" // 默认角色名
                 }
@@ -485,74 +514,97 @@ class MessageProcessingDelegate(
                 }
                 
                 // 启动一个独立的协程来收集流内容并持续更新数据库
+                val streamCollectionResult = CompletableDeferred<Throwable?>()
                 chatRuntime.streamCollectionJob =
                     coroutineScope.launch(Dispatchers.IO) {
-                        val contentBuilder = StringBuilder()
-                        val autoReadBuffer = StringBuilder()
-                        var isFirstAutoReadSegment = true
-                        val endChars = ".,!?;:，。！？；：\n"
+                        try {
+                            val contentBuilder = StringBuilder()
+                            val autoReadBuffer = StringBuilder()
+                            var isFirstAutoReadSegment = true
+                            val endChars = ".,!?;:，。！？；：\n"
+                            val autoReadStream = XmlTextProcessor.processStreamToText(sharedCharStream)
 
-                        fun flushAutoReadSegment(segment: String, interrupt: Boolean) {
-                            val trimmed = segment.trim()
-                            if (trimmed.isNotEmpty()) {
-                                didStreamAutoRead = true
-                                speakMessage(trimmed, interrupt)
-                            }
-                        }
-
-                        fun findFirstEndCharIndex(text: CharSequence): Int {
-                            for (i in 0 until text.length) {
-                                val c = text[i]
-                                if (endChars.indexOf(c) >= 0) return i
-                            }
-                            return -1
-                        }
-
-                        fun tryFlushAutoRead() {
-                            if (!getIsAutoReadEnabled()) return
-                            if (isWaifuModeEnabled) return
-                            while (true) {
-                                val endIdx = findFirstEndCharIndex(autoReadBuffer)
-                                val shouldFlushByLen = endIdx < 0 && autoReadBuffer.length >= 50
-                                if (endIdx < 0 && !shouldFlushByLen) return
-
-                                val cutIdx = if (endIdx >= 0) endIdx + 1 else autoReadBuffer.length
-                                val seg = autoReadBuffer.substring(0, cutIdx)
-                                autoReadBuffer.delete(0, cutIdx)
-
-                                flushAutoReadSegment(seg, interrupt = isFirstAutoReadSegment)
-                                isFirstAutoReadSegment = false
-                            }
-                        }
-
-                        sharedCharStream.collect { chunk ->
-                            contentBuilder.append(chunk)
-                            val content = contentBuilder.toString()
-                            val updatedMessage = aiMessage.copy(content = content)
-                            // 防止后续读取不到
-                            aiMessage.content = content
-
-                            autoReadBuffer.append(chunk)
-                            tryFlushAutoRead()
-                            
-                            // 只有在非waifu模式下才显示流式更新
-                            if (!isWaifuModeEnabled) {
-                                if (chatId != null) {
-                                    addMessageToChat(chatId, updatedMessage)
+                            fun flushAutoReadSegment(segment: String, interrupt: Boolean) {
+                                val trimmed = segment.trim()
+                                if (trimmed.isNotEmpty()) {
+                                    didStreamAutoRead = true
+                                    speakMessage(trimmed, interrupt)
                                 }
-                                tryEmitScrollToBottomThrottled(chatId)
                             }
-                        }
 
-                        if (getIsAutoReadEnabled() && !isWaifuModeEnabled) {
-                            val remaining = autoReadBuffer.toString()
-                            autoReadBuffer.clear()
-                            flushAutoReadSegment(remaining, interrupt = isFirstAutoReadSegment)
+                            fun findFirstEndCharIndex(text: CharSequence): Int {
+                                for (i in 0 until text.length) {
+                                    val c = text[i]
+                                    if (endChars.indexOf(c) >= 0) return i
+                                }
+                                return -1
+                            }
+
+                            fun tryFlushAutoRead() {
+                                if (!getIsAutoReadEnabled()) return
+                                if (isWaifuModeEnabled) return
+                                while (true) {
+                                    val endIdx = findFirstEndCharIndex(autoReadBuffer)
+                                    val shouldFlushByLen = endIdx < 0 && autoReadBuffer.length >= 50
+                                    if (endIdx < 0 && !shouldFlushByLen) return
+
+                                    val cutIdx = if (endIdx >= 0) endIdx + 1 else autoReadBuffer.length
+                                    val seg = autoReadBuffer.substring(0, cutIdx)
+                                    autoReadBuffer.delete(0, cutIdx)
+
+                                    flushAutoReadSegment(seg, interrupt = isFirstAutoReadSegment)
+                                    isFirstAutoReadSegment = false
+                                }
+                            }
+
+                            val autoReadJob = launch {
+                                autoReadStream.collect { char ->
+                                    autoReadBuffer.append(char)
+                                    tryFlushAutoRead()
+                                }
+                            }
+
+                            sharedCharStream.collect { chunk ->
+                                contentBuilder.append(chunk)
+                                val content = contentBuilder.toString()
+                                val updatedMessage = aiMessage.copy(content = content)
+                                // 防止后续读取不到
+                                aiMessage.content = content
+                                
+                                // 只有在非waifu模式下才显示流式更新
+                                if (!isWaifuModeEnabled) {
+                                    if (chatId != null) {
+                                        addMessageToChat(chatId, updatedMessage)
+                                    }
+                                    tryEmitScrollToBottomThrottled(chatId)
+                                }
+                            }
+
+                            autoReadJob.join()
+
+                            if (getIsAutoReadEnabled() && !isWaifuModeEnabled) {
+                                val remaining = autoReadBuffer.toString()
+                                autoReadBuffer.clear()
+                                flushAutoReadSegment(remaining, interrupt = isFirstAutoReadSegment)
+                            }
+                        } catch (t: Throwable) {
+                            if (!streamCollectionResult.isCompleted) {
+                                streamCollectionResult.complete(t)
+                            }
+                            throw t
+                        } finally {
+                            if (!streamCollectionResult.isCompleted) {
+                                streamCollectionResult.complete(null)
+                            }
                         }
                     }
 
                 // 等待流完成，以便finally块可以正确执行来更新UI状态
                 deferred.await()
+                val streamCollectionError = streamCollectionResult.await()
+                if (streamCollectionError != null) {
+                    throw streamCollectionError
+                }
 
                 val stateAfterStream =
                     _inputProcessingStateByChatId.value[chatKey(chatId)]
@@ -590,8 +642,17 @@ class MessageProcessingDelegate(
                     aiMessageProvider = { aiMessage },
                     shouldNotifyTurnComplete = shouldNotifyTurnComplete,
                     serviceForTurnComplete = serviceForTurnComplete,
-                    skipFinalAutoRead = didStreamAutoRead && !isWaifuModeEnabled
+                    skipFinalAutoRead = didStreamAutoRead && !isWaifuModeEnabled,
+                    roleCardId = effectiveRoleCardId
                 )
+
+                workspaceToolHookSession?.let { session ->
+                    runCatching { toolHandler.removeToolHook(session) }
+                        .onFailure { AppLogger.w(TAG, "Failed to remove workspace hook", it) }
+                    runCatching { session.close() }
+                        .onFailure { AppLogger.w(TAG, "Failed to close workspace hook session", it) }
+                }
+
                 cleanupRuntimeAfterSend(chatRuntime)
             }
         }
@@ -603,12 +664,22 @@ class MessageProcessingDelegate(
         aiMessageProvider: () -> ChatMessage,
         shouldNotifyTurnComplete: Boolean,
         serviceForTurnComplete: EnhancedAIService?,
-        skipFinalAutoRead: Boolean
+        skipFinalAutoRead: Boolean,
+        roleCardId: String
     ) {
         // 修改为使用 try-catch 来检查变量是否已初始化，而不是使用 ::var.isInitialized
         try {
             val aiMessage = aiMessageProvider()
-            val finalContent = aiMessage.content
+            val sharedStream = aiMessage.contentStream as? SharedStream<String>
+            val replayChunks = sharedStream?.replayCache
+            // 优先使用共享流的全量重放缓存重建最终文本，避免完成信号早于收集协程处理尾部字符时丢字。
+            val finalContent =
+                if (!replayChunks.isNullOrEmpty()) {
+                    replayChunks.joinToString(separator = "")
+                } else {
+                    aiMessage.content
+                }
+            aiMessage.content = finalContent
 
             var deferTurnCompleteToAsyncJob = false
             withContext(Dispatchers.IO) {
@@ -625,7 +696,7 @@ class MessageProcessingDelegate(
 
                     // 获取当前角色名
                     val currentRoleName = try {
-                        characterCardManager.activeCharacterCardFlow.first().name
+                        characterCardManager.getCharacterCardFlow(roleCardId).first().name
                     } catch (e: Exception) {
                         "Operit" // 默认角色名
                     }
@@ -729,6 +800,9 @@ class MessageProcessingDelegate(
             }
         } catch (e: UninitializedPropertyAccessException) {
             AppLogger.d(TAG, "AI消息未初始化，跳过流清理步骤")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            AppLogger.d(TAG, "消息收尾阶段被取消，跳过waifu收尾处理")
+            throw e
         } catch (e: Exception) {
             AppLogger.e(TAG, "处理waifu模式时出错", e)
             try {

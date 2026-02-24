@@ -42,7 +42,7 @@ android-project/
 ## 🛠️ 快速开始
 
 ### 1. 环境要求
-- ✅ **JDK 8+** (推荐 JDK 17)
+- ✅ **JDK 17+**（必需）
 - ✅ **Gradle** (已包含 Wrapper)
 - ✅ **Android SDK** (可选，用于完整编译)
 
@@ -157,6 +157,42 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
 - 此模板可以在 Operit 的 Ubuntu 环境中构建
 - 完整编译需要安装 Android SDK
 - 推荐使用 Android Studio 进行完整开发
+
+### ⚠️ ARM64 环境 AAPT2 替换（必需）
+
+Gradle 会自动从 Google Maven 下载 AAPT2，但官方仅提供 x86_64 版本，
+在 ARM64 环境下会无法运行，必须替换为社区维护的 ARM64 版本。
+
+**下载来源**（AndroidIDE 社区移植版）：
+- GitHub: https://github.com/AndroidIDEOfficial/platform-tools
+- Release: https://github.com/AndroidIDEOfficial/platform-tools/releases/tag/v34.0.4
+- ARM64 aapt2: https://github.com/AndroidIDEOfficial/platform-tools/releases/download/v34.0.4/aapt2-arm64-v8a
+
+**步骤 1：替换 SDK build-tools 的 aapt2**
+```bash
+cd $ANDROID_SDK/build-tools/34.0.0/
+wget -O aapt2 https://github.com/AndroidIDEOfficial/platform-tools/releases/download/v34.0.4/aapt2-arm64-v8a
+chmod +x aapt2
+./aapt2 version
+```
+
+**步骤 2：替换 Gradle 缓存中的 aapt2**（最关键）
+```bash
+# 进入 Gradle 缓存的 aapt2 目录（注意 hash 目录因环境不同而变化）
+cd ~/.gradle/caches/modules-2/files-2.1/com.android.tools.build/aapt2/8.6.0-11315950/<hash>/
+cp $ANDROID_SDK/build-tools/34.0.0/aapt2 .
+zip -f aapt2-8.6.0-11315950-linux.jar aapt2
+```
+
+**可选：替换 transforms 缓存中的 aapt2**
+```bash
+find ~/.gradle/caches/transforms-4 -name "aapt2" -type f -exec cp $ANDROID_SDK/build-tools/34.0.0/aapt2 {} \;
+```
+
+**重新编译**
+```bash
+./gradlew clean assembleDebug --no-daemon
+```
 
 ⚠️ **关于包名**  
 - 默认包名为 `com.java.myapplication`

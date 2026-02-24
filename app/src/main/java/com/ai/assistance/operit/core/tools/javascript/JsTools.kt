@@ -172,6 +172,126 @@ fun getJsToolsDefinition(): String {
                     }
                     return toolCall("visit_web", params);
                 },
+                startWeb: (options) => {
+                    const params = { ...(options || {}) };
+                    if (params.headers !== undefined && typeof params.headers === 'object') {
+                        params.headers = JSON.stringify(params.headers);
+                    }
+                    return toolCall("start_web", params);
+                },
+                stopWeb: (sessionIdOrOptions) => {
+                    if (typeof sessionIdOrOptions === 'string') {
+                        const sid = String(sessionIdOrOptions).trim();
+                        return toolCall("stop_web", sid ? { session_id: sid } : {});
+                    }
+                    return toolCall("stop_web", sessionIdOrOptions || {});
+                },
+                webNavigate: (sessionId, url, headers) => {
+                    const params = { url };
+                    if (sessionId !== undefined && sessionId !== null && String(sessionId).trim() !== "") {
+                        params.session_id = String(sessionId);
+                    }
+                    if (headers !== undefined && headers !== null) {
+                        params.headers = typeof headers === 'object' ? JSON.stringify(headers) : headers;
+                    }
+                    return toolCall("web_navigate", params);
+                },
+                webEval: (sessionId, script, timeoutMs) => {
+                    const params = { script };
+                    if (sessionId !== undefined && sessionId !== null && String(sessionId).trim() !== "") {
+                        params.session_id = String(sessionId);
+                    }
+                    if (timeoutMs !== undefined) params.timeout_ms = String(timeoutMs);
+                    return toolCall("web_eval", params);
+                },
+                webClick: (options) => {
+                    if (!options || typeof options !== 'object' || Array.isArray(options)) {
+                        throw new Error("webClick only accepts one options object");
+                    }
+
+                    const params = { ...options };
+
+                    if (params.session_id !== undefined && params.session_id !== null) {
+                        const sid = String(params.session_id).trim();
+                        if (sid) params.session_id = sid;
+                        else delete params.session_id;
+                    }
+
+                    if (params.ref !== undefined && params.ref !== null) params.ref = String(params.ref).trim();
+                    if (!params.ref) throw new Error("web_click requires ref");
+
+                    if (
+                        params.selector !== undefined ||
+                        params.index !== undefined ||
+                        params.double_click !== undefined ||
+                        params.timeout_ms !== undefined
+                    ) {
+                        throw new Error("webClick options do not support selector/index/double_click/timeout_ms");
+                    }
+
+                    if (params.element !== undefined && params.element !== null) params.element = String(params.element);
+
+                    if (params.button !== undefined && params.button !== null) {
+                        const button = String(params.button).trim();
+                        if (button !== 'left' && button !== 'right' && button !== 'middle') {
+                            throw new Error("button must be one of: left, right, middle");
+                        }
+                        params.button = button;
+                    }
+
+                    if (params.modifiers !== undefined) {
+                        if (!Array.isArray(params.modifiers)) {
+                            throw new Error("modifiers must be an array");
+                        }
+                        const allowedModifiers = ['Alt', 'Control', 'ControlOrMeta', 'Meta', 'Shift'];
+                        const normalized = params.modifiers.map((m) => String(m).trim());
+                        const invalid = normalized.filter((m) => !allowedModifiers.includes(m));
+                        if (invalid.length > 0) {
+                            throw new Error("Invalid modifiers: " + invalid.join(', '));
+                        }
+                        params.modifiers = JSON.stringify(normalized);
+                    }
+
+                    if (params.doubleClick !== undefined) params.doubleClick = params.doubleClick ? "true" : "false";
+
+                    return toolCall("web_click", params);
+                },
+                webFill: (sessionId, selector, value) => {
+                    const params = { selector, value: String(value ?? "") };
+                    if (sessionId !== undefined && sessionId !== null && String(sessionId).trim() !== "") {
+                        params.session_id = String(sessionId);
+                    }
+                    return toolCall("web_fill", params);
+                },
+                webWaitFor: (sessionId, selector, timeoutMs) => {
+                    const params = {};
+                    if (sessionId !== undefined && sessionId !== null && String(sessionId).trim() !== "") {
+                        params.session_id = String(sessionId);
+                    }
+                    if (selector !== undefined && selector !== null) params.selector = String(selector);
+                    if (timeoutMs !== undefined) params.timeout_ms = String(timeoutMs);
+                    return toolCall("web_wait_for", params);
+                },
+                webSnapshot: (sessionId, options) => {
+                    const params = { ...(options || {}) };
+                    if (sessionId !== undefined && sessionId !== null && String(sessionId).trim() !== "") {
+                        params.session_id = String(sessionId);
+                    }
+                    return toolCall("web_snapshot", params);
+                },
+                webFileUpload: (sessionId, paths) => {
+                    const params = {};
+                    if (sessionId !== undefined && sessionId !== null && String(sessionId).trim() !== "") {
+                        params.session_id = String(sessionId);
+                    }
+                    if (paths !== undefined) {
+                        if (!Array.isArray(paths)) {
+                            throw new Error("paths must be an array");
+                        }
+                        params.paths = JSON.stringify(paths.map((p) => String(p)));
+                    }
+                    return toolCall("web_file_upload", params);
+                },
                 // 新增增强版HTTP请求
                 http: (options) => {
                     const params = { ...options };
@@ -239,11 +359,27 @@ fun getJsToolsDefinition(): String {
                 // 执行终端命令 - 一次性收集输出
                 terminal: {
                     create: (sessionName) => toolCall("create_terminal_session", { session_name: sessionName }),
-                    exec: (sessionId, command) => {
+                    exec: (sessionId, command, timeoutMs) => {
                         const params = { session_id: sessionId, command };
+                        if (timeoutMs !== undefined && timeoutMs !== null) {
+                            params.timeout_ms = String(timeoutMs);
+                        }
                         return toolCall("execute_in_terminal_session", params);
                     },
-                    close: (sessionId) => toolCall("close_terminal_session", { session_id: sessionId })
+                    screen: (sessionId) => toolCall("get_terminal_session_screen", { session_id: sessionId }),
+                    close: (sessionId) => toolCall("close_terminal_session", { session_id: sessionId }),
+                    input: (sessionId, options = {}) => {
+                        const params = { session_id: sessionId };
+                        if (options && typeof options === "object") {
+                            if (options.input !== undefined && options.input !== null) {
+                                params.input = String(options.input);
+                            }
+                            if (options.control !== undefined && options.control !== null) {
+                                params.control = String(options.control);
+                            }
+                        }
+                        return toolCall("input_in_terminal_session", params);
+                    }
                 },
                 // 执行Intent
                 intent: (options = {}) => {
@@ -377,6 +513,15 @@ fun getJsToolsDefinition(): String {
                 },
                 // 删除记忆
                 deleteMemory: (title) => toolCall("delete_memory", { title }),
+                // 批量移动记忆（按标题列表和/或来源文件夹筛选）
+                move: (targetFolderPath, titles, sourceFolderPath) => {
+                    const params = { target_folder_path: targetFolderPath };
+                    if (titles) {
+                        params.titles = Array.isArray(titles) ? titles.join(",") : String(titles);
+                    }
+                    if (sourceFolderPath !== undefined && sourceFolderPath !== null) params.source_folder_path = String(sourceFolderPath);
+                    return toolCall("move_memory", params);
+                },
                 // 链接记忆
                 link: (sourceTitle, targetTitle, linkType, weight, description) => {
                     const params = { source_title: sourceTitle, target_title: targetTitle };
@@ -384,6 +529,37 @@ fun getJsToolsDefinition(): String {
                     if (weight !== undefined) params.weight = weight;
                     if (description) params.description = description;
                     return toolCall("link_memories", params);
+                },
+                // 查询记忆链接
+                queryLinks: (linkId, sourceTitle, targetTitle, linkType, limit) => {
+                    const params = {};
+                    if (linkId !== undefined && linkId !== null) params.link_id = linkId;
+                    if (sourceTitle) params.source_title = sourceTitle;
+                    if (targetTitle) params.target_title = targetTitle;
+                    if (linkType) params.link_type = linkType;
+                    if (limit !== undefined) params.limit = limit;
+                    return toolCall("query_memory_links", params);
+                },
+                // 更新记忆链接（优先按 linkId）
+                updateLink: (linkId, sourceTitle, targetTitle, linkType, newLinkType, weight, description) => {
+                    const params = {};
+                    if (linkId !== undefined && linkId !== null) params.link_id = linkId;
+                    if (sourceTitle) params.source_title = sourceTitle;
+                    if (targetTitle) params.target_title = targetTitle;
+                    if (linkType) params.link_type = linkType;
+                    if (newLinkType) params.new_link_type = newLinkType;
+                    if (weight !== undefined) params.weight = weight;
+                    if (description !== undefined) params.description = description;
+                    return toolCall("update_memory_link", params);
+                },
+                // 删除记忆链接（优先按 linkId）
+                deleteLink: (linkId, sourceTitle, targetTitle, linkType) => {
+                    const params = {};
+                    if (linkId !== undefined && linkId !== null) params.link_id = linkId;
+                    if (sourceTitle) params.source_title = sourceTitle;
+                    if (targetTitle) params.target_title = targetTitle;
+                    if (linkType) params.link_type = linkType;
+                    return toolCall("delete_memory_link", params);
                 }
             },
             // 计算功能
@@ -470,9 +646,24 @@ fun getJsToolsDefinition(): String {
                 // 启动对话服务
                 startService: () => toolCall("start_chat_service", {}),
                 // 创建新对话
-                createNew: () => toolCall("create_new_chat", {}),
+                createNew: (group, setAsCurrentChat, characterCardId) => {
+                    const params = {};
+                    if (group !== undefined && group !== null && String(group).trim() !== "") {
+                        params.group = String(group);
+                    }
+                    if (setAsCurrentChat !== undefined && setAsCurrentChat !== null) {
+                        params.set_as_current_chat = String(setAsCurrentChat);
+                    }
+                    if (characterCardId !== undefined && characterCardId !== null && String(characterCardId).trim() !== "") {
+                        params.character_card_id = String(characterCardId);
+                    }
+                    return toolCall("create_new_chat", params);
+                },
                 // 列出所有对话
                 listAll: () => toolCall("list_chats", {}),
+                listChats: (params = {}) => toolCall("list_chats", params),
+                findChat: (params = {}) => toolCall("find_chat", params),
+                agentStatus: (chatId) => toolCall("agent_status", { chat_id: chatId }),
                 // 切换对话
                 switchTo: (chatId) => toolCall("switch_chat", { chat_id: chatId }),
                 getMessages: (chatId, order, limit) => {
@@ -482,11 +673,15 @@ fun getJsToolsDefinition(): String {
                     return toolCall("get_chat_messages", params);
                 },
                 // 发送消息给AI
-                sendMessage: (message, chatId) => {
+                sendMessage: (message, chatId, roleCardId, senderName) => {
                     const params = { message };
                     if (chatId) params.chat_id = chatId;
+                    if (roleCardId) params.role_card_id = roleCardId;
+                    if (senderName) params.sender_name = senderName;
                     return toolCall("send_message_to_ai", params);
-                }
+                },
+                // 列出所有角色卡
+                listCharacterCards: () => toolCall("list_character_cards", {})
             }
         };
     """.trimIndent()

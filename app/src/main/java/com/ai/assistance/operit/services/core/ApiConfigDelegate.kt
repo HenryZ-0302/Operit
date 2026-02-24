@@ -105,8 +105,20 @@ class ApiConfigDelegate(
     private val _enableTools = MutableStateFlow(ApiPreferences.DEFAULT_ENABLE_TOOLS)
     val enableTools: StateFlow<Boolean> = _enableTools.asStateFlow()
 
+    private val _toolPromptVisibility = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val toolPromptVisibility: StateFlow<Map<String, Boolean>> = _toolPromptVisibility.asStateFlow()
+
     private val _disableStreamOutput = MutableStateFlow(ApiPreferences.DEFAULT_DISABLE_STREAM_OUTPUT)
     val disableStreamOutput: StateFlow<Boolean> = _disableStreamOutput.asStateFlow()
+
+    private val _disableUserPreferenceDescription =
+            MutableStateFlow(ApiPreferences.DEFAULT_DISABLE_USER_PREFERENCE_DESCRIPTION)
+    val disableUserPreferenceDescription: StateFlow<Boolean> =
+            _disableUserPreferenceDescription.asStateFlow()
+
+    private val _disableLatexDescription =
+            MutableStateFlow(ApiPreferences.DEFAULT_DISABLE_LATEX_DESCRIPTION)
+    val disableLatexDescription: StateFlow<Boolean> = _disableLatexDescription.asStateFlow()
 
     // 为了兼容现有代码，添加API密钥状态流
     private val _apiKey = MutableStateFlow("")
@@ -139,6 +151,8 @@ class ApiConfigDelegate(
                             mapping[FunctionType.CHAT] ?: FunctionalConfigManager.DEFAULT_CONFIG_ID
                     _activeConfigId.value = chatConfigId
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                AppLogger.d(TAG, "初始化功能配置映射监听已取消")
             } catch (e: Exception) {
                 AppLogger.e(TAG, "初始化功能配置映射时出错", e)
             }
@@ -157,6 +171,9 @@ class ApiConfigDelegate(
                             updateStateFromConfig(config)
                             _isInitialized.value = true
                         }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                AppLogger.d(TAG, "模型配置收集监听已取消")
+                _isInitialized.value = true
             } catch (e: Exception) {
                 AppLogger.e(TAG, "收集模型配置时出错", e)
                 _isInitialized.value = true
@@ -247,10 +264,31 @@ class ApiConfigDelegate(
             }
         }
 
+        // Collect tool prompt visibility setting
+        coroutineScope.launch {
+            apiPreferences.toolPromptVisibilityFlow.collect { visibility ->
+                _toolPromptVisibility.value = visibility
+            }
+        }
+
         // Collect disable stream output setting
         coroutineScope.launch {
             apiPreferences.disableStreamOutputFlow.collect { disabled ->
                 _disableStreamOutput.value = disabled
+            }
+        }
+
+        // Collect disable user preference description setting
+        coroutineScope.launch {
+            apiPreferences.disableUserPreferenceDescriptionFlow.collect { disabled ->
+                _disableUserPreferenceDescription.value = disabled
+            }
+        }
+
+        // Collect disable LaTeX description setting
+        coroutineScope.launch {
+            apiPreferences.disableLatexDescriptionFlow.collect { disabled ->
+                _disableLatexDescription.value = disabled
             }
         }
     }
@@ -390,6 +428,24 @@ class ApiConfigDelegate(
         }
     }
 
+    /** 切换禁用用户偏好描述 */
+    fun toggleDisableUserPreferenceDescription() {
+        coroutineScope.launch {
+            val newValue = !_disableUserPreferenceDescription.value
+            apiPreferences.saveDisableUserPreferenceDescription(newValue)
+            _disableUserPreferenceDescription.value = newValue
+        }
+    }
+
+    /** 切换禁用 LaTeX 描述 */
+    fun toggleDisableLatexDescription() {
+        coroutineScope.launch {
+            val newValue = !_disableLatexDescription.value
+            apiPreferences.saveDisableLatexDescription(newValue)
+            _disableLatexDescription.value = newValue
+        }
+    }
+
     /** 更新上下文长度 */
     fun updateContextLength(length: Float) {
         coroutineScope.launch {
@@ -503,6 +559,20 @@ class ApiConfigDelegate(
             val newValue = !_enableTools.value
             apiPreferences.saveEnableTools(newValue)
             _enableTools.value = newValue
+        }
+    }
+
+    fun saveToolPromptVisibility(toolName: String, isVisible: Boolean) {
+        coroutineScope.launch {
+            apiPreferences.saveToolPromptVisibility(toolName, isVisible)
+            _toolPromptVisibility.value = _toolPromptVisibility.value + (toolName to isVisible)
+        }
+    }
+
+    fun saveToolPromptVisibilityMap(visibilityMap: Map<String, Boolean>) {
+        coroutineScope.launch {
+            apiPreferences.saveToolPromptVisibilityMap(visibilityMap)
+            _toolPromptVisibility.value = visibilityMap
         }
     }
 }

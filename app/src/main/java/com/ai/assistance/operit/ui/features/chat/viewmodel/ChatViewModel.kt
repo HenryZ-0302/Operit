@@ -179,7 +179,12 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     val thinkingQualityLevel: StateFlow<Int> by lazy { apiConfigDelegate.thinkingQualityLevel }
     val enableMemoryQuery: StateFlow<Boolean> by lazy { apiConfigDelegate.enableMemoryQuery }
     val enableTools: StateFlow<Boolean> by lazy { apiConfigDelegate.enableTools }
+    val toolPromptVisibility: StateFlow<Map<String, Boolean>> by lazy { apiConfigDelegate.toolPromptVisibility }
     val disableStreamOutput: StateFlow<Boolean> by lazy { apiConfigDelegate.disableStreamOutput }
+    val disableUserPreferenceDescription: StateFlow<Boolean> by lazy {
+        apiConfigDelegate.disableUserPreferenceDescription
+    }
+    val disableLatexDescription: StateFlow<Boolean> by lazy { apiConfigDelegate.disableLatexDescription }
 
     val summaryTokenThreshold: StateFlow<Float> by lazy { apiConfigDelegate.summaryTokenThreshold }
     val enableSummary: StateFlow<Boolean> by lazy { apiConfigDelegate.enableSummary }
@@ -445,7 +450,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         context = context,
                         coroutineScope = viewModelScope,  // 改用 coroutineScope 参数
                         getEnhancedAiService = { enhancedAiService },
-                        getChatHistory = { chatHistoryDelegate.chatHistory.value },
+                        getChatHistory = { chatId -> chatHistoryDelegate.getChatHistory(chatId) },
                         addMessageToChat = { targetChatId, message ->
                             // 将消息固定写入指定聊天，避免在切换会话后串流到新会话
                             // 这是suspend函数，在suspend上下文中会等待完成
@@ -679,8 +684,24 @@ class ChatViewModel(private val context: Context) : ViewModel() {
         apiConfigDelegate.toggleTools()
     }
 
+    fun saveToolPromptVisibility(toolName: String, isVisible: Boolean) {
+        apiConfigDelegate.saveToolPromptVisibility(toolName, isVisible)
+    }
+
+    fun saveToolPromptVisibilityMap(visibilityMap: Map<String, Boolean>) {
+        apiConfigDelegate.saveToolPromptVisibilityMap(visibilityMap)
+    }
+
     fun toggleDisableStreamOutput() {
         apiConfigDelegate.toggleDisableStreamOutput()
+    }
+
+    fun toggleDisableUserPreferenceDescription() {
+        apiConfigDelegate.toggleDisableUserPreferenceDescription()
+    }
+
+    fun toggleDisableLatexDescription() {
+        apiConfigDelegate.toggleDisableLatexDescription()
     }
 
     // 聊天历史相关方法
@@ -1047,7 +1068,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     AppLogger.d(TAG, "Rewinding workspace to timestamp: $rewindTimestamp")
                     withContext(Dispatchers.IO) {
                         WorkspaceBackupManager.getInstance(context)
-                            .syncState(workspacePath, rewindTimestamp, workspaceEnv)
+                            .syncState(workspacePath, rewindTimestamp, workspaceEnv, chatId)
                     }
                     AppLogger.d(TAG, "Workspace rewind complete.")
                 }
@@ -1100,7 +1121,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                         emptyList()
                     } else {
                         WorkspaceBackupManager.getInstance(context)
-                            .previewChangesForRewind(workspacePath, workspaceEnv, rewindTimestamp)
+                            .previewChangesForRewind(workspacePath, workspaceEnv, rewindTimestamp, chatId)
                     }
                 }
             } catch (e: Exception) {
@@ -1143,7 +1164,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                     AppLogger.d(TAG, "[Rollback] Rewinding workspace to timestamp: $rewindTimestamp")
                     withContext(Dispatchers.IO) {
                         WorkspaceBackupManager.getInstance(context)
-                            .syncState(workspacePath, rewindTimestamp, workspaceEnv)
+                            .syncState(workspacePath, rewindTimestamp, workspaceEnv, chatId)
                     }
                     AppLogger.d(TAG, "[Rollback] Workspace rewind complete.")
                 }
@@ -1332,8 +1353,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun captureScreenContent() {
         viewModelScope.launch {
             try {
-                messageProcessingDelegate.updateUserMessage(TextFieldValue(""))
-                
                 // 获取当前会话ID并绑定
                 val currentChatId = chatHistoryDelegate.currentChatId.value
                 if (currentChatId == null) return@launch
@@ -1365,8 +1384,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun captureNotifications() {
         viewModelScope.launch {
             try {
-                messageProcessingDelegate.updateUserMessage(TextFieldValue(""))
-                
                 // 获取当前会话ID并绑定
                 val currentChatId = chatHistoryDelegate.currentChatId.value
                 if (currentChatId == null) return@launch
@@ -1398,8 +1415,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun captureLocation() {
         viewModelScope.launch {
             try {
-                messageProcessingDelegate.updateUserMessage(TextFieldValue(""))
-                
                 // 获取当前会话ID并绑定
                 val currentChatId = chatHistoryDelegate.currentChatId.value
                 if (currentChatId == null) return@launch
@@ -1433,7 +1448,6 @@ class ChatViewModel(private val context: Context) : ViewModel() {
     fun captureMemoryFolders(folderPaths: List<String>) {
         viewModelScope.launch {
             try {
-                messageProcessingDelegate.updateUserMessage(TextFieldValue(""))
                 val currentChatId = chatHistoryDelegate.currentChatId.value
                 if (currentChatId == null) return@launch
                 // 显示记忆文件夹附着进度
@@ -2064,6 +2078,11 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 val cleanerRegexs = speechServicesPreferences.ttsCleanerRegexsFlow.first()
                 val cleanedText = TtsCleaner.clean(message, cleanerRegexs)
                 val cleanMessage = WaifuMessageProcessor.cleanContentForWaifu(cleanedText)
+
+                if (cleanMessage.isBlank()) {
+                    AppLogger.d(TAG, "朗读内容为空，跳过请求")
+                    return@launch
+                }
 
                 val success = voiceService?.speak(
                     text = cleanMessage,

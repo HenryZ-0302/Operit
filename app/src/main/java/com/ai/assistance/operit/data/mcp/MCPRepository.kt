@@ -114,12 +114,11 @@ class MCPRepository(private val context: Context) {
     private fun loadPluginsFromMCPLocalServer() {
         try {
             val pluginMetadata = mcpLocalServer.getAllPluginMetadata()
-            val mcpServers = mcpLocalServer.getAllMCPServers()
-            
+
             // 构建插件列表
             val servers = mutableListOf<MCPLocalServer.PluginMetadata>()
             val installedIds = mutableSetOf<String>()
-            
+
             pluginMetadata.values.forEach { metadata ->
                 // 统一检查：根据 command 判断是否需要物理安装
                 val isInstalled = if (metadata.type == "remote") {
@@ -127,19 +126,46 @@ class MCPRepository(private val context: Context) {
                 } else {
                     isPluginPhysicallyInstalled(metadata.id) // 自动处理 npx/uvx/uv
                 }
-                
+
                 if (isInstalled) {
                     installedIds.add(metadata.id)
                 }
-                
+
                 // 创建更新的metadata，确保isInstalled字段正确
                 val updatedMetadata = metadata.copy(isInstalled = isInstalled)
                 servers.add(updatedMetadata)
             }
-            
+
+            // 补充扫描 mcp_plugins 目录中的本地插件（即使它们尚未写入 JSON 配置）
+            val physicallyInstalledIds = scanPhysicallyInstalledPlugins()
+            installedIds.addAll(physicallyInstalledIds)
+
+            val missingMetadataPluginIds = physicallyInstalledIds - pluginMetadata.keys
+            if (missingMetadataPluginIds.isNotEmpty()) {
+                AppLogger.d(
+                    TAG,
+                    "发现 ${missingMetadataPluginIds.size} 个仅存在于 mcp_plugins 的插件: ${missingMetadataPluginIds.joinToString()}"
+                )
+            }
+
+            missingMetadataPluginIds.forEach { pluginId ->
+                servers.add(
+                    MCPLocalServer.PluginMetadata(
+                        id = pluginId,
+                        name = pluginId,
+                        description = context.getString(R.string.local_installed_plugin),
+                        author = context.getString(R.string.local_installation),
+                        isInstalled = true,
+                        version = context.getString(R.string.local_version),
+                        longDescription = context.getString(R.string.local_installed_plugin),
+                        type = "local"
+                    )
+                )
+            }
+
             _mcpServers.value = servers.sortedBy { it.name }
             _installedPluginIds.value = installedIds
-            
+
         } catch (e: Exception) {
             AppLogger.e(TAG, "从MCPLocalServer加载插件失败", e)
         }
@@ -1096,8 +1122,49 @@ class MCPRepository(private val context: Context) {
     }
 
     /**
-     * 获取插件的工具信息（统一处理缓存和动态获取）
+     * 反注册插件对应的运行时服务器与工具，避免禁用后仍出现在系统提示词。
      */
+    fun unregisterToolsForPlugins(pluginIds: List<String>) {
+        if (pluginIds.isEmpty()) return
+
+        val mcpManager = MCPManager.getInstance(context)
+        val toolHandler = AIToolHandler.getInstance(context)
+
+        pluginIds.forEach { pluginId ->
+            try {
+                val toolPrefix = "$pluginId:"
+                val toolNamesToRemove = toolHandler.getAllToolNames().filter { it.startsWith(toolPrefix) }
+                toolNamesToRemove.forEach { toolName ->
+                    toolHandler.unregisterTool(toolName)
+                }
+
+                val serverNamesToRemove = mutableSetOf(pluginId)
+                val pluginConfig = mcpLocalServer.getPluginConfig(pluginId)
+                if (pluginConfig.isNotBlank()) {
+                    runCatching {
+                        val root = JsonParser.parseString(pluginConfig).asJsonObject
+                        root.getAsJsonObject("mcpServers")?.keySet()?.forEach { serverName ->
+                            serverNamesToRemove.add(serverName)
+                        }
+                    }.onFailure { e ->
+                        AppLogger.w(TAG, "Failed to parse plugin config for $pluginId: ${e.message}")
+                    }
+                }
+
+                serverNamesToRemove.forEach { serverName ->
+                    mcpManager.unregisterServer(serverName)
+                }
+
+                AppLogger.d(
+                    TAG,
+                    "Runtime MCP entries removed for $pluginId, tools=${toolNamesToRemove.size}, servers=${serverNamesToRemove.size}"
+                )
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to unregister runtime MCP entries for $pluginId", e)
+            }
+        }
+    }
+
     private fun getToolsForPlugin(pluginId: String): List<UnifiedToolInfo> {
         // 1. 检查缓存
         val cachedTools = mcpLocalServer.getCachedTools(pluginId)

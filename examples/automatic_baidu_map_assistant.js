@@ -3,7 +3,10 @@ METADATA
 {
     // 百度地图智能助手
     name: "Automatic_baiduMap_assistant",
-    description: { zh: "高级百度地图智能助手，通过UI自动化技术实现地图交互，支持地点搜索、路线规划、周边查询等功能，为AI提供强大的地理位置服务能力。适用于出行规划、信息查询、智能问答等场景。", en: "Advanced Baidu Maps assistant powered by UI automation. Supports place search, navigation/route planning, and nearby discovery, enabling AI-driven location services. Useful for trip planning, information lookup, and Q&A." },
+    display_name: {
+      zh: "百度地图自动化助手"
+      en: "Baidu Map Automation Assistant"
+    }description: { zh: "高级百度地图智能助手，通过UI自动化技术实现地图交互，支持地点搜索、路线规划、周边查询等功能，为AI提供强大的地理位置服务能力。适用于出行规划、信息查询、智能问答等场景。", en: "Advanced Baidu Maps assistant powered by UI automation. Supports place search, navigation/route planning, and nearby discovery, enabling AI-driven location services. Useful for trip planning, information lookup, and Q&A." },
  
     // Tools in this package
     tools: [
@@ -11,6 +14,7 @@ METADATA
             name: "workflow_guide",
             description: { zh: "百度地图助手工具使用流程指南。要完成复杂任务，请按以下顺序组合使用工具：\n1. **搜索地点**: 使用 `search_location` 查找地点、餐馆、公司等，这是多数操作的起点。\n2. **选择地点**: 如果 `search_location` 返回多个结果，使用 `select_location_from_list` 从列表中选择一个。\n3. **开始导航**: 搜索到唯一地点或从列表中选择地点后，使用 `go_to_location` 来规划到该地的路线。\n4. **周边搜索**: 使用 `search_nearby` 查找当前位置或指定地点附近的设施。\n- **随时导航**: `navigate_to_home` 可随时返回地图主页。", en: "Workflow guide for the Baidu Maps assistant. For complex tasks, combine tools in this order:\n1. **Search**: use `search_location` to find places/restaurants/companies (starting point for most tasks).\n2. **Select**: if `search_location` returns multiple results, use `select_location_from_list` to pick one from the list.\n3. **Navigate**: after a unique result is found or selected, use `go_to_location` to plan a route.\n4. **Nearby**: use `search_nearby` to find facilities near your current location or a specified place.\n- **Go home anytime**: use `navigate_to_home` to return to the map home screen." }
             parameters: []
+            advice: true
         },
         {
             name: "search_location",

@@ -1,9 +1,14 @@
 /* METADATA
 {
     "name": "extended_http_tools",
+
+    "display_name": {
+        "zh": "增强 HTTP 工具",
+        "en": "Extended HTTP Tools"
+    },
     "description": {
-        "zh": "拓展 HTTP 工具包：提供 http_request / multipart_request / manage_cookies（默认工具中仅保留 visit_web）。",
-        "en": "Extended HTTP tools: http_request / multipart_request / manage_cookies (default tools only keep visit_web)."
+        "zh": "允许文件上传，以及 GET/POST 等网络直接访问操作。",
+        "en": "Allows file uploads and direct network access operations such as GET/POST."
     },
     "enabledByDefault": true,
     "tools": [

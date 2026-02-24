@@ -6,11 +6,18 @@ import android.media.MediaPlayer
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.util.AppLogger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -19,6 +26,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * 硅基流动TTS语音服务实现
@@ -58,6 +66,12 @@ class SiliconFlowVoiceProvider(
 
     // MediaPlayer用于播放音频
     private var mediaPlayer: MediaPlayer? = null
+    private var currentPlaybackFile: File? = null
+
+    private val speakScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val speakQueue = Channel<SpeakRequest>(Channel.UNLIMITED)
+    private val playbackQueue = Channel<PreparedRequest>(Channel.UNLIMITED)
+    private val stopGeneration = AtomicLong(0)
 
     // 初始化状态
     private val _isInitialized = MutableStateFlow(false)
@@ -71,6 +85,49 @@ class SiliconFlowVoiceProvider(
 
     // 播放状态Flow
     override val speakingStateFlow: Flow<Boolean> = _isSpeaking.asStateFlow()
+
+    private data class SpeakRequest(
+        val text: String,
+        val interrupt: Boolean,
+        val rate: Float?,
+        val pitch: Float?,
+        val extraParams: Map<String, String>,
+        val generation: Long,
+        val completion: CompletableDeferred<Boolean>
+    )
+
+    private data class PreparedRequest(
+        val request: SpeakRequest,
+        val audioFile: File
+    )
+
+    init {
+        speakScope.launch {
+            for (request in speakQueue) {
+                try {
+                    val prepared = fetchAudioFile(request)
+                    if (prepared == null) {
+                        request.completion.complete(false)
+                    } else {
+                        playbackQueue.send(prepared)
+                    }
+                } catch (e: Exception) {
+                    request.completion.completeExceptionally(e)
+                }
+            }
+        }
+
+        speakScope.launch {
+            for (prepared in playbackQueue) {
+                try {
+                    val result = playPreparedRequest(prepared)
+                    prepared.request.completion.complete(result)
+                } catch (e: Exception) {
+                    prepared.request.completion.completeExceptionally(e)
+                }
+            }
+        }
+    }
 
     override suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -99,25 +156,48 @@ class SiliconFlowVoiceProvider(
         pitch: Float?,
         extraParams: Map<String, String>
     ): Boolean = withContext(Dispatchers.IO) {
+        val completion = CompletableDeferred<Boolean>()
+        val request = SpeakRequest(
+            text = text,
+            interrupt = interrupt,
+            rate = rate,
+            pitch = pitch,
+            extraParams = extraParams,
+            generation = stopGeneration.get(),
+            completion = completion
+        )
+        speakQueue.send(request)
+        completion.await()
+    }
+
+    private suspend fun fetchAudioFile(request: SpeakRequest): PreparedRequest? {
         if (!isInitialized) {
             AppLogger.e(TAG, "TTS未初始化")
-            return@withContext false
+            return null
         }
-        
+
         try {
-            if (interrupt && isSpeaking) {
-                stop()
+            if (request.interrupt && isSpeaking) {
+                stopPlaybackOnly()
             }
 
-            _isSpeaking.value = true
+            if (request.generation != stopGeneration.get()) {
+                return null
+            }
 
             val prefs = SpeechServicesPreferences(context.applicationContext)
-            val effectiveRate = rate ?: prefs.ttsSpeechRateFlow.first()
+            val effectiveRate = request.rate ?: prefs.ttsSpeechRateFlow.first()
+
+            val strippedInput = request.text.replace(Regex("<[^>]+>"), "").trim()
+            if (strippedInput.isBlank()) {
+                AppLogger.w(TAG, "TTS输入为空，跳过请求")
+                return null
+            }
 
             // 从 extraParams 获取自定义的 model 和 voice，如果没有则使用配置或默认值
-            val customModel = extraParams["model"]
-            val customVoice = extraParams["voice"]
-            
+            val customModel = request.extraParams["model"]
+            val customVoice = request.extraParams["voice"]
+
             val (model, voice) = when {
                 // 优先使用 extraParams 中的自定义值
                 customModel != null && customVoice != null -> {
@@ -141,13 +221,13 @@ class SiliconFlowVoiceProvider(
 
             // 清理 voice 字符串，去除可能的空白字符
             val cleanVoice = voice.trim()
-            
+
             // 构建请求体
             val requestBody = buildString {
                 append("{")
                 append("\"model\":\"$model\",")
-                append("\"input\":\"${text.replace("\"", "\\\"")}\",")
-                
+                append("\"input\":\"${strippedInput.replace("\"", "\\\"")}\",")
+
                 // 根据官方文档：
                 // 1. 系统预定义音色（如 alex, bella）需要格式为 "model:voice"
                 // 2. 用户自定义音色（以 speech: 开头）直接使用完整的 voice ID
@@ -166,7 +246,7 @@ class SiliconFlowVoiceProvider(
                     }
                 }
                 append("\"voice\":\"$voiceValue\",")
-                
+
                 append("\"response_format\":\"$RESPONSE_FORMAT\",")
                 append("\"sample_rate\":$SAMPLE_RATE,")
                 append("\"speed\":${effectiveRate.toDouble()},")
@@ -194,23 +274,22 @@ class SiliconFlowVoiceProvider(
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 // 将音频数据保存到临时文件
                 val tempFile = File.createTempFile("siliconflow_tts", ".mp3", context.cacheDir)
-                
+
                 connection.inputStream.use { input ->
                     FileOutputStream(tempFile).use { output ->
                         input.copyTo(output)
                     }
                 }
 
-                // 播放音频文件
-                withContext(Dispatchers.Main) {
-                    playAudioFile(tempFile)
+                if (request.generation != stopGeneration.get()) {
+                    tempFile.delete()
+                    return null
                 }
-                
-                return@withContext true
+
+                return PreparedRequest(request, tempFile)
             } else {
                 val errorBody = connection.errorStream?.bufferedReader()?.readText()
                 AppLogger.e(TAG, "TTS请求失败，响应码: $responseCode, Body: $errorBody")
-                _isSpeaking.value = false
                 throw TtsException(
                     message = "TTS request failed with code $responseCode",
                     httpStatusCode = responseCode,
@@ -219,58 +298,112 @@ class SiliconFlowVoiceProvider(
             }
         } catch (e: Exception) {
             AppLogger.e(TAG, "TTS speak失败", e)
-            _isSpeaking.value = false
             if (e is TtsException) throw e
             throw TtsException("TTS speak failed", cause = e)
         }
     }
 
-    private fun playAudioFile(file: File) {
-        try {
-            mediaPlayer?.release()
-            mediaPlayer = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                        .build()
-                )
-                setDataSource(file.absolutePath)
-                setOnCompletionListener {
-                    _isSpeaking.value = false
-                    file.delete() // 清理临时文件
-                }
-                setOnErrorListener { _, what, extra ->
-                    AppLogger.e(TAG, "MediaPlayer错误: what=$what, extra=$extra")
-                    _isSpeaking.value = false
-                    file.delete() // 清理临时文件
-                    true
-                }
-                prepare()
-                start()
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "播放音频失败", e)
-            _isSpeaking.value = false
-            file.delete() // 清理临时文件
+    private suspend fun playPreparedRequest(prepared: PreparedRequest): Boolean {
+        if (prepared.request.generation != stopGeneration.get()) {
+            prepared.audioFile.delete()
+            return false
+        }
+
+        return playAudioFileAndAwait(prepared.audioFile)
+    }
+
+    private fun clearPendingRequests() {
+        while (true) {
+            val request = speakQueue.tryReceive().getOrNull() ?: break
+            request.completion.complete(false)
         }
     }
 
-    override suspend fun stop(): Boolean {
+    private fun clearPendingPlayback() {
+        while (true) {
+            val prepared = playbackQueue.tryReceive().getOrNull() ?: break
+            prepared.audioFile.delete()
+            prepared.request.completion.complete(false)
+        }
+    }
+
+    private fun stopPlaybackOnly(): Boolean {
         return try {
             mediaPlayer?.apply {
                 if (isPlaying) {
                     stop()
                 }
+                reset()
                 release()
             }
             mediaPlayer = null
             _isSpeaking.value = false
+            currentPlaybackFile?.delete()
+            currentPlaybackFile = null
             true
         } catch (e: Exception) {
             AppLogger.e(TAG, "停止播放失败", e)
             false
         }
+    }
+
+    private suspend fun playAudioFileAndAwait(file: File): Boolean {
+        if (!file.exists() || file.length() == 0L) {
+            AppLogger.e(TAG, "Audio file is invalid: ${file.absolutePath}")
+            return false
+        }
+
+        currentPlaybackFile?.delete()
+        currentPlaybackFile = file
+
+        return try {
+            withContext(Dispatchers.Main) {
+                mediaPlayer?.release()
+                mediaPlayer = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                            .build()
+                    )
+                    setDataSource(file.absolutePath)
+                    setOnErrorListener { _, what, extra ->
+                        AppLogger.e(TAG, "MediaPlayer错误: what=$what, extra=$extra")
+                        true
+                    }
+                    prepare()
+                    start()
+                }
+            }
+
+            _isSpeaking.value = true
+            while (true) {
+                val player = mediaPlayer ?: break
+                if (!player.isPlaying) {
+                    break
+                }
+                delay(100)
+            }
+            true
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "播放音频失败", e)
+            false
+        } finally {
+            _isSpeaking.value = false
+            withContext(Dispatchers.Main) {
+                mediaPlayer?.release()
+                mediaPlayer = null
+            }
+            currentPlaybackFile?.delete()
+            currentPlaybackFile = null
+        }
+    }
+
+    override suspend fun stop(): Boolean {
+        stopGeneration.incrementAndGet()
+        clearPendingRequests()
+        clearPendingPlayback()
+        return stopPlaybackOnly()
     }
 
     override suspend fun pause(): Boolean {
@@ -294,9 +427,13 @@ class SiliconFlowVoiceProvider(
     }
 
     override fun shutdown() {
-        mediaPlayer?.release()
-        mediaPlayer = null
-        _isSpeaking.value = false
+        stopGeneration.incrementAndGet()
+        speakScope.cancel()
+        clearPendingRequests()
+        clearPendingPlayback()
+        stopPlaybackOnly()
+        speakQueue.close()
+        playbackQueue.close()
         _isInitialized.value = false
     }
 

@@ -5,198 +5,25 @@ import android.graphics.Bitmap
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.android.apksig.ApkSigner
-import dev.rushii.arsc.*
 import java.io.*
 import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.cert.X509Certificate
+import java.util.zip.CRC32
 import java.util.zip.ZipFile
-import javax.xml.parsers.DocumentBuilderFactory
-import javax.xml.transform.TransformerFactory
-import javax.xml.transform.dom.DOMSource
-import javax.xml.transform.stream.StreamResult
-import net.dongliu.apk.parser.ApkFile
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
 import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
 import org.apache.commons.io.IOUtils
-import org.w3c.dom.Element
 import pxb.android.axml.Axml
 import pxb.android.axml.AxmlReader
 import pxb.android.axml.AxmlVisitor
 import pxb.android.axml.AxmlWriter
 
-/** APK逆向工程工具类 使用Android标准库和专业库实现APK的解压、修改和重新打包 */
+/** APK逆向工程工具类 使用Android标准库和专业库实现APK的修改和重新打包 */
 class ApkReverseEngineer(private val context: Context) {
     companion object {
         private const val TAG = "ApkReverseEngineer"
-        private const val TEMP_DIR = "apk_reverse_temp"
         private const val ANDROID_MANIFEST = "AndroidManifest.xml"
-    }
-
-    private val tempDir: File by lazy {
-        File(context.cacheDir, TEMP_DIR).apply { if (!exists()) mkdirs() }
-    }
-
-    /**
-     * 获取APK基本信息
-     * @param apkFile APK文件
-     * @return 包名和版本信息的Map
-     */
-    fun getApkInfo(apkFile: File): Map<String, String> {
-        val result = mutableMapOf<String, String>()
-        try {
-            // 使用apk-parser库解析APK文件
-            ApkFile(apkFile).use { apkParser ->
-                val apkMeta = apkParser.apkMeta
-                result["package"] = apkMeta.packageName
-                result["versionName"] = apkMeta.versionName
-                result["versionCode"] = apkMeta.versionCode.toString()
-                result["appName"] = apkMeta.name
-                result["minSdkVersion"] = apkMeta.minSdkVersion.toString()
-                result["targetSdkVersion"] = apkMeta.targetSdkVersion.toString()
-
-                // 获取权限列表
-                val permissions = apkMeta.usesPermissions.joinToString(", ")
-                if (permissions.isNotEmpty()) {
-                    result["permissions"] = permissions
-                }
-
-                // 获取功能列表
-                val features = apkMeta.usesFeatures.map { it.name ?: context.getString(R.string.apk_unnamed_function) }.joinToString(", ")
-                if (features.isNotEmpty()) {
-                    result["features"] = features
-                }
-            }
-
-            AppLogger.d(TAG, "成功解析APK信息: 包名=${result["package"]}, 版本=${result["versionName"]}")
-            return result
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "读取APK信息失败", e)
-            return mapOf("error" to (e.message ?: context.getString(R.string.apk_unknown_error)))
-        }
-    }
-
-    /**
-     * 解压APK文件到临时目录
-     * @param apkFile APK文件
-     * @return 解压后的目录
-     */
-    fun extractApk(apkFile: File): File {
-        val extractDir = File(tempDir, apkFile.nameWithoutExtension)
-        if (extractDir.exists()) extractDir.deleteRecursively()
-        extractDir.mkdirs()
-
-        try {
-            ZipFile(apkFile).use { zip ->
-                val entries = zip.entries()
-                while (entries.hasMoreElements()) {
-                    val entry = entries.nextElement()
-                    val entryDestination = File(extractDir, entry.name)
-
-                    if (entry.isDirectory) {
-                        entryDestination.mkdirs()
-                    } else {
-                        entryDestination.parentFile?.mkdirs()
-                        zip.getInputStream(entry).use { input ->
-                            FileOutputStream(entryDestination).use { output ->
-                                IOUtils.copy(input, output)
-                            }
-                        }
-                    }
-                }
-            }
-            AppLogger.d(TAG, "APK解压成功: ${extractDir.absolutePath}")
-            return extractDir
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "APK解压失败", e)
-            throw RuntimeException(context.getString(R.string.apk_extract_failed, e.message ?: ""))
-        }
-    }
-
-    /**
-     * 修改APK包名 - 通过修改AndroidManifest.xml文件
-     * @param extractedDir 解压后的APK目录
-     * @param newPackageName 新包名
-     * @return 是否修改成功
-     */
-    fun modifyPackageName(extractedDir: File, newPackageName: String): Boolean {
-        val manifestFile = File(extractedDir, ANDROID_MANIFEST)
-        if (!manifestFile.exists()) {
-            AppLogger.e(TAG, "未找到AndroidManifest.xml文件")
-            return false
-        }
-
-        try {
-            // 读取二进制AndroidManifest.xml文件
-            val manifestBytes = FileInputStream(manifestFile).use { it.readBytes() }
-
-            // 通过AxmlReader读取AXML文件
-            val reader = AxmlReader(manifestBytes)
-
-            // 创建Axml数据结构
-            val axml = Axml()
-            reader.accept(axml)
-
-            // 查找manifest元素并修改package属性
-            var oldPackageName = ""
-            var packageFound = false
-            for (node in axml.firsts) {
-                if (node.name == "manifest") {
-                    // 遍历属性找到package
-                    for (attr in node.attrs) {
-                        if (attr.name == "package") {
-                            oldPackageName = attr.value as String
-                            AppLogger.d(TAG, "找到原始包名: $oldPackageName, 将替换为: $newPackageName")
-                            // 修改包名
-                            attr.value = newPackageName
-                            packageFound = true
-                            break
-                        }
-                    }
-
-                    // 如果没找到package属性，添加一个
-                    if (!packageFound) {
-                        val attr = Axml.Node.Attr()
-                        attr.name = "package"
-                        attr.ns = null
-                        attr.resourceId = -1
-                        attr.type = AxmlVisitor.TYPE_STRING
-                        attr.value = newPackageName
-                        node.attrs.add(attr)
-                        packageFound = true
-                    }
-                    break
-                }
-            }
-
-            if (!packageFound || oldPackageName.isEmpty()) {
-                AppLogger.e(TAG, "未在AndroidManifest.xml中找到manifest元素或package属性")
-                return false
-            }
-
-            // 遍历所有节点并替换引用旧包名的属性
-            // 除了 oldPackageName.MainActivity 之外的所有引用
-            replacePackageReferences(axml, oldPackageName, newPackageName)
-
-            // 创建AXML写入器生成修改后的二进制文件
-            val writer = AxmlWriter()
-            axml.accept(writer)
-            val modifiedBytes = writer.toByteArray()
-
-            // 备份原始文件
-            val backupFile = File(extractedDir, "${ANDROID_MANIFEST}.bak")
-            if (backupFile.exists()) backupFile.delete()
-            manifestFile.renameTo(backupFile)
-
-            // 写入修改后的文件
-            FileOutputStream(manifestFile).use { it.write(modifiedBytes) }
-
-            AppLogger.d(TAG, "成功修改AndroidManifest.xml中的包名和相关引用")
-            return true
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "修改包名时发生异常", e)
-            return false
-        }
     }
 
     /**
@@ -246,369 +73,87 @@ class ApkReverseEngineer(private val context: Context) {
         }
     }
 
-    /**
-     * 修改应用名称 - 通过修改AndroidManifest.xml文件或strings.xml
-     * @param extractedDir 解压后的APK目录
-     * @param newAppName 新应用名称
-     * @return 是否修改成功
-     */
-    fun modifyAppName(extractedDir: File, newAppName: String): Boolean {
-        try {
-            val manifestFile = File(extractedDir, ANDROID_MANIFEST)
-            if (manifestFile.exists()) {
-                // 使用二进制方式直接修改AndroidManifest.xml
-                try {
-                    // 读取二进制AndroidManifest.xml文件
-                    val manifestBytes = FileInputStream(manifestFile).use { it.readBytes() }
-
-                    // 通过AxmlReader读取AXML文件
-                    val reader = AxmlReader(manifestBytes)
-
-                    // 创建Axml数据结构
-                    val axml = Axml()
-                    reader.accept(axml)
-
-                    // 查找application元素并修改label属性
-                    var labelModified = false
-                    for (node in axml.firsts) {
-                        if (node.name == "manifest") {
-                            // 查找application节点
-                            for (childNode in node.children) {
-                                if (childNode.name == "application") {
-                                    // 查找label属性
-                                    var labelAttr: Axml.Node.Attr? = null
-                                    for (attr in childNode.attrs) {
-                                        if (attr.name == "label" &&
-                                                        (attr.ns == null ||
-                                                                attr.ns ==
-                                                                        "http://schemas.android.com/apk/res/android")
-                                        ) {
-                                            // 修改标签值
-                                            attr.value = newAppName
-                                            labelModified = true
-                                            break
-                                        }
-                                    }
-
-                                    // 如果没有找到label属性，添加一个
-                                    if (!labelModified) {
-                                        val attr = Axml.Node.Attr()
-                                        attr.name = "label"
-                                        attr.ns = "http://schemas.android.com/apk/res/android"
-                                        attr.resourceId = -1
-                                        attr.type = AxmlVisitor.TYPE_STRING
-                                        attr.value = newAppName
-                                        childNode.attrs.add(attr)
-                                        labelModified = true
-                                    }
-                                    break
-                                }
-                            }
-                            break
-                        }
-                    }
-
-                    if (labelModified) {
-                        // 创建AXML写入器生成修改后的二进制文件
-                        val writer = AxmlWriter()
-                        axml.accept(writer)
-                        val modifiedBytes = writer.toByteArray()
-
-                        // 备份原始文件
-                        val backupFile = File(extractedDir, "${ANDROID_MANIFEST}.bak")
-                        if (backupFile.exists()) backupFile.delete()
-                        manifestFile.renameTo(backupFile)
-
-                        // 写入修改后的文件
-                        FileOutputStream(manifestFile).use { it.write(modifiedBytes) }
-
-                        AppLogger.d(TAG, "已在AndroidManifest.xml中更新应用名称为: $newAppName")
-                        return true
-                    }
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "修改AndroidManifest.xml中的应用名称失败: ${e.message}", e)
-                    // 尝试备用方法 - 修改strings.xml
-                }
-            }
-
-            // 如果无法修改清单文件或清单文件不存在，尝试修改strings.xml
-            val success = modifyAppNameInStrings(extractedDir, newAppName)
-            if (success) {
-                return true
-            }
-
-            AppLogger.e(TAG, "无法修改应用名称，既找不到AndroidManifest.xml中的label属性，也找不到strings.xml中的app_name")
-            return false
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "修改应用名称失败", e)
-            return false
-        }
-    }
-
-    /** 修改应用名称 - 通过修改strings.xml资源文件 */
-    fun modifyVersion(extractedDir: File, newVersionName: String, newVersionCode: String): Boolean {
-        val manifestFile = File(extractedDir, ANDROID_MANIFEST)
-        if (!manifestFile.exists()) {
-            AppLogger.e(TAG, "未找到AndroidManifest.xml文件")
-            return false
-        }
-
-        try {
-            val manifestBytes = FileInputStream(manifestFile).use { it.readBytes() }
-            val reader = AxmlReader(manifestBytes)
-            val axml = Axml()
-            reader.accept(axml)
-
-            var manifestNode: Axml.Node? = null
-            for (node in axml.firsts) {
-                if (node.name == "manifest") {
-                    manifestNode = node
-                    break
-                }
-            }
-
-            if (manifestNode == null) {
-                AppLogger.e(TAG, "未在AndroidManifest.xml中找到manifest元素")
-                return false
-            }
-
-            val androidNs = manifestNode.attrs.find { it.name == "versionCode" }?.ns ?: "http://schemas.android.com/apk/res/android"
-
-            // 修改或添加versionName
-            var versionNameAttr = manifestNode.attrs.find { it.name == "versionName" && it.ns == androidNs }
-            if (versionNameAttr != null) {
-                versionNameAttr.value = newVersionName
-            } else {
-                versionNameAttr = Axml.Node.Attr().apply {
-                    name = "versionName"
-                    ns = androidNs
-                    resourceId = -1
-                    type = AxmlVisitor.TYPE_STRING
-                    value = newVersionName
-                }
-                manifestNode.attrs.add(versionNameAttr)
-            }
-
-            // 修改或添加versionCode
-            var versionCodeAttr = manifestNode.attrs.find { it.name == "versionCode" && it.ns == androidNs }
-            if (versionCodeAttr != null) {
-                versionCodeAttr.value = newVersionCode.toIntOrNull() ?: 1
-                versionCodeAttr.type = AxmlVisitor.TYPE_INT_HEX
-            } else {
-                versionCodeAttr = Axml.Node.Attr().apply {
-                    name = "versionCode"
-                    ns = androidNs
-                    resourceId = -1
-                    type = AxmlVisitor.TYPE_INT_HEX
-                    value = newVersionCode.toIntOrNull() ?: 1
-                }
-                manifestNode.attrs.add(versionCodeAttr)
-            }
-
-            val writer = AxmlWriter()
-            axml.accept(writer)
-            val modifiedBytes = writer.toByteArray()
-
-            FileOutputStream(manifestFile).use { it.write(modifiedBytes) }
-
-            AppLogger.d(TAG, "成功修改版本为: $newVersionName ($newVersionCode)")
-            return true
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "修改版本信息时发生异常", e)
-            return false
-        }
-    }
-
-    /** 修改应用名称 - 通过修改strings.xml资源文件 */
-    private fun modifyAppNameInStrings(extractedDir: File, newAppName: String): Boolean {
-        try {
-            // 查找values目录中的strings.xml
-            val resDir = File(extractedDir, "res")
-            val valuesDirs =
-                    resDir.listFiles { file -> file.isDirectory && file.name.startsWith("values") }
-                            ?: return false
-
-            var success = false
-
-            for (valuesDir in valuesDirs) {
-                val stringsFile = File(valuesDir, "strings.xml")
-                if (stringsFile.exists()) {
-                    // 解析strings.xml
-                    val factory = DocumentBuilderFactory.newInstance()
-                    val builder = factory.newDocumentBuilder()
-                    val document = builder.parse(stringsFile)
-
-                    // 查找app_name字符串
-                    val strings = document.getElementsByTagName("string")
-                    var appNameFound = false
-
-                    for (i in 0 until strings.length) {
-                        val element = strings.item(i) as Element
-                        if (element.getAttribute("name") == "app_name") {
-                            element.textContent = newAppName
-                            appNameFound = true
-                            break
-                        }
-                    }
-
-                    // 如果未找到app_name，创建一个
-                    if (!appNameFound) {
-                        val stringElement = document.createElement("string")
-                        stringElement.setAttribute("name", "app_name")
-                        stringElement.textContent = newAppName
-                        document.documentElement.appendChild(stringElement)
-                    }
-
-                    // 保存修改
-                    val transformerFactory = TransformerFactory.newInstance()
-                    val transformer = transformerFactory.newTransformer()
-                    val source = DOMSource(document)
-                    val result = StreamResult(stringsFile)
-                    transformer.transform(source, result)
-
-                    success = true
-                    AppLogger.d(TAG, "已在 ${stringsFile.path} 中更新应用名称为: $newAppName")
-                }
-            }
-
-            return success
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "修改strings.xml中的应用名称失败", e)
-            return false
-        }
-    }
-
-    /**
-     * 更换应用图标
-     * @param extractedDir 解压后的APK目录
-     * @param newIconBitmap 新图标位图
-     * @return 是否修改成功
-     */
-    fun changeAppIcon(extractedDir: File, newIconBitmap: Bitmap): Boolean {
-        try {
-            AppLogger.d(TAG, "开始更换应用图标，提供的图标尺寸: ${newIconBitmap.width}x${newIconBitmap.height}")
-            val resDir = File(extractedDir, "res")
-            if (!resDir.exists()) {
-                AppLogger.e(TAG, "res目录不存在: ${resDir.absolutePath}")
-                return false
-            }
-
-            // 直接替换已知的图标文件 - 这些是混淆后的短名称图标
-            val knownIconFiles =
-                    listOf("yn.png", "N3.png", "9w.png", "FS.png", "RJ.png", "o-.png").map {
-                        File(resDir, it)
-                    }
-
-            var success = false
-            var replacedCount = 0
-
-            // 替换已知的图标文件
-            for (iconFile in knownIconFiles) {
-                if (iconFile.exists()) {
-                    try {
-                        AppLogger.d(TAG, "找到已知图标文件: ${iconFile.absolutePath}, 大小: ${iconFile.length()}字节")
-
-                        // 根据文件大小确定合适的输出尺寸
-                        val size =
-                                when {
-                                    iconFile.length() > 40000 -> 192 // 大文件使用更高分辨率
-                                    iconFile.length() > 20000 -> 144
-                                    iconFile.length() > 10000 -> 96
-                                    iconFile.length() > 5000 -> 72
-                                    else -> 48
-                                }
-
-                        // 缩放新图标
-                        val scaledIcon = scaleBitmap(newIconBitmap, size)
-
-                        // 保存到文件
-                        FileOutputStream(iconFile).use { output ->
-                            val format =
-                                    when (iconFile.extension.lowercase()) {
-                                        "webp" -> Bitmap.CompressFormat.WEBP
-                                        "jpg", "jpeg" -> Bitmap.CompressFormat.JPEG
-                                        else -> Bitmap.CompressFormat.PNG
-                                    }
-                            scaledIcon.compress(format, 100, output)
-                        }
-
-                        replacedCount++
-                        success = true
-                        AppLogger.d(TAG, "成功替换图标: ${iconFile.absolutePath}")
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "替换图标文件失败: ${iconFile.absolutePath}, 错误: ${e.message}")
-                    }
-                } else {
-                    AppLogger.d(TAG, "未找到已知图标文件: ${iconFile.absolutePath}")
-                }
-            }
-
-            AppLogger.d(TAG, "图标替换总结: 成功替换 $replacedCount 个图标文件")
-            return success
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "替换应用图标失败: ${e.message}", e)
-            return false
-        }
-    }
-
-    /** 递归收集目录中所有图片文件 */
-    private fun collectAllImageFiles(dir: File, result: MutableList<File>) {
-        dir.listFiles()?.forEach { file ->
-            if (file.isDirectory) {
-                collectAllImageFiles(file, result)
-            } else if (file.isFile &&
-                            (file.extension.equals("png", ignoreCase = true) ||
-                                    file.extension.equals("webp", ignoreCase = true) ||
-                                    file.extension.equals("jpg", ignoreCase = true))
-            ) {
-                result.add(file)
-            }
-        }
-    }
-
-    /** 根据文件路径确定图标尺寸 */
-    private fun determineIconSize(iconFile: File): Int {
-        return when {
-            iconFile.path.contains("xxxhdpi") -> 192
-            iconFile.path.contains("xxhdpi") -> 144
-            iconFile.path.contains("xhdpi") -> 96
-            iconFile.path.contains("hdpi") -> 72
-            iconFile.path.contains("mdpi") -> 48
-            else -> 96 // 默认尺寸
-        }
-    }
-
     /** 按指定尺寸缩放位图 */
     private fun scaleBitmap(source: Bitmap, size: Int): Bitmap {
         return Bitmap.createScaledBitmap(source, size, size, true)
     }
 
     /**
-     * 重新打包APK文件
-     * @param extractedDir 解压后的APK目录
-     * @param outputApk 输出的APK文件
+     * 仅替换Web内容与清单信息的快速打包（不落地解压）
+     * @param inputApk 原始APK
+     * @param outputApk 输出APK
+     * @param webContentDir 新的网页内容目录
+     * @param newPackageName 新包名（可选）
+     * @param newAppName 新应用名（可选）
+     * @param newVersionName 新版本名（可选）
+     * @param newVersionCode 新版本号（可选）
      * @return 是否打包成功
      */
-    fun repackageApk(extractedDir: File, outputApk: File): Boolean {
+    fun repackageApkWithWebContent(
+            inputApk: File,
+            outputApk: File,
+            webContentDir: File,
+            newPackageName: String?,
+            newAppName: String?,
+            newVersionName: String?,
+            newVersionCode: String?,
+            newIconBitmap: Bitmap?
+    ): Boolean {
         try {
             if (outputApk.exists()) outputApk.delete()
             outputApk.parentFile?.mkdirs()
 
-            // 创建一个临时文件用于存储未对齐的APK
             val tempUnalignedApk =
                     File(outputApk.parentFile, "${outputApk.nameWithoutExtension}_unaligned.apk")
             if (tempUnalignedApk.exists()) tempUnalignedApk.delete()
 
-            // 将解压的目录内容打包成未对齐的APK
             ZipArchiveOutputStream(FileOutputStream(tempUnalignedApk)).use { zipOut ->
-                addDirToZip(extractedDir, extractedDir, zipOut)
+                ZipFile(inputApk).use { zip ->
+                    val entries = zip.entries()
+                    while (entries.hasMoreElements()) {
+                        val entry = entries.nextElement()
+                        val entryName = entry.name
+
+                        // 跳过旧签名
+                        if (entryName.startsWith("META-INF/")) {
+                            continue
+                        }
+
+                        // 跳过旧的web内容
+                        if (entryName.startsWith("assets/flutter_assets/assets/web_content/")) {
+                            continue
+                        }
+
+                        if (newIconBitmap != null && shouldReplaceIconEntry(entryName)) {
+                            val iconBytes = buildIconBytes(newIconBitmap, entryName)
+                            writeBytesEntry(zipOut, entryName, iconBytes, entry.time, entry.method)
+                            continue
+                        }
+
+                        if (entryName == ANDROID_MANIFEST) {
+                            val originalBytes = zip.getInputStream(entry).use { it.readBytes() }
+                            val modifiedBytes =
+                                    modifyManifestBytes(
+                                            originalBytes,
+                                            newPackageName,
+                                            newAppName,
+                                            newVersionName,
+                                            newVersionCode
+                                    )
+                            writeBytesEntry(zipOut, entryName, modifiedBytes, entry.time, entry.method)
+                            continue
+                        }
+
+                        copyZipEntry(zip, entry, zipOut)
+                    }
+                }
+
+                addWebContentToZip(zipOut, webContentDir)
             }
 
-            AppLogger.d(TAG, "APK初步打包完成，准备进行zipalign对齐: ${tempUnalignedApk.absolutePath}")
+            AppLogger.d(TAG, "APK快速打包完成，准备进行zipalign对齐: ${tempUnalignedApk.absolutePath}")
 
             val aligned = zipalign(tempUnalignedApk, outputApk, 4)
-
-            // 删除临时未对齐APK
             tempUnalignedApk.delete()
 
             if (!aligned) {
@@ -616,10 +161,10 @@ class ApkReverseEngineer(private val context: Context) {
                 return false
             }
 
-            AppLogger.d(TAG, "APK重新打包成功并完成4字节对齐: ${outputApk.absolutePath}")
+            AppLogger.d(TAG, "APK快速打包成功并完成4字节对齐: ${outputApk.absolutePath}")
             return true
         } catch (e: Exception) {
-            AppLogger.e(TAG, "APK重新打包失败", e)
+            AppLogger.e(TAG, "APK快速打包失败", e)
             return false
         }
     }
@@ -658,48 +203,6 @@ class ApkReverseEngineer(private val context: Context) {
         }
     }
 
-    /** 递归添加目录到ZIP文件 */
-    private fun addDirToZip(rootDir: File, currentDir: File, zipOut: ZipArchiveOutputStream) {
-        currentDir.listFiles()?.forEach { file ->
-            val relativePath =
-                    file.absolutePath.substring(rootDir.absolutePath.length + 1).replace("\\", "/")
-
-            if (file.isDirectory) {
-                if (file.listFiles()?.isNotEmpty() == true) {
-                    addDirToZip(rootDir, file, zipOut)
-                } else {
-                    val entry = ZipArchiveEntry("$relativePath/")
-                    zipOut.putArchiveEntry(entry)
-                    zipOut.closeArchiveEntry()
-                }
-            } else {
-                val entry = ZipArchiveEntry(relativePath)
-
-                // 判断是否应该不压缩存储
-                val shouldStore = shouldStoreWithoutCompression(relativePath)
-                if (shouldStore) {
-                    // 设置为STORED(不压缩)模式
-                    entry.method = ZipArchiveEntry.STORED
-
-                    // STORED模式要求预先设置文件大小和CRC32校验值
-                    entry.size = file.length()
-                    entry.time = file.lastModified()
-
-                    // 计算CRC32值
-                    val crc = calculateFileCrc32(file)
-                    entry.crc = crc
-                } else {
-                    // 默认使用DEFLATED(压缩)模式
-                    entry.method = ZipArchiveEntry.DEFLATED
-                }
-
-                zipOut.putArchiveEntry(entry)
-                FileInputStream(file).use { input -> IOUtils.copy(input, zipOut) }
-                zipOut.closeArchiveEntry()
-            }
-        }
-    }
-
     /**
      * 判断文件是否应该不压缩存储
      * @param filePath 文件路径
@@ -725,32 +228,276 @@ class ApkReverseEngineer(private val context: Context) {
         }
     }
 
-    /**
-     * 计算文件的CRC32校验值
-     * @param file 需要计算CRC32的文件
-     * @return CRC32值
-     */
-    private fun calculateFileCrc32(file: File): Long {
-        val crc = java.util.zip.CRC32()
-        try {
-            FileInputStream(file).use { input ->
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                while (input.read(buffer).also { bytesRead = it } != -1) {
-                    crc.update(buffer, 0, bytesRead)
-                }
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "计算CRC32失败: ${e.message}", e)
-        }
+    private fun calculateBytesCrc32(data: ByteArray): Long {
+        val crc = CRC32()
+        crc.update(data)
         return crc.value
     }
 
-    /** 清理临时文件 */
-    fun cleanup() {
-        if (tempDir.exists()) {
-            tempDir.deleteRecursively()
-            AppLogger.d(TAG, "临时文件清理完成")
+    private fun shouldReplaceIconEntry(entryName: String): Boolean {
+        val lowerName = entryName.lowercase()
+        val fileName = lowerName.substringAfterLast('/')
+
+        if (!lowerName.startsWith("res/")) {
+            return false
+        }
+
+        val knownIconNames = setOf("yn.png", "n3.png", "9w.png", "fs.png", "rj.png", "o-.png")
+        if (knownIconNames.contains(fileName)) {
+            return true
+        }
+
+        val isIconFile =
+                fileName.startsWith("ic_launcher") ||
+                        fileName.startsWith("ic_launcher_round") ||
+                        fileName.startsWith("ic_launcher_foreground") ||
+                        fileName.startsWith("ic_launcher_background")
+        if (!isIconFile) {
+            return false
+        }
+
+        return lowerName.contains("/mipmap") || lowerName.contains("/drawable")
+    }
+
+    private fun buildIconBytes(sourceBitmap: Bitmap, entryName: String): ByteArray {
+        val size = determineIconSizeFromPath(entryName)
+        val scaled = scaleBitmap(sourceBitmap, size)
+        val format =
+                when (entryName.substringAfterLast('.').lowercase()) {
+                    "webp" -> Bitmap.CompressFormat.WEBP
+                    "jpg", "jpeg" -> Bitmap.CompressFormat.JPEG
+                    else -> Bitmap.CompressFormat.PNG
+                }
+
+        val output = ByteArrayOutputStream()
+        scaled.compress(format, 100, output)
+        return output.toByteArray()
+    }
+
+    private fun determineIconSizeFromPath(entryPath: String): Int {
+        val lowerPath = entryPath.lowercase()
+        return when {
+            lowerPath.contains("xxxhdpi") -> 192
+            lowerPath.contains("xxhdpi") -> 144
+            lowerPath.contains("xhdpi") -> 96
+            lowerPath.contains("hdpi") -> 72
+            lowerPath.contains("mdpi") -> 48
+            else -> 96
+        }
+    }
+
+    private fun calculateStreamCrcAndSize(input: InputStream): Pair<Long, Long> {
+        val crc = CRC32()
+        var size = 0L
+        val buffer = ByteArray(8192)
+        var bytesRead: Int
+        while (input.read(buffer).also { bytesRead = it } != -1) {
+            crc.update(buffer, 0, bytesRead)
+            size += bytesRead
+        }
+        return Pair(crc.value, size)
+    }
+
+    private fun writeBytesEntry(
+            zipOut: ZipArchiveOutputStream,
+            entryName: String,
+            data: ByteArray,
+            time: Long,
+            preferredMethod: Int? = null
+    ) {
+        val entry = ZipArchiveEntry(entryName)
+        entry.time = time
+
+        val methodToUse =
+                when {
+                    preferredMethod != null && preferredMethod != -1 -> preferredMethod
+                    shouldStoreWithoutCompression(entryName) -> ZipArchiveEntry.STORED
+                    else -> ZipArchiveEntry.DEFLATED
+                }
+
+        if (methodToUse == ZipArchiveEntry.STORED) {
+            entry.method = ZipArchiveEntry.STORED
+            entry.size = data.size.toLong()
+            entry.compressedSize = data.size.toLong()
+            entry.crc = calculateBytesCrc32(data)
+        } else {
+            entry.method = ZipArchiveEntry.DEFLATED
+        }
+
+        zipOut.putArchiveEntry(entry)
+        zipOut.write(data)
+        zipOut.closeArchiveEntry()
+    }
+
+    private fun copyZipEntry(
+            zip: ZipFile,
+            entry: java.util.zip.ZipEntry,
+            zipOut: ZipArchiveOutputStream
+    ) {
+        val entryName = entry.name
+        val outEntry = ZipArchiveEntry(entryName)
+        outEntry.time = entry.time
+
+        val originalMethod = entry.method
+        if (originalMethod == java.util.zip.ZipEntry.STORED) {
+            outEntry.method = ZipArchiveEntry.STORED
+            if (entry.size >= 0 && entry.crc >= 0) {
+                outEntry.size = entry.size
+                outEntry.compressedSize = entry.size
+                outEntry.crc = entry.crc
+            } else {
+                val (crc, size) =
+                        zip.getInputStream(entry).use { input -> calculateStreamCrcAndSize(input) }
+                outEntry.size = size
+                outEntry.compressedSize = size
+                outEntry.crc = crc
+            }
+        } else {
+            outEntry.method = ZipArchiveEntry.DEFLATED
+        }
+
+        zipOut.putArchiveEntry(outEntry)
+        zip.getInputStream(entry).use { input -> IOUtils.copy(input, zipOut) }
+        zipOut.closeArchiveEntry()
+    }
+
+    private fun addWebContentToZip(zipOut: ZipArchiveOutputStream, webContentDir: File) {
+        if (!webContentDir.exists() || !webContentDir.isDirectory) {
+            AppLogger.w(TAG, "web内容目录不存在或不是目录: ${webContentDir.absolutePath}")
+            return
+        }
+
+        val basePath = webContentDir.absolutePath
+        val files =
+                webContentDir.walkTopDown().filter { it.isFile }.sortedBy { it.absolutePath }
+
+        for (file in files) {
+            val relativePath =
+                    file.absolutePath.substring(basePath.length + 1).replace("\\", "/")
+            val entryName = "assets/flutter_assets/assets/web_content/$relativePath"
+
+            val entry = ZipArchiveEntry(entryName)
+            entry.method = ZipArchiveEntry.DEFLATED
+            entry.time = file.lastModified()
+
+            zipOut.putArchiveEntry(entry)
+            FileInputStream(file).use { input -> IOUtils.copy(input, zipOut) }
+            zipOut.closeArchiveEntry()
+        }
+    }
+
+    private fun modifyManifestBytes(
+            manifestBytes: ByteArray,
+            newPackageName: String?,
+            newAppName: String?,
+            newVersionName: String?,
+            newVersionCode: String?
+    ): ByteArray {
+        try {
+            val reader = AxmlReader(manifestBytes)
+            val axml = Axml()
+            reader.accept(axml)
+
+            val manifestNode = axml.firsts.firstOrNull { it.name == "manifest" } ?: return manifestBytes
+
+            var oldPackageName: String? = null
+
+            if (newPackageName != null) {
+                var packageAttr = manifestNode.attrs.find { it.name == "package" }
+                if (packageAttr != null) {
+                    oldPackageName = packageAttr.value as? String
+                    packageAttr.value = newPackageName
+                } else {
+                    packageAttr = Axml.Node.Attr().apply {
+                        name = "package"
+                        ns = null
+                        resourceId = -1
+                        type = AxmlVisitor.TYPE_STRING
+                        value = newPackageName
+                    }
+                    manifestNode.attrs.add(packageAttr)
+                }
+
+                if (!oldPackageName.isNullOrEmpty()) {
+                    replacePackageReferences(axml, oldPackageName!!, newPackageName)
+                }
+            }
+
+            val androidNs =
+                    manifestNode.attrs.find { it.name == "versionCode" }?.ns
+                            ?: "http://schemas.android.com/apk/res/android"
+
+            if (newVersionName != null) {
+                var versionNameAttr =
+                        manifestNode.attrs.find { it.name == "versionName" && it.ns == androidNs }
+                if (versionNameAttr != null) {
+                    versionNameAttr.value = newVersionName
+                } else {
+                    versionNameAttr = Axml.Node.Attr().apply {
+                        name = "versionName"
+                        ns = androidNs
+                        resourceId = -1
+                        type = AxmlVisitor.TYPE_STRING
+                        value = newVersionName
+                    }
+                    manifestNode.attrs.add(versionNameAttr)
+                }
+            }
+
+            if (newVersionCode != null) {
+                var versionCodeAttr =
+                        manifestNode.attrs.find { it.name == "versionCode" && it.ns == androidNs }
+                if (versionCodeAttr != null) {
+                    versionCodeAttr.value = newVersionCode.toIntOrNull() ?: 1
+                    versionCodeAttr.type = AxmlVisitor.TYPE_INT_HEX
+                } else {
+                    versionCodeAttr = Axml.Node.Attr().apply {
+                        name = "versionCode"
+                        ns = androidNs
+                        resourceId = -1
+                        type = AxmlVisitor.TYPE_INT_HEX
+                        value = newVersionCode.toIntOrNull() ?: 1
+                    }
+                    manifestNode.attrs.add(versionCodeAttr)
+                }
+            }
+
+            if (newAppName != null) {
+                for (childNode in manifestNode.children) {
+                    if (childNode.name == "application") {
+                        var labelAttr: Axml.Node.Attr? = null
+                        for (attr in childNode.attrs) {
+                            if (attr.name == "label" &&
+                                            (attr.ns == null || attr.ns == androidNs)
+                            ) {
+                                labelAttr = attr
+                                break
+                            }
+                        }
+
+                        if (labelAttr != null) {
+                            labelAttr.value = newAppName
+                        } else {
+                            val attr = Axml.Node.Attr().apply {
+                                name = "label"
+                                ns = androidNs
+                                resourceId = -1
+                                type = AxmlVisitor.TYPE_STRING
+                                value = newAppName
+                            }
+                            childNode.attrs.add(attr)
+                        }
+                        break
+                    }
+                }
+            }
+
+            val writer = AxmlWriter()
+            axml.accept(writer)
+            return writer.toByteArray()
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "修改AndroidManifest字节失败: ${e.message}", e)
+            return manifestBytes
         }
     }
 

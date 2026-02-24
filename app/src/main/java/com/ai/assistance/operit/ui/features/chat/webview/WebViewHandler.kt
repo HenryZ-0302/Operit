@@ -201,6 +201,10 @@ class WebViewHandler(private val context: Context) {
                 // 注入Blob下载辅助代码
                 view?.let { injectBlobDownloadHelper(it) }
 
+                if (mode == WebViewMode.WORKSPACE) {
+                    view?.let { injectWorkspaceCorsProxyHelper(it) }
+                }
+
                 onCanGoBackChanged?.invoke(view?.canGoBack() == true)
 
                 // 仅在COMPUTER模式下注入JS以强制桌面视口
@@ -563,6 +567,57 @@ class WebViewHandler(private val context: Context) {
                 }
             };
         }
+        """.trimIndent()
+
+        webView.evaluateJavascript(js, null)
+    }
+
+    private fun injectWorkspaceCorsProxyHelper(webView: WebView) {
+        val js =
+            """
+        (function() {
+            if (window.__operitCorsProxyInjected) { return; }
+            window.__operitCorsProxyInjected = true;
+            const proxyBase = 'http://localhost:${LocalWebServer.WORKSPACE_PORT}/api/proxy?url=';
+            function shouldProxy(url) {
+                try {
+                    const resolved = new URL(url, window.location.href);
+                    if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') return false;
+                    if (resolved.hostname === 'localhost' || resolved.hostname === '127.0.0.1') return false;
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            }
+            function toProxyUrl(url) {
+                const resolved = new URL(url, window.location.href);
+                return proxyBase + encodeURIComponent(resolved.toString());
+            }
+
+            const originalFetch = window.fetch.bind(window);
+            window.fetch = function(input, init) {
+                try {
+                    if (input instanceof Request && shouldProxy(input.url)) {
+                        const proxyRequest = new Request(toProxyUrl(input.url), input);
+                        return originalFetch(proxyRequest);
+                    }
+                    if (typeof input === 'string' && shouldProxy(input)) {
+                        return originalFetch(toProxyUrl(input), init);
+                    }
+                } catch (e) {}
+                return originalFetch(input, init);
+            };
+
+            const originalOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+                try {
+                    if (shouldProxy(url)) {
+                        url = toProxyUrl(url);
+                    }
+                } catch (e) {}
+                return originalOpen.call(this, method, url, async !== undefined ? async : true, user, password);
+            };
+        })();
         """.trimIndent()
 
         webView.evaluateJavascript(js, null)

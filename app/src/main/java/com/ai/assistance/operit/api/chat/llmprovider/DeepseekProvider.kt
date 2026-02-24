@@ -27,8 +27,7 @@ class DeepseekProvider(
     supportsVision: Boolean = false,
     supportsAudio: Boolean = false,
     supportsVideo: Boolean = false,
-    enableToolCall: Boolean = false,
-    private val enableReasoning: Boolean = false // 是否启用推理模式
+    enableToolCall: Boolean = false
 ) : OpenAIProvider(
         apiEndpoint = apiEndpoint,
         apiKeyProvider = apiKeyProvider,
@@ -69,15 +68,7 @@ class DeepseekProvider(
         }
 
         // 如果未启用推理模式，直接使用父类的实现
-        if (!enableReasoning) {
-            val baseRequestBodyJson =
-                super.createRequestBodyInternal(context, message, chatHistory, modelParameters, stream, availableTools, preserveThinkInHistory)
-            val jsonObject = JSONObject(baseRequestBodyJson)
-            applyThinkingParamsIfNeeded(jsonObject)
-            return jsonObject.toString().toRequestBody(JSON)
-        }
-
-        // 启用推理模式时，需要特殊处理
+        // 推理模式固定开启，需要特殊处理
         val jsonObject = JSONObject()
         jsonObject.put("model", modelName)
         jsonObject.put("stream", stream)

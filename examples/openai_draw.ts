@@ -1,6 +1,10 @@
 /* METADATA
 {
-  "name": "openai_draw",
+  "name": "openai_draw",
+  "display_name": {
+      "zh": "OpenAI 绘图",
+      "en": "OpenAI Draw"
+  },
   "description": {
     "zh": "使用 OpenAI 格式的图像生成 API (/v1/images/generations) 根据提示词画图，将图片保存到本地 /sdcard/Download/Operit/draws/ 目录，并返回 Markdown 图片提示。",
     "en": "Generate images via an OpenAI-compatible image generation API (/v1/images/generations) from a prompt, save to /sdcard/Download/Operit/draws/, and return a Markdown image reference."
@@ -53,7 +57,12 @@
 /// <reference path="./types/index.d.ts" />
 
 const openaiDraw = (function () {
-    const client = OkHttp.newClient();
+    const HTTP_TIMEOUT_MS = 600000;
+    const client = OkHttp.newBuilder()
+        .connectTimeout(HTTP_TIMEOUT_MS)
+        .readTimeout(HTTP_TIMEOUT_MS)
+        .writeTimeout(HTTP_TIMEOUT_MS)
+        .build();
     const DEFAULT_API_BASE_URL = "https://api.openai.com";
     const DEFAULT_MODEL = "gpt-image-1";
 

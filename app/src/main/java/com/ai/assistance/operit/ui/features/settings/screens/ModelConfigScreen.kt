@@ -32,9 +32,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.PopupProperties
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.llmprovider.AIServiceFactory
+import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkBuilder
+import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.ModelConfigData
 import com.ai.assistance.operit.data.model.getModelByIndex
+import com.ai.assistance.operit.data.model.ToolParameterSchema
+import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.ui.features.settings.sections.AdvancedSettingsSection
 import com.ai.assistance.operit.ui.features.settings.sections.ModelApiSettingsSection
@@ -43,13 +48,17 @@ import com.ai.assistance.operit.ui.features.settings.sections.SettingsInfoBanner
 import com.ai.assistance.operit.ui.features.settings.sections.SettingsSectionHeader
 import com.ai.assistance.operit.ui.features.settings.sections.SettingsSwitchRow
 import com.ai.assistance.operit.ui.features.settings.sections.SettingsTextField
+import com.ai.assistance.operit.util.AssetCopyUtils
+import com.ai.assistance.operit.util.ImagePoolManager
+import com.ai.assistance.operit.util.MediaPoolManager
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 
 @SuppressLint("LocalContextGetResourceValueCall")
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -60,14 +69,15 @@ fun ModelConfigScreen(
 ) {
     val context = LocalContext.current
     val configManager = remember { ModelConfigManager(context) }
+    val functionalConfigManager = remember { FunctionalConfigManager(context) }
     val apiPreferences = remember { ApiPreferences.getInstance(context) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
     // 配置状态
     val configList = configManager.configListFlow.collectAsState(initial = listOf("default")).value
-    // 不再使用activeConfigIdFlow，默认选择第一个配置
-    var selectedConfigId by remember { mutableStateOf(configList.firstOrNull() ?: "default") }
+    // 进入页面时默认选中“对话功能”当前绑定的模型配置
+    var selectedConfigId by remember { mutableStateOf(ModelConfigManager.DEFAULT_CONFIG_ID) }
     val selectedConfig = remember { mutableStateOf<ModelConfigData?>(null) }
 
     // 配置名称映射
@@ -84,13 +94,23 @@ fun ModelConfigScreen(
 
     // 连接测试状态
     var isTestingConnection by remember { mutableStateOf(false) }
-    var testResult by remember { mutableStateOf<Result<String>?>(null) }
+    var testResults by remember { mutableStateOf<List<ConnectionTestItem>?>(null) }
 
     // 保存API设置的函数引用
     var saveApiSettings: (() -> Unit)? by remember { mutableStateOf(null) }
 
-    // 初始化配置管理器
-    LaunchedEffect(Unit) { configManager.initializeIfNeeded() }
+    // 初始化配置，并默认定位到“对话功能模型”所使用的配置
+    LaunchedEffect(Unit) {
+        configManager.initializeIfNeeded()
+        functionalConfigManager.initializeIfNeeded()
+
+        val chatConfigId = functionalConfigManager.getConfigIdForFunction(FunctionType.CHAT)
+        val availableConfigIds = configManager.configListFlow.first()
+        selectedConfigId =
+            availableConfigIds.firstOrNull { it == chatConfigId }
+                ?: availableConfigIds.firstOrNull()
+                ?: ModelConfigManager.DEFAULT_CONFIG_ID
+    }
 
     // 加载所有配置名称
     LaunchedEffect(configList) {
@@ -102,16 +122,9 @@ fun ModelConfigScreen(
 
     // 加载选中的配置
     LaunchedEffect(selectedConfigId) {
+        testResults = null
         configManager.getModelConfigFlow(selectedConfigId).collect { config ->
             selectedConfig.value = config
-        }
-    }
-
-    // 自动隐藏测试结果
-    LaunchedEffect(testResult) {
-        if (testResult != null) {
-            kotlinx.coroutines.delay(5000)
-            testResult = null
         }
     }
 
@@ -288,7 +301,7 @@ fun ModelConfigScreen(
                                         kotlinx.coroutines.delay(300)
 
                                         isTestingConnection = true
-                                        testResult = null
+                                        val results = mutableListOf<ConnectionTestItem>()
                                         try {
                                             selectedConfig.value?.let { config ->
                                                 val modelNameToTest =
@@ -304,19 +317,218 @@ fun ModelConfigScreen(
                                                         modelConfigManager = configManager,
                                                         context = context
                                                     )
-                                                testResult = service.testConnection(context)
+                                                val parameters =
+                                                    configManager.getModelParametersForConfig(configForTest.id)
+
+                                                suspend fun runTest(
+                                                    labelResId: Int,
+                                                    block: suspend () -> Unit
+                                                ) {
+                                                    val result = runCatching { block() }
+                                                    results.add(ConnectionTestItem(labelResId, result))
+                                                }
+
+                                                runTest(R.string.test_item_chat) {
+                                                    service.sendMessage(
+                                                        context,
+                                                        "Hi",
+                                                        emptyList(),
+                                                        parameters,
+                                                        stream = false
+                                                    ).collect { }
+                                                }
+
+                                                if (configForTest.enableToolCall) {
+                                                    runTest(R.string.test_item_toolcall) {
+                                                        val availableTools =
+                                                            listOf(
+                                                                ToolPrompt(
+                                                                    name = "echo",
+                                                                    description = "Echoes the provided text.",
+                                                                    parametersStructured =
+                                                                        listOf(
+                                                                            ToolParameterSchema(
+                                                                                name = "text",
+                                                                                type = "string",
+                                                                                description = "Text to echo.",
+                                                                                required = true
+                                                                            )
+                                                                        )
+                                                                )
+                                                            )
+
+                                                        suspend fun runToolCallTest(toolName: String) {
+                                                            val testHistory = mutableListOf(
+                                                                "system" to "You are a helpful assistant."
+                                                            )
+                                                            testHistory.add(
+                                                                "assistant" to
+                                                                    "<tool name=\"$toolName\"><param name=\"text\">ping</param></tool>"
+                                                            )
+                                                            testHistory.add(
+                                                                "user" to
+                                                                    "<tool_result name=\"$toolName\" status=\"success\"><content>pong</content></tool_result>"
+                                                            )
+                                                            service.sendMessage(
+                                                                context,
+                                                                "Hi",
+                                                                testHistory,
+                                                                parameters,
+                                                                stream = false,
+                                                                availableTools = availableTools
+                                                            ).collect { }
+                                                        }
+
+                                                        if (configForTest.strictToolCall) {
+                                                            runToolCallTest("echo")
+                                                        } else {
+                                                            val strictProbeResult = runCatching {
+                                                                runToolCallTest("strict_probe_unlisted_tool")
+                                                            }
+                                                            if (strictProbeResult.isFailure) {
+                                                                showNotification(
+                                                                    context.getString(
+                                                                        R.string.strict_tool_call_required
+                                                                    )
+                                                                )
+                                                                runToolCallTest("echo")
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                if (configForTest.enableDirectImageProcessing) {
+                                                    runTest(R.string.test_item_image) {
+                                                        val imageFile =
+                                                            AssetCopyUtils.copyAssetToCache(context, "test/1.jpg")
+                                                        val imageId =
+                                                            ImagePoolManager.addImage(imageFile.absolutePath)
+                                                        if (imageId == "error") {
+                                                            throw IllegalStateException("Failed to create test image")
+                                                        }
+                                                        try {
+                                                            val prompt =
+                                                                buildString {
+                                                                    append(
+                                                                        MediaLinkBuilder.image(context, imageId)
+                                                                    )
+                                                                    append("\n")
+                                                                    append(
+                                                                        context.getString(
+                                                                            R.string.conversation_analyze_image_prompt
+                                                                        )
+                                                                    )
+                                                                }
+                                                            service.sendMessage(
+                                                                context,
+                                                                prompt,
+                                                                emptyList(),
+                                                                parameters,
+                                                                stream = false
+                                                            ).collect { }
+                                                        } finally {
+                                                            ImagePoolManager.removeImage(imageId)
+                                                            runCatching { imageFile.delete() }
+                                                        }
+                                                    }
+                                                }
+
+                                                if (configForTest.enableDirectAudioProcessing) {
+                                                    runTest(R.string.test_item_audio) {
+                                                        val audioFile =
+                                                            AssetCopyUtils.copyAssetToCache(context, "test/1.mp3")
+                                                        val audioId =
+                                                            MediaPoolManager.addMedia(audioFile.absolutePath, "audio/mpeg")
+                                                        if (audioId == "error") {
+                                                            throw IllegalStateException("Failed to create test audio")
+                                                        }
+                                                        try {
+                                                            val prompt =
+                                                                buildString {
+                                                                    append(
+                                                                        MediaLinkBuilder.audio(context, audioId)
+                                                                    )
+                                                                    append("\n")
+                                                                    append(
+                                                                        context.getString(
+                                                                            R.string.conversation_analyze_audio_prompt
+                                                                        )
+                                                                    )
+                                                                }
+                                                            service.sendMessage(
+                                                                context,
+                                                                prompt,
+                                                                emptyList(),
+                                                                parameters,
+                                                                stream = false
+                                                            ).collect { }
+                                                        } finally {
+                                                            MediaPoolManager.removeMedia(audioId)
+                                                            runCatching { audioFile.delete() }
+                                                        }
+                                                    }
+                                                }
+
+                                                if (configForTest.enableDirectVideoProcessing) {
+                                                    runTest(R.string.test_item_video) {
+                                                        val videoFile =
+                                                            AssetCopyUtils.copyAssetToCache(context, "test/1.mp4")
+                                                        val videoId =
+                                                            MediaPoolManager.addMedia(videoFile.absolutePath, "video/mp4")
+                                                        if (videoId == "error") {
+                                                            throw IllegalStateException("Failed to create test video")
+                                                        }
+                                                        try {
+                                                            val prompt =
+                                                                buildString {
+                                                                    append(
+                                                                        MediaLinkBuilder.video(context, videoId)
+                                                                    )
+                                                                    append("\n")
+                                                                    append(
+                                                                        context.getString(
+                                                                            R.string.conversation_analyze_video_prompt
+                                                                        )
+                                                                    )
+                                                                }
+                                                            service.sendMessage(
+                                                                context,
+                                                                prompt,
+                                                                emptyList(),
+                                                                parameters,
+                                                                stream = false
+                                                            ).collect { }
+                                                        } finally {
+                                                            MediaPoolManager.removeMedia(videoId)
+                                                            runCatching { videoFile.delete() }
+                                                        }
+                                                    }
+                                                }
                                             } ?: run {
-                                                testResult =
-                                                    Result.failure(
-                                                        Exception(
-                                                            context.getString(R.string.no_config_selected)
+                                                results.add(
+                                                    ConnectionTestItem(
+                                                        R.string.test_item_chat,
+                                                        Result.failure<Unit>(
+                                                            Exception(
+                                                                context.getString(
+                                                                    R.string.no_config_selected
+                                                                )
+                                                            )
                                                         )
                                                     )
+                                                )
                                             }
                                         } catch (e: Exception) {
-                                            testResult = Result.failure(e)
+                                            results.add(
+                                                ConnectionTestItem(
+                                                    R.string.test_item_chat,
+                                                    Result.failure<Unit>(e)
+                                                )
+                                            )
+                                        } finally {
+                                            isTestingConnection = false
                                         }
-                                        isTestingConnection = false
+                                        testResults = results
                                     }
                                 },
                                 modifier = Modifier.height(36.dp),
@@ -343,54 +555,79 @@ fun ModelConfigScreen(
                         }
 
                         AnimatedVisibility(
-                            visible = testResult != null,
+                            visible = testResults != null,
                             enter = fadeIn() + expandVertically(),
                             exit = fadeOut() + shrinkVertically()
                         ) {
-                            testResult?.let { result ->
-                                val isSuccess = result.isSuccess
-                                val message =
-                                    if (isSuccess)
-                                        result.getOrNull()
-                                            ?: context.getString(R.string.connection_test_success)
-                                    else
-                                        context.getString(
-                                            R.string.connection_test_failed,
-                                            result.exceptionOrNull()?.message ?: ""
-                                        )
-                                val containerColor =
-                                    if (isSuccess)
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    else MaterialTheme.colorScheme.errorContainer
-                                val contentColor =
-                                    if (isSuccess)
-                                        MaterialTheme.colorScheme.onPrimaryContainer
-                                    else MaterialTheme.colorScheme.onErrorContainer
-                                val icon =
-                                    if (isSuccess) Icons.Default.CheckCircle
-                                    else Icons.Default.Warning
-
+                            testResults?.let { results ->
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(top = 12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = containerColor),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                    ),
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = icon,
-                                            contentDescription = null,
-                                            tint = contentColor
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = message,
-                                            color = contentColor
-                                        )
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        results.forEachIndexed { index, item ->
+                                            val isSuccess = item.result.isSuccess
+                                            val statusText =
+                                                if (isSuccess) {
+                                                    context.getString(R.string.test_connection_success)
+                                                } else {
+                                                    context.getString(
+                                                        R.string.test_connection_failed,
+                                                        item.result.exceptionOrNull()?.message ?: ""
+                                                    )
+                                                }
+                                            val contentColor =
+                                                if (isSuccess) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.error
+                                            val icon =
+                                                if (isSuccess) Icons.Default.CheckCircle
+                                                else Icons.Default.Warning
+
+                                            Column(modifier = Modifier.fillMaxWidth()) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Icon(
+                                                        imageVector = icon,
+                                                        contentDescription = null,
+                                                        tint = contentColor,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        text = stringResource(item.labelResId),
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Medium,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                    if (isSuccess) {
+                                                        Text(
+                                                            text = statusText,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = contentColor
+                                                        )
+                                                    }
+                                                }
+                                                if (!isSuccess) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = statusText,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = contentColor
+                                                    )
+                                                }
+                                            }
+
+                                            if (index != results.lastIndex) {
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1029,6 +1266,11 @@ private fun ContextSummarySettingsSection(
         }
     }
 }
+
+private data class ConnectionTestItem(
+    val labelResId: Int,
+    val result: Result<Unit>
+)
 
 private fun formatFloatValue(value: Float): String {
     return if (value % 1f == 0f) value.toInt().toString() else String.format("%.2f", value)

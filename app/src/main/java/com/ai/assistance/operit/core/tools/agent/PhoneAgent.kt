@@ -12,8 +12,8 @@ import android.view.KeyEvent
 import androidx.core.content.FileProvider
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.api.chat.llmprovider.AIService
+import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.AppListData
-import com.ai.assistance.operit.core.tools.defaultTool.ToolGetter
 import com.ai.assistance.operit.core.tools.defaultTool.standard.StandardUITools
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
 import com.ai.assistance.operit.core.tools.system.ShizukuAuthorizer
@@ -33,13 +33,11 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.withContext
 
 /** Configuration for the PhoneAgent. */
 data class AgentConfig(
@@ -61,6 +59,56 @@ data class ParsedAgentAction(
     val actionName: String?,
     val fields: Map<String, String>
 )
+
+private data class PrivilegedExecutionState(
+    val isAdbOrHigher: Boolean,
+    val hasDebuggerShizukuAccess: Boolean
+)
+
+private fun resolvePrivilegedExecutionState(
+    context: Context,
+    androidPermissionPreferences: AndroidPermissionPreferences,
+    checkDebuggerShizuku: Boolean = true,
+    onExperimentalFlagReadError: ((Exception) -> Unit)? = null
+): PrivilegedExecutionState {
+    val preferredLevel = androidPermissionPreferences.getPreferredPermissionLevel()
+        ?: AndroidPermissionLevel.STANDARD
+
+    var isAdbOrHigher = when (preferredLevel) {
+        AndroidPermissionLevel.DEBUGGER,
+        AndroidPermissionLevel.ADMIN,
+        AndroidPermissionLevel.ROOT -> true
+        else -> false
+    }
+
+    if (isAdbOrHigher) {
+        val experimentalEnabled = try {
+            DisplayPreferencesManager.getInstance(context).isExperimentalVirtualDisplayEnabled()
+        } catch (e: Exception) {
+            onExperimentalFlagReadError?.invoke(e)
+            true
+        }
+        if (!experimentalEnabled) {
+            isAdbOrHigher = false
+        }
+    }
+
+    val hasDebuggerShizukuAccess = if (checkDebuggerShizuku &&
+        isAdbOrHigher &&
+        preferredLevel == AndroidPermissionLevel.DEBUGGER
+    ) {
+        val isShizukuRunning = ShizukuAuthorizer.isShizukuServiceRunning()
+        val hasShizukuPermission = if (isShizukuRunning) ShizukuAuthorizer.hasShizukuPermission() else false
+        isShizukuRunning && hasShizukuPermission
+    } else {
+        true
+    }
+
+    return PrivilegedExecutionState(
+        isAdbOrHigher = isAdbOrHigher,
+        hasDebuggerShizukuAccess = hasDebuggerShizukuAccess
+    )
+}
 
 /**
  * AI-powered agent for automating Android phone interactions.
@@ -87,6 +135,7 @@ class PhoneAgent(
     private var pauseFlow: StateFlow<Boolean>? = null
 
     private val requiresVirtualScreen: Boolean = agentId.isNotBlank() && agentId != "default"
+    private val isMainScreenAgent: Boolean = agentId.isBlank() || agentId == "default"
 
     init {
         actionHandler.setAgentId(agentId)
@@ -108,6 +157,7 @@ class PhoneAgent(
     }
 
     private fun hasShowerDisplay(logMessageSuffix: String): Boolean {
+        if (isMainScreenAgent) return false
         return try {
             ShowerController.getDisplayId(agentId) != null || ShowerController.getVideoSize(agentId) != null
         } catch (e: Exception) {
@@ -123,37 +173,16 @@ class PhoneAgent(
             return null
         }
 
-        val preferredLevel = androidPermissionPreferences.getPreferredPermissionLevel()
-            ?: AndroidPermissionLevel.STANDARD
-
-        var isAdbOrHigher = when (preferredLevel) {
-            AndroidPermissionLevel.DEBUGGER,
-            AndroidPermissionLevel.ADMIN,
-            AndroidPermissionLevel.ROOT -> true
-            else -> false
-        }
-
-        if (isAdbOrHigher) {
-            val experimentalEnabled = try {
-                DisplayPreferencesManager.getInstance(context).isExperimentalVirtualDisplayEnabled()
-            } catch (_: Exception) {
-                true
-            }
-            if (!experimentalEnabled) {
-                isAdbOrHigher = false
-            }
-        }
-
-        if (!isAdbOrHigher) {
+        val permissionState = resolvePrivilegedExecutionState(
+            context = context,
+            androidPermissionPreferences = androidPermissionPreferences
+        )
+        if (!permissionState.isAdbOrHigher) {
             return context.getString(R.string.phone_agent_need_debug_permission)
         }
 
-        if (preferredLevel == AndroidPermissionLevel.DEBUGGER) {
-            val isShizukuRunning = ShizukuAuthorizer.isShizukuServiceRunning()
-            val hasShizukuPermission = if (isShizukuRunning) ShizukuAuthorizer.hasShizukuPermission() else false
-            if (!isShizukuRunning || !hasShizukuPermission) {
-                return context.getString(R.string.phone_agent_shizuku_unavailable)
-            }
+        if (!permissionState.hasDebuggerShizukuAccess) {
+            return context.getString(R.string.phone_agent_shizuku_unavailable)
         }
 
         val okServer = try {
@@ -207,37 +236,17 @@ class PhoneAgent(
         hasShowerDisplayAtStart: Boolean,
         targetApp: String?
     ): Pair<Boolean, String?> {
+        if (isMainScreenAgent) return Pair(false, null)
         if (hasShowerDisplayAtStart) return Pair(true, null)
         val targetAppForPrewarm = targetApp?.takeIf { it.isNotBlank() } ?: return Pair(false, null)
 
-        val preferredLevel = androidPermissionPreferences.getPreferredPermissionLevel()
-            ?: AndroidPermissionLevel.STANDARD
-        var isAdbOrHigher = when (preferredLevel) {
-            AndroidPermissionLevel.DEBUGGER,
-            AndroidPermissionLevel.ADMIN,
-            AndroidPermissionLevel.ROOT -> true
-            else -> false
-        }
-
-        if (isAdbOrHigher) {
-            val experimentalEnabled = try {
-                DisplayPreferencesManager.getInstance(context).isExperimentalVirtualDisplayEnabled()
-            } catch (_: Exception) {
-                true
-            }
-            if (!experimentalEnabled) {
-                isAdbOrHigher = false
-            }
-        }
-
-        if (!isAdbOrHigher) return Pair(false, null)
-
-        if (preferredLevel == AndroidPermissionLevel.DEBUGGER) {
-            val isShizukuRunning = ShizukuAuthorizer.isShizukuServiceRunning()
-            val hasShizukuPermission = if (isShizukuRunning) ShizukuAuthorizer.hasShizukuPermission() else false
-            if (!isShizukuRunning || !hasShizukuPermission) {
-                return Pair(false, context.getString(R.string.phone_agent_shizuku_unavailable))
-            }
+        val permissionState = resolvePrivilegedExecutionState(
+            context = context,
+            androidPermissionPreferences = androidPermissionPreferences
+        )
+        if (!permissionState.isAdbOrHigher) return Pair(false, null)
+        if (!permissionState.hasDebuggerShizukuAccess) {
+            return Pair(false, context.getString(R.string.phone_agent_shizuku_unavailable))
         }
 
         AppLogger.d(
@@ -268,6 +277,67 @@ class PhoneAgent(
         return Pair(true, null)
     }
 
+    private suspend fun prewarmMainScreenShowerIfPossible(): Boolean {
+        if (!isMainScreenAgent) return false
+
+        val permissionState = resolvePrivilegedExecutionState(
+            context = context,
+            androidPermissionPreferences = androidPermissionPreferences
+        )
+        if (!permissionState.isAdbOrHigher) return false
+        if (!permissionState.hasDebuggerShizukuAccess) return false
+
+        val okServer = try {
+            ShowerServerManager.ensureServerStarted(context)
+        } catch (e: Exception) {
+            AppLogger.e("PhoneAgent", "[$agentId] prewarmMainScreenShower: ensureServerStarted failed", e)
+            false
+        }
+        if (!okServer) return false
+
+        val okMainDisplay = try {
+            ShowerController.prepareMainDisplay(agentId, context)
+        } catch (e: Exception) {
+            AppLogger.e("PhoneAgent", "[$agentId] prewarmMainScreenShower: prepareMainDisplay failed", e)
+            false
+        }
+        if (okMainDisplay) {
+            AppLogger.d("PhoneAgent", "[$agentId] main-screen Shower prewarm ready (displayId=0)")
+        }
+        return okMainDisplay
+    }
+
+    private suspend fun prewarmMainScreenLaunchIfNeeded(targetApp: String?): String? {
+        if (!isMainScreenAgent) return null
+        val targetAppForPrewarm = targetApp?.takeIf { it.isNotBlank() } ?: return null
+
+        AppLogger.d(
+            "PhoneAgent",
+            "[$agentId] run: prewarming main-screen launch via Launch(app='$targetAppForPrewarm')"
+        )
+        val prewarmResult = try {
+            actionHandler.executeAgentAction(
+                ParsedAgentAction(
+                    metadata = "do",
+                    actionName = "Launch",
+                    fields = mapOf(
+                        "action" to "Launch",
+                        "app" to targetAppForPrewarm
+                    )
+                )
+            )
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            return "Exception while prewarming main-screen app launch: ${e.message}"
+        }
+
+        return if (prewarmResult.success) {
+            null
+        } else {
+            prewarmResult.message ?: "Failed to prewarm main-screen app launch"
+        }
+    }
+
     /**
      * Run the agent to complete a task.
      *
@@ -295,6 +365,15 @@ class PhoneAgent(
         val requiredVirtualScreenError = ensureRequiredVirtualScreenOrError()
         if (requiredVirtualScreenError != null) {
             return requiredVirtualScreenError
+        }
+
+        val mainScreenShowerReady = prewarmMainScreenShowerIfPossible()
+        actionHandler.setMainScreenShowerPrepared(mainScreenShowerReady)
+        if (mainScreenShowerReady) {
+            val mainScreenPrewarmError = prewarmMainScreenLaunchIfNeeded(targetApp)
+            if (mainScreenPrewarmError != null) {
+                return mainScreenPrewarmError
+            }
         }
 
         var hasShowerDisplayAtStart = hasShowerDisplay("Error checking Shower virtual display state")
@@ -364,12 +443,7 @@ class PhoneAgent(
             }
 
             if (!useShowerUi) {
-                val hasShowerNow = try {
-                    ShowerController.getDisplayId(agentId) != null || ShowerController.getVideoSize(agentId) != null
-                } catch (e: Exception) {
-                    AppLogger.e("PhoneAgent", "[$agentId] Error re-checking Shower virtual display state after first step", e)
-                    false
-                }
+                val hasShowerNow = hasShowerDisplay("Error re-checking Shower virtual display state after first step")
 
                 if (hasShowerNow) {
                     useShowerUi = true
@@ -438,12 +512,7 @@ class PhoneAgent(
                 }
 
                 if (!useShowerUi) {
-                    val hasShowerNow = try {
-                        ShowerController.getDisplayId(agentId) != null || ShowerController.getVideoSize(agentId) != null
-                    } catch (e: Exception) {
-                        AppLogger.e("PhoneAgent", "[$agentId] Error re-checking Shower state in loop", e)
-                        false
-                    }
+                    val hasShowerNow = hasShowerDisplay("Error re-checking Shower state in loop")
 
                     if (hasShowerNow) {
                         useShowerUi = true
@@ -493,7 +562,11 @@ class PhoneAgent(
             AppLogger.d("PhoneAgent", "[$agentId] run: finishing, restoring UI")
             pauseFlow = null
             floatingService?.setFloatingWindowVisible(true)
-            clearAgentIndicators(context, agentId)
+            if (isMainScreenAgent) {
+                floatingService?.setStatusIndicatorVisible(false)
+            } else {
+                clearAgentIndicators(context, agentId)
+            }
             if (useShowerUi) {
                 showerOverlay?.hideAutomationControls()
             } else {
@@ -681,9 +754,16 @@ class ActionHandler(
     private val toolImplementations: ToolImplementations
 ) {
     private var agentId: String = "default"
+    private var mainScreenShowerPrepared: Boolean = false
+    private var appPackagesSyncedFromTool = false
+    private val aiToolManager: AIToolHandler by lazy { AIToolHandler.getInstance(context) }
 
     fun setAgentId(id: String) {
         agentId = id
+    }
+
+    fun setMainScreenShowerPrepared(prepared: Boolean) {
+        mainScreenShowerPrepared = prepared
     }
 
     data class ActionExecResult(
@@ -705,33 +785,30 @@ class ActionHandler(
         val canUseShowerForInput: Boolean get() = isAdbOrHigher && showerDisplayId != null
     }
 
-    private fun resolveShowerUsageContext(): ShowerUsageContext {
-        val level = androidPermissionPreferences.getPreferredPermissionLevel() ?: AndroidPermissionLevel.STANDARD
-        var isAdbOrHigher = when (level) {
-            AndroidPermissionLevel.DEBUGGER,
-            AndroidPermissionLevel.ADMIN,
-            AndroidPermissionLevel.ROOT -> true
-            else -> false
-        }
+    private fun isMainScreenAgent(): Boolean = agentId.isBlank() || agentId == "default"
 
-        if (isAdbOrHigher) {
-            val experimentalEnabled = try {
-                DisplayPreferencesManager.getInstance(context).isExperimentalVirtualDisplayEnabled()
-            } catch (e: Exception) {
-                AppLogger.e("ActionHandler", "[$agentId] Error reading experimental virtual display flag", e)
-                true
-            }
-            if (!experimentalEnabled) {
-                isAdbOrHigher = false
-            }
+    private fun resolveShowerUsageContext(): ShowerUsageContext {
+        if (isMainScreenAgent()) {
+            return ShowerUsageContext(
+                isAdbOrHigher = mainScreenShowerPrepared,
+                showerDisplayId = if (mainScreenShowerPrepared) 0 else null
+            )
         }
+        val permissionState = resolvePrivilegedExecutionState(
+            context = context,
+            androidPermissionPreferences = androidPermissionPreferences,
+            checkDebuggerShizuku = false,
+            onExperimentalFlagReadError = { e ->
+                AppLogger.e("ActionHandler", "[$agentId] Error reading experimental virtual display flag", e)
+            }
+        )
         val showerId = try {
             ShowerController.getDisplayId(agentId)
         } catch (e: Exception) {
             AppLogger.e("ActionHandler", "[$agentId] Error getting Shower display id", e)
             null
         }
-        return ShowerUsageContext(isAdbOrHigher = isAdbOrHigher, showerDisplayId = showerId)
+        return ShowerUsageContext(isAdbOrHigher = permissionState.isAdbOrHigher, showerDisplayId = showerId)
     }
 
     suspend fun captureScreenshotForAgent(): String? {
@@ -742,21 +819,22 @@ class ActionHandler(
         var screenshotLink: String? = null
         var dimensions: Pair<Int, Int>? = null
 
-        if (showerCtx.canUseShowerForInput) {
-            val (link, dims) = captureScreenshotViaShower()
-            screenshotLink = link
-            dimensions = dims
-        }
+        try {
+            // Keep screenshot captures clean: hide overlays first, then restore after capture.
+            floatingService?.setStatusIndicatorVisible(false)
+            progressOverlay.setOverlayVisible(false)
+            delay(200)
 
-        if (screenshotLink == null) {
-            try {
-                floatingService?.setStatusIndicatorVisible(false)
-                progressOverlay.setOverlayVisible(false)
-                delay(200)
+            if (showerCtx.canUseShowerForInput) {
+                val (link, dims) = captureScreenshotViaShower()
+                screenshotLink = link
+                dimensions = dims
+            }
 
+            if (screenshotLink == null) {
                 val screenshotTool = buildScreenshotTool()
                 val (filePath, fallbackDims) = toolImplementations.captureScreenshot(screenshotTool)
-                
+
                 if (filePath != null) {
                     val bitmap = BitmapFactory.decodeFile(filePath)
                     if (bitmap != null) {
@@ -766,18 +844,18 @@ class ActionHandler(
                         bitmap.recycle()
                     }
                 }
-            } finally {
-                val hasShowerDisplayNow = try {
-                    ShowerController.getDisplayId(agentId) != null
-                } catch (e: Exception) {
-                    AppLogger.e("ActionHandler", "[$agentId] Error checking Shower display state in finally", e)
-                    false
-                }
-                if (!hasShowerDisplayNow) {
-                    floatingService?.setStatusIndicatorVisible(true)
-                }
-                progressOverlay.setOverlayVisible(true)
             }
+        } finally {
+            val hasShowerDisplayNow = try {
+                ShowerController.getDisplayId(agentId) != null
+            } catch (e: Exception) {
+                AppLogger.e("ActionHandler", "[$agentId] Error checking Shower display state in finally", e)
+                false
+            }
+            if (isMainScreenAgent() || !hasShowerDisplayNow) {
+                floatingService?.setStatusIndicatorVisible(true)
+            }
+            progressOverlay.setOverlayVisible(true)
         }
 
         if (dimensions != null) {
@@ -796,7 +874,11 @@ class ActionHandler(
 
     private suspend fun captureScreenshotViaShower(): Pair<String?, Pair<Int, Int>?> {
         return try {
-            val pngBytes = VirtualDisplayOverlay.getInstance(context, agentId).captureCurrentFramePng()
+            val pngBytes = if (isMainScreenAgent()) {
+                ShowerController.requestScreenshot(agentId)
+            } else {
+                VirtualDisplayOverlay.getInstance(context, agentId).captureCurrentFramePng()
+            }
             if (pngBytes == null || pngBytes.isEmpty()) {
                 AppLogger.w("ActionHandler", "[$agentId] Shower WS screenshot returned no data")
                 Pair(null, null)
@@ -887,21 +969,15 @@ class ActionHandler(
                 val app = fields["app"]?.takeIf { it.isNotBlank() } ?: return fail(message = "No app name specified for Launch")
                 val packageName = resolveAppPackageName(app)
                 try {
-                    val preferredLevel = androidPermissionPreferences.getPreferredPermissionLevel()
-                        ?: AndroidPermissionLevel.STANDARD
-                    val experimentalEnabled = try {
-                        DisplayPreferencesManager.getInstance(context).isExperimentalVirtualDisplayEnabled()
-                    } catch (e: Exception) { true }
-
-                    if (preferredLevel == AndroidPermissionLevel.DEBUGGER && experimentalEnabled) {
-                        val isShizukuRunning = ShizukuAuthorizer.isShizukuServiceRunning()
-                        val hasShizukuPermission = if (isShizukuRunning) ShizukuAuthorizer.hasShizukuPermission() else false
-                        if (!isShizukuRunning || !hasShizukuPermission) {
-                            return fail(shouldFinish = true, message = context.getString(R.string.phone_agent_shizuku_unavailable))
-                        }
+                    val permissionState = resolvePrivilegedExecutionState(
+                        context = context,
+                        androidPermissionPreferences = androidPermissionPreferences
+                    )
+                    if (permissionState.isAdbOrHigher && !permissionState.hasDebuggerShizukuAccess) {
+                        return fail(shouldFinish = true, message = context.getString(R.string.phone_agent_shizuku_unavailable))
                     }
 
-                    if (showerCtx.isAdbOrHigher) {
+                    if (showerCtx.isAdbOrHigher && !isMainScreenAgent()) {
                         val pm = context.packageManager
                         val hasLaunchableTarget = pm.getLaunchIntentForPackage(packageName) != null
                         ensureVirtualDisplayIfAdbOrHigher()
@@ -939,8 +1015,9 @@ class ActionHandler(
                             }
                         }
                     } else {
-                        val systemTools = ToolGetter.getSystemOperationTools(context)
-                        val result = systemTools.startApp(AITool("start_app", listOf(ToolParameter("package_name", packageName))))
+                        val result = aiToolManager.executeTool(
+                            AITool("start_app", listOf(ToolParameter("package_name", packageName)))
+                        )
                         if (result.success) {
                             delay(POST_LAUNCH_DELAY_MS)
                             ok()
@@ -1073,25 +1150,43 @@ class ActionHandler(
         showerCtx: ShowerUsageContext,
         block: suspend () -> ActionExecResult
     ): ActionExecResult {
-        if (showerCtx.canUseShowerForInput) return block()
+        val shouldHideUiDuringAction = isMainScreenAgent() || !showerCtx.canUseShowerForInput
+        if (!shouldHideUiDuringAction) return block()
+
+        val floatingService = FloatingChatService.getInstance()
         val progressOverlay = UIAutomationProgressOverlay.getInstance(context)
         try {
+            if (isMainScreenAgent()) {
+                floatingService?.setStatusIndicatorVisible(false)
+            }
             progressOverlay.setOverlayVisible(false)
             delay(200)
             return block()
         } finally {
+            if (isMainScreenAgent()) {
+                val hasShowerDisplayNow = try {
+                    ShowerController.getDisplayId(agentId) != null
+                } catch (e: Exception) {
+                    AppLogger.e("ActionHandler", "[$agentId] Error checking Shower display state after action", e)
+                    false
+                }
+                if (isMainScreenAgent() || !hasShowerDisplayNow) {
+                    floatingService?.setStatusIndicatorVisible(true)
+                }
+            }
             progressOverlay.setOverlayVisible(true)
         }
     }
 
     private suspend fun ensureVirtualDisplayIfAdbOrHigher() {
+        if (isMainScreenAgent()) return
         try {
-            val level = androidPermissionPreferences.getPreferredPermissionLevel() ?: AndroidPermissionLevel.STANDARD
-            val isAdbOrHigher = when (level) {
-                AndroidPermissionLevel.DEBUGGER, AndroidPermissionLevel.ADMIN, AndroidPermissionLevel.ROOT -> true
-                else -> false
-            }
-            if (!isAdbOrHigher) return
+            val permissionState = resolvePrivilegedExecutionState(
+                context = context,
+                androidPermissionPreferences = androidPermissionPreferences,
+                checkDebuggerShizuku = false
+            )
+            if (!permissionState.isAdbOrHigher) return
 
             val ok = ShowerServerManager.ensureServerStarted(context)
             if (ok) {
@@ -1108,6 +1203,7 @@ class ActionHandler(
     }
 
     private fun withDisplayParam(params: List<ToolParameter>): List<ToolParameter> {
+        if (isMainScreenAgent()) return params
         return try {
             val showerId = ShowerController.getDisplayId(agentId)
             if (showerId != null) {
@@ -1134,11 +1230,51 @@ class ActionHandler(
     private suspend fun resolveAppPackageName(app: String): String {
         val trimmed = app.trim()
         val lowered = trimmed.lowercase(Locale.getDefault())
-        fun lookup(): String? = StandardUITools.APP_PACKAGES[app] ?: StandardUITools.APP_PACKAGES[trimmed] ?: StandardUITools.APP_PACKAGES[lowered]
-        val directHit = lookup()
-        if (directHit != null) return directHit
-        withContext(Dispatchers.IO) { StandardUITools.scanAndAddInstalledApps(context) }
+        fun lookup(): String? =
+            StandardUITools.APP_PACKAGES[app] ?: StandardUITools.APP_PACKAGES[trimmed] ?: StandardUITools.APP_PACKAGES[lowered]
+
+        lookup()?.let { return it }
+
+        syncAppPackagesFromToolIfNeeded()
         return lookup() ?: trimmed
+    }
+
+    private suspend fun syncAppPackagesFromToolIfNeeded() {
+        if (appPackagesSyncedFromTool) return
+        appPackagesSyncedFromTool = true
+
+        val listResult = aiToolManager.executeTool(AITool("list_installed_apps"))
+        if (!listResult.success) {
+            AppLogger.w("PhoneAgent", "[$agentId] Failed to sync app packages from tool layer: ${listResult.error}")
+            return
+        }
+
+        val appListData = listResult.result as? AppListData ?: return
+        val discoveredPackages = mutableMapOf<String, String>()
+
+        appListData.packages.forEach { entry ->
+            val parsed = parseToolAppEntry(entry) ?: return@forEach
+            val (appName, packageName) = parsed
+            if (appName.isBlank() || packageName.isBlank()) return@forEach
+
+            discoveredPackages.putIfAbsent(appName, packageName)
+            discoveredPackages.putIfAbsent(appName.lowercase(Locale.getDefault()), packageName)
+        }
+
+        if (discoveredPackages.isNotEmpty()) {
+            StandardUITools.addAppPackages(discoveredPackages)
+        }
+    }
+
+    private fun parseToolAppEntry(entry: String): Pair<String, String>? {
+        val left = entry.lastIndexOf('(')
+        val right = entry.lastIndexOf(')')
+        if (left < 0 || right <= left) return null
+
+        val appName = entry.substring(0, left).trim()
+        val packageName = entry.substring(left + 1, right).trim()
+        if (packageName.isBlank()) return null
+        return Pair(if (appName.isBlank()) packageName else appName, packageName)
     }
 }
 

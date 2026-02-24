@@ -1,5 +1,9 @@
 package com.ai.assistance.operit.ui.features.chat.screens
 
+import android.app.Activity
+import android.content.Context
+import android.content.pm.PackageManager
+import android.content.ContextWrapper
 import android.os.Build
 import android.provider.Settings
 import androidx.annotation.RequiresApi
@@ -50,6 +54,9 @@ import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.ui.components.ErrorDialog
 import com.ai.assistance.operit.ui.features.chat.components.*
+import com.ai.assistance.operit.ui.features.chat.components.style.input.agent.AgentChatInputSection
+import com.ai.assistance.operit.ui.features.chat.components.style.input.classic.ClassicChatInputSection
+import com.ai.assistance.operit.ui.features.chat.components.style.input.classic.ClassicChatSettingsBar
 import com.ai.assistance.operit.ui.features.chat.components.AndroidExportDialog
 import com.ai.assistance.operit.ui.features.chat.components.ExportCompleteDialog
 import com.ai.assistance.operit.ui.features.chat.components.ExportPlatformDialog
@@ -95,6 +102,7 @@ fun AIChatScreen(
         onNavigateToUserPreferences: () -> Unit = {},
         onNavigateToModelConfig: () -> Unit = {},
         onNavigateToModelPrompts: () -> Unit = {},
+        onNavigateToPackageManager: () -> Unit = {},
         onGestureConsumed: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -172,6 +180,11 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             else -> ChatStyle.CURSOR
         }
     }
+    val inputStyle by
+        preferencesManager.inputStyle.collectAsState(
+            initial = UserPreferencesManager.INPUT_STYLE_AGENT,
+        )
+    val hostActivity = remember(context) { context.findActivity() }
 
     // Collect chat area horizontal padding from preferences
     val chatAreaHorizontalPadding by preferencesManager.chatAreaHorizontalPadding.collectAsState(initial = 16f)
@@ -202,7 +215,11 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val enableMemoryQuery by actualViewModel.enableMemoryQuery.collectAsState()
     val enableMaxContextMode by actualViewModel.enableMaxContextMode.collectAsState()
     val enableTools by actualViewModel.enableTools.collectAsState()
+    val toolPromptVisibility by actualViewModel.toolPromptVisibility.collectAsState()
     val disableStreamOutput by actualViewModel.disableStreamOutput.collectAsState()
+    val disableUserPreferenceDescription by
+            actualViewModel.disableUserPreferenceDescription.collectAsState()
+    val disableLatexDescription by actualViewModel.disableLatexDescription.collectAsState()
     val summaryTokenThreshold by actualViewModel.summaryTokenThreshold.collectAsState()
     val isAutoReadEnabled by actualViewModel.isAutoReadEnabled.collectAsState()
     val showChatHistorySelector by actualViewModel.showChatHistorySelector.collectAsState()
@@ -311,6 +328,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     // 滚动状态
     var autoScrollToBottom by remember { mutableStateOf(true) }
     val onAutoScrollToBottomChange = remember { { it: Boolean -> autoScrollToBottom = it } }
+    val imeBottomPx = WindowInsets.ime.getBottom(density)
 
     // 处理来自ViewModel的滚动事件（流式输出时）
     LaunchedEffect(Unit) {
@@ -325,8 +343,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         }
     }
 
-    // 自动滚动处理 - 仅在消息数量变化时触发
-    LaunchedEffect(chatHistory.size, scrollState.maxValue) {
+    // 消息新增时的自动滚动
+    LaunchedEffect(chatHistory.size) {
         if (autoScrollToBottom) {
             try {
                 scrollState.animateScrollTo(scrollState.maxValue)
@@ -384,16 +402,42 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val showWebView by actualViewModel.showWebView.collectAsState()
     // 收集AI电脑显示状态
     val showAiComputer by actualViewModel.showAiComputer.collectAsState()
+    val manifestSoftInputMode = remember(hostActivity) { hostActivity?.manifestSoftInputMode() }
+    LaunchedEffect(inputStyle, showWebView, showAiComputer, hostActivity) {
+        val window = hostActivity?.window
+        if (window != null) {
+            val shouldUseChatLocalImeHandling =
+                inputStyle == UserPreferencesManager.INPUT_STYLE_AGENT &&
+                    !showWebView &&
+                    !showAiComputer
+            val shouldUseWorkspaceImeResize = showWebView || showAiComputer
+            val targetSoftInputMode =
+                if (shouldUseChatLocalImeHandling) {
+                    // 聊天输入页：由 Compose 局部位移处理输入法
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                } else if (shouldUseWorkspaceImeResize) {
+                    // 工作区/终端等页面：使用系统 resize，避免输入框被键盘遮挡
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                } else {
+                    // 常规页面保持 pan，与 Manifest 默认行为一致
+                    WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+                }
+            window.setSoftInputMode(targetSoftInputMode)
+        }
+    }
+    DisposableEffect(hostActivity, manifestSoftInputMode) {
+        onDispose {
+            val window = hostActivity?.window
+            if (window != null && manifestSoftInputMode != null) {
+                window.setSoftInputMode(manifestSoftInputMode)
+            }
+        }
+    }
+
     var hasEverShownWebView by remember { mutableStateOf(false) }
     LaunchedEffect(showWebView) {
         if (showWebView) {
             hasEverShownWebView = true
-        }
-    }
-    var hasEverShownAiComputer by remember { mutableStateOf(false) }
-    LaunchedEffect(showAiComputer) {
-        if (showAiComputer) {
-            hasEverShownAiComputer = true
         }
     }
     val view = LocalView.current
@@ -499,70 +543,178 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                     bottomBarHeightPx = it.size.height
                                 }
                         ) {
-                            ChatInputSection(
-                                    actualViewModel = actualViewModel,
-                                    userMessage = userMessage,
-                                    onUserMessageChange = { actualViewModel.updateUserMessage(it) },
-                                    onSendMessage = {
-                                        // 清除焦点，收起软键盘
-                                        focusManager.clearFocus()
-
-                                        actualViewModel.sendUserMessage()
-                                        // 在发送消息后重置附件面板状态
-                                        actualViewModel.resetAttachmentPanelState()
-                                        // 发送新问题时，恢复自动滚动到底部
-                                        autoScrollToBottom = true
-                                    },
-                                    onCancelMessage = { actualViewModel.cancelCurrentMessage() },
-                                    isLoading = isLoading,
-                                    inputState = inputProcessingState,
-                                    allowTextInputWhileProcessing = true,
-                                    onAttachmentRequest = { filePath ->
-                                        // 处理附件 - 现在使用文件路径而不是Uri
-                                        actualViewModel.handleAttachment(filePath)
-                                    },
-                                    attachments = attachments,
-                                    onRemoveAttachment = { filePath ->
-                                        // 删除附件 - 现在使用文件路径而不是Uri
-                                        actualViewModel.removeAttachment(filePath)
-                                    },
-                                    onInsertAttachment = { attachment: AttachmentInfo ->
-                                        // 在光标位置插入附件引用
-                                        actualViewModel.insertAttachmentReference(attachment)
-                                    },
-                                    onAttachScreenContent = {
-                                        // 添加屏幕内容附件
-                                        actualViewModel.captureScreenContent()
-                                    },
-                                    onAttachNotifications = {
-                                        // 添加当前通知附件
-                                        actualViewModel.captureNotifications()
-                                    },
-                                    onAttachLocation = {
-                                        // 添加当前位置附件
-                                        actualViewModel.captureLocation()
-                                    },
-                                    onAttachMemory = {
-                                        // 显示记忆文件夹选择对话框
-                                        showMemoryFolderDialog = true
-                                    },
-                                    onTakePhoto = { uri ->
-                                        // 处理拍摄的照片
-                                        actualViewModel.handleTakenPhoto(uri)
-                                    },
-                                    hasBackgroundImage = hasBackgroundImage,
-                                    chatInputTransparent = chatInputTransparent,
-                                    // 传递附件面板状态
-                                    externalAttachmentPanelState = attachmentPanelState,
-                                    onAttachmentPanelStateChange = { newState ->
-                                        actualViewModel.updateAttachmentPanelState(newState)
-                                    },
-                                    showInputProcessingStatus = showInputProcessingStatus,
-                                    enableTools = enableTools,
-                                    replyToMessage = replyToMessage,
-                                    onClearReply = { actualViewModel.clearReplyToMessage() },
-                                    isWorkspaceOpen = isWorkspaceOpen
-                            )
+                            if (inputStyle == UserPreferencesManager.INPUT_STYLE_AGENT) {
+                                AgentChatInputSection(
+                                        actualViewModel = actualViewModel,
+                                        userMessage = userMessage,
+                                        onUserMessageChange = {
+                                            actualViewModel.updateUserMessage(it)
+                                        },
+                                        onSendMessage = {
+                                            if (currentChatId.isNullOrBlank()) {
+                                                Toast.makeText(
+                                                        context,
+                                                        context.getString(
+                                                                R.string.chat_please_create_new_chat
+                                                        ),
+                                                        Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else {
+                                                focusManager.clearFocus()
+                                                actualViewModel.sendUserMessage()
+                                                actualViewModel.resetAttachmentPanelState()
+                                                autoScrollToBottom = true
+                                            }
+                                        },
+                                        onCancelMessage = { actualViewModel.cancelCurrentMessage() },
+                                        isLoading = isLoading,
+                                        inputState = inputProcessingState,
+                                        allowTextInputWhileProcessing = true,
+                                        onAttachmentRequest = { filePath ->
+                                            actualViewModel.handleAttachment(filePath)
+                                        },
+                                        attachments = attachments,
+                                        onRemoveAttachment = { filePath ->
+                                            actualViewModel.removeAttachment(filePath)
+                                        },
+                                        onInsertAttachment = { attachment: AttachmentInfo ->
+                                            actualViewModel.insertAttachmentReference(attachment)
+                                        },
+                                        onAttachScreenContent = {
+                                            actualViewModel.captureScreenContent()
+                                        },
+                                        onAttachNotifications = {
+                                            actualViewModel.captureNotifications()
+                                        },
+                                        onAttachLocation = { actualViewModel.captureLocation() },
+                                        onAttachMemory = { showMemoryFolderDialog = true },
+                                        onTakePhoto = { uri ->
+                                            actualViewModel.handleTakenPhoto(uri)
+                                        },
+                                        hasBackgroundImage = hasBackgroundImage,
+                                        chatInputTransparent = chatInputTransparent,
+                                        externalAttachmentPanelState = attachmentPanelState,
+                                        onAttachmentPanelStateChange = { newState ->
+                                            actualViewModel.updateAttachmentPanelState(newState)
+                                        },
+                                        showInputProcessingStatus = showInputProcessingStatus,
+                                        enableTools = enableTools,
+                                        replyToMessage = replyToMessage,
+                                        onClearReply = {
+                                            actualViewModel.clearReplyToMessage()
+                                        },
+                                        isWorkspaceOpen = isWorkspaceOpen,
+                                        enableThinkingMode = enableThinkingMode,
+                                        onToggleThinkingMode = {
+                                            actualViewModel.toggleThinkingMode()
+                                        },
+                                        enableThinkingGuidance = enableThinkingGuidance,
+                                        onToggleThinkingGuidance = {
+                                            actualViewModel.toggleThinkingGuidance()
+                                        },
+                                        enableMaxContextMode = enableMaxContextMode,
+                                        onToggleEnableMaxContextMode = {
+                                            actualViewModel.toggleEnableMaxContextMode()
+                                        },
+                                        enableAiPlanning = enableAiPlanning,
+                                        onToggleAiPlanning = { actualViewModel.toggleAiPlanning() },
+                                        permissionLevel =
+                                                actualViewModel.masterPermissionLevel
+                                                        .collectAsState()
+                                                        .value,
+                                        onTogglePermission = { actualViewModel.toggleMasterPermission() },
+                                        enableMemoryQuery = enableMemoryQuery,
+                                        onToggleMemoryQuery = { actualViewModel.toggleMemoryQuery() },
+                                        isAutoReadEnabled = isAutoReadEnabled,
+                                        onToggleAutoRead = { actualViewModel.toggleAutoRead() },
+                                        onToggleTools = { actualViewModel.toggleTools() },
+                                        disableStreamOutput = disableStreamOutput,
+                                        onToggleDisableStreamOutput = {
+                                            actualViewModel.toggleDisableStreamOutput()
+                                        },
+                                        disableUserPreferenceDescription =
+                                                disableUserPreferenceDescription,
+                                        onToggleDisableUserPreferenceDescription = {
+                                            actualViewModel.toggleDisableUserPreferenceDescription()
+                                        },
+                                        disableLatexDescription = disableLatexDescription,
+                                        onToggleDisableLatexDescription = {
+                                            actualViewModel.toggleDisableLatexDescription()
+                                        },
+                                        onNavigateToUserPreferences = onNavigateToUserPreferences,
+                                        onNavigateToPackageManager = onNavigateToPackageManager,
+                                        toolPromptVisibility = toolPromptVisibility,
+                                        onSaveToolPromptVisibilityMap = { visibilityMap ->
+                                            actualViewModel.saveToolPromptVisibilityMap(visibilityMap)
+                                        },
+                                        onManualMemoryUpdate = {
+                                            actualViewModel.manuallyUpdateMemory()
+                                        },
+                                        onNavigateToModelConfig = onNavigateToModelConfig,
+                                )
+                            } else {
+                                ClassicChatInputSection(
+                                        actualViewModel = actualViewModel,
+                                        userMessage = userMessage,
+                                        onUserMessageChange = {
+                                            actualViewModel.updateUserMessage(it)
+                                        },
+                                        onSendMessage = {
+                                            if (currentChatId.isNullOrBlank()) {
+                                                Toast.makeText(
+                                                        context,
+                                                        context.getString(
+                                                                R.string.chat_please_create_new_chat
+                                                        ),
+                                                        Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else {
+                                                focusManager.clearFocus()
+                                                actualViewModel.sendUserMessage()
+                                                actualViewModel.resetAttachmentPanelState()
+                                                autoScrollToBottom = true
+                                            }
+                                        },
+                                        onCancelMessage = { actualViewModel.cancelCurrentMessage() },
+                                        isLoading = isLoading,
+                                        inputState = inputProcessingState,
+                                        allowTextInputWhileProcessing = true,
+                                        onAttachmentRequest = { filePath ->
+                                            actualViewModel.handleAttachment(filePath)
+                                        },
+                                        attachments = attachments,
+                                        onRemoveAttachment = { filePath ->
+                                            actualViewModel.removeAttachment(filePath)
+                                        },
+                                        onInsertAttachment = { attachment: AttachmentInfo ->
+                                            actualViewModel.insertAttachmentReference(attachment)
+                                        },
+                                        onAttachScreenContent = {
+                                            actualViewModel.captureScreenContent()
+                                        },
+                                        onAttachNotifications = {
+                                            actualViewModel.captureNotifications()
+                                        },
+                                        onAttachLocation = { actualViewModel.captureLocation() },
+                                        onAttachMemory = { showMemoryFolderDialog = true },
+                                        onTakePhoto = { uri ->
+                                            actualViewModel.handleTakenPhoto(uri)
+                                        },
+                                        hasBackgroundImage = hasBackgroundImage,
+                                        chatInputTransparent = chatInputTransparent,
+                                        externalAttachmentPanelState = attachmentPanelState,
+                                        onAttachmentPanelStateChange = { newState ->
+                                            actualViewModel.updateAttachmentPanelState(newState)
+                                        },
+                                        showInputProcessingStatus = showInputProcessingStatus,
+                                        enableTools = enableTools,
+                                        replyToMessage = replyToMessage,
+                                        onClearReply = {
+                                            actualViewModel.clearReplyToMessage()
+                                        },
+                                        isWorkspaceOpen = isWorkspaceOpen
+                                )
+                            }
                         }
                     }
                 }
@@ -612,7 +764,16 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                 // The main content area is now a Box to allow overlaying.
                 // It respects the padding from the Scaffold's bottomBar.
                 Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-                    Box(modifier = Modifier.weight(1f)) {
+                    val chatContentImeLiftModifier =
+                        if (
+                            inputStyle == UserPreferencesManager.INPUT_STYLE_AGENT &&
+                                imeBottomPx > 0
+                        ) {
+                            Modifier.graphicsLayer { translationY = -imeBottomPx.toFloat() }
+                        } else {
+                            Modifier
+                        }
+                    Box(modifier = Modifier.weight(1f).then(chatContentImeLiftModifier)) {
                         ChatScreenContent(
                                 // modifier = Modifier.weight(1f), // This is no longer needed here
                                 paddingValues =
@@ -660,58 +821,80 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 chatAreaHorizontalPadding = chatAreaHorizontalPadding
                         )
 
-                        ChatSettingsBar(
-                                modifier = Modifier.align(Alignment.BottomEnd),
-                                enableAiPlanning = enableAiPlanning,
-                                onToggleAiPlanning = { actualViewModel.toggleAiPlanning() },
-                                permissionLevel =
-                                        actualViewModel.masterPermissionLevel
-                                                .collectAsState()
-                                                .value,
-                                onTogglePermission = { actualViewModel.toggleMasterPermission() },
-                                enableThinkingMode = enableThinkingMode,
-                                onToggleThinkingMode = { actualViewModel.toggleThinkingMode() },
-                                enableThinkingGuidance = enableThinkingGuidance,
-                                onToggleThinkingGuidance = {
-                                    actualViewModel.toggleThinkingGuidance()
-                                },
-                                thinkingQualityLevel = thinkingQualityLevel,
-                                onThinkingQualityLevelChange = {
-                                    actualViewModel.updateThinkingQualityLevel(it)
-                                },
-                                maxWindowSizeInK =
-                                        actualViewModel.maxWindowSizeInK.collectAsState().value,
-                                baseContextLengthInK =
-                                        actualViewModel.baseContextLengthInK.collectAsState().value,
-                                maxContextLengthInK =
-                                        actualViewModel.maxContextLengthInK.collectAsState().value,
-                                onContextLengthChange = {
-                                    actualViewModel.updateContextLength(it)
-                                },
-                                enableMemoryQuery = enableMemoryQuery,
-                                onToggleMemoryQuery = {
-                                    actualViewModel.toggleMemoryQuery()
-                                },
-                                enableMaxContextMode = enableMaxContextMode,
-                                onToggleEnableMaxContextMode = {
-                                    actualViewModel.toggleEnableMaxContextMode()
-                                },
-                                summaryTokenThreshold = summaryTokenThreshold,
-                                onSummaryTokenThresholdChange = {
-                                    actualViewModel.updateSummaryTokenThreshold(it)
-                                },
-                                onNavigateToUserPreferences = onNavigateToUserPreferences,
-                                onNavigateToModelConfig = onNavigateToModelConfig,
-                                onNavigateToModelPrompts = onNavigateToModelPrompts,
-                                isAutoReadEnabled = isAutoReadEnabled,
-                                onToggleAutoRead = { actualViewModel.toggleAutoRead() },
-                                enableTools = enableTools,
-                                onToggleTools = { actualViewModel.toggleTools() },
-                                disableStreamOutput = disableStreamOutput,
-                                onToggleDisableStreamOutput = { actualViewModel.toggleDisableStreamOutput() },
-                                onManualMemoryUpdate = { actualViewModel.manuallyUpdateMemory() },
-                                onManualSummarizeConversation = { actualViewModel.manuallySummarizeConversation() }
-                        )
+                        if (inputStyle == UserPreferencesManager.INPUT_STYLE_CLASSIC) {
+                            ClassicChatSettingsBar(
+                                    modifier = Modifier.align(Alignment.BottomEnd),
+                                    enableAiPlanning = enableAiPlanning,
+                                    onToggleAiPlanning = { actualViewModel.toggleAiPlanning() },
+                                    permissionLevel =
+                                            actualViewModel.masterPermissionLevel
+                                                    .collectAsState()
+                                                    .value,
+                                    onTogglePermission = { actualViewModel.toggleMasterPermission() },
+                                    enableThinkingMode = enableThinkingMode,
+                                    onToggleThinkingMode = { actualViewModel.toggleThinkingMode() },
+                                    enableThinkingGuidance = enableThinkingGuidance,
+                                    onToggleThinkingGuidance = {
+                                        actualViewModel.toggleThinkingGuidance()
+                                    },
+                                    thinkingQualityLevel = thinkingQualityLevel,
+                                    onThinkingQualityLevelChange = {
+                                        actualViewModel.updateThinkingQualityLevel(it)
+                                    },
+                                    maxWindowSizeInK =
+                                            actualViewModel.maxWindowSizeInK.collectAsState().value,
+                                    baseContextLengthInK =
+                                            actualViewModel.baseContextLengthInK.collectAsState().value,
+                                    maxContextLengthInK =
+                                            actualViewModel.maxContextLengthInK.collectAsState().value,
+                                    onContextLengthChange = {
+                                        actualViewModel.updateContextLength(it)
+                                    },
+                                    enableMemoryQuery = enableMemoryQuery,
+                                    onToggleMemoryQuery = {
+                                        actualViewModel.toggleMemoryQuery()
+                                    },
+                                    enableMaxContextMode = enableMaxContextMode,
+                                    onToggleEnableMaxContextMode = {
+                                        actualViewModel.toggleEnableMaxContextMode()
+                                    },
+                                    summaryTokenThreshold = summaryTokenThreshold,
+                                    onSummaryTokenThresholdChange = {
+                                        actualViewModel.updateSummaryTokenThreshold(it)
+                                    },
+                                    onNavigateToUserPreferences = onNavigateToUserPreferences,
+                                    onNavigateToModelConfig = onNavigateToModelConfig,
+                                    onNavigateToModelPrompts = onNavigateToModelPrompts,
+                                    onNavigateToPackageManager = onNavigateToPackageManager,
+                                    isAutoReadEnabled = isAutoReadEnabled,
+                                    onToggleAutoRead = { actualViewModel.toggleAutoRead() },
+                                    enableTools = enableTools,
+                                    onToggleTools = { actualViewModel.toggleTools() },
+                                    toolPromptVisibility = toolPromptVisibility,
+                                    onSaveToolPromptVisibilityMap = { visibilityMap ->
+                                        actualViewModel.saveToolPromptVisibilityMap(visibilityMap)
+                                    },
+                                    disableStreamOutput = disableStreamOutput,
+                                    onToggleDisableStreamOutput = {
+                                        actualViewModel.toggleDisableStreamOutput()
+                                    },
+                                    disableUserPreferenceDescription =
+                                            disableUserPreferenceDescription,
+                                    onToggleDisableUserPreferenceDescription = {
+                                        actualViewModel.toggleDisableUserPreferenceDescription()
+                                    },
+                                    disableLatexDescription = disableLatexDescription,
+                                    onToggleDisableLatexDescription = {
+                                        actualViewModel.toggleDisableLatexDescription()
+                                    },
+                                    onManualMemoryUpdate = {
+                                        actualViewModel.manuallyUpdateMemory()
+                                    },
+                                    onManualSummarizeConversation = {
+                                        actualViewModel.manuallySummarizeConversation()
+                                    }
+                            )
+                        }
                     }
                 }
             }
@@ -818,35 +1001,14 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
             }
         }
 
-        // AI电脑模式作为浮层，现在位于Scaffold外部，可以覆盖整个屏幕
-        Layout(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(alpha = if (showAiComputer) 1f else 0f)
-                .clipToBounds(),
-            content = {
-                // The content is composed unconditionally, keeping it "alive"
-                if (hasEverShownAiComputer) {
-                    ComputerScreen()
-                }
-            }
-        ) { measurables, constraints ->
-            if (measurables.isEmpty()) {
-                layout(0, 0) {}
-            } else {
-                if (showAiComputer) {
-                    val placeable = measurables.first().measure(constraints)
-                    layout(placeable.width, placeable.height) {
-                        placeable.placeRelative(0, 0)
-                    }
-                } else {
-                    // 当不可见时，我们强制测量为 0x0 并放置
-                    // 这样可以触发底层 View 的 onSizeChanged，从而通知其暂停渲染
-                    val placeable = measurables.first().measure(Constraints.fixed(0, 0))
-                    layout(0, 0) {
-                        placeable.placeRelative(0, 0)
-                    }
-                }
+        // AI电脑模式作为浮层：关闭时完全移出组合，确保 SurfaceView 被释放，避免机型相关残影
+        if (showAiComputer) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clipToBounds()
+            ) {
+                ComputerScreen()
             }
         }
 
@@ -959,7 +1121,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                     onDismiss = { showExportCompleteDialog = false },
                     onOpenFile = { path ->
                         val tool = AITool(
-                            name = "open_file",
+                            name = if (path.endsWith(".apk", ignoreCase = true)) "install_app" else "open_file",
                             parameters = listOf(ToolParameter("path", path))
                         )
                         AIToolHandler.getInstance(context).executeTool(tool)
@@ -1005,3 +1167,21 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         }
     )
 }
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
+private fun Activity.manifestSoftInputMode(): Int =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        packageManager.getActivityInfo(
+            componentName,
+            PackageManager.ComponentInfoFlags.of(0)
+        ).softInputMode
+    } else {
+        @Suppress("DEPRECATION")
+        packageManager.getActivityInfo(componentName, 0).softInputMode
+    }

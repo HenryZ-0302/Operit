@@ -354,66 +354,49 @@ class MNNProvider(
 
         var text = raw
 
-        val imageLinkPlain = Regex("""<link\s+type=\"image\"\s+id=\"([^\"]+)\"\s*>.*?</link>""", RegexOption.DOT_MATCHES_ALL)
-        val imageLinkEscaped = Regex("""<link\s+type=\\\"image\\\"\s+id=\\\"([^\"]+)\\\"\s*>.*?</link>""", RegexOption.DOT_MATCHES_ALL)
-        val mediaLinkPlain = Regex("""<link\s+type=\"(audio|video)\"\s+id=\"([^\"]+)\"\s*>.*?</link>""", RegexOption.DOT_MATCHES_ALL)
-        val mediaLinkEscaped = Regex("""<link\s+type=\\\"(audio|video)\\\"\s+id=\\\"([^\"]+)\\\"\s*>.*?</link>""", RegexOption.DOT_MATCHES_ALL)
-
-        fun replaceImageLinks(input: String, pattern: Regex): String {
-            return pattern.replace(input) { mr ->
-                val id = mr.groupValues.getOrNull(1) ?: return@replace ""
-                if (!allowVision) {
-                    ""
-                } else {
-                    val path = imagePathFor(id)
-                    if (path == null) "" else "<img>$path</img>"
-                }
+        text = MediaLinkParser.replaceImageLinks(text) { id ->
+            if (!allowVision) {
+                ""
+            } else {
+                val path = imagePathFor(id)
+                if (path == null) "" else "<img>$path</img>"
             }
         }
 
-        fun replaceMediaLinks(input: String, pattern: Regex): String {
-            return pattern.replace(input) { mr ->
-                val type = mr.groupValues.getOrNull(1) ?: return@replace ""
-                val id = mr.groupValues.getOrNull(2) ?: return@replace ""
-                if (type == "audio") {
-                    if (!allowAudio) return@replace ""
-                    val (path, mime) = mediaPathFor(id) ?: return@replace ""
-                    val file = File(path)
+        text = MediaLinkParser.replaceMediaLinks(text) { type, id ->
+            if (type == "audio") {
+                if (!allowAudio) return@replaceMediaLinks ""
+                val (path, _) = mediaPathFor(id) ?: return@replaceMediaLinks ""
+                val file = File(path)
+                val wav = transcodeToWav16kMono(file)
+                if (wav != null) {
+                    tempFiles.add(wav)
+                    "<audio>${wav.absolutePath}</audio>"
+                } else {
+                    "<audio>$path</audio>"
+                }
+            } else {
+                if (!allowVideo) return@replaceMediaLinks ""
+                val (path, _) = mediaPathFor(id) ?: return@replaceMediaLinks ""
+                val file = File(path)
+                val parts = mutableListOf<String>()
+                if (caps.isVisual && allowVision) {
+                    val frame = extractVideoFrame(file)
+                    if (frame != null) {
+                        tempFiles.add(frame)
+                        parts.add("<img>${frame.absolutePath}</img>")
+                    }
+                }
+                if (caps.isAudio && allowAudio) {
                     val wav = transcodeToWav16kMono(file)
                     if (wav != null) {
                         tempFiles.add(wav)
-                        "<audio>${wav.absolutePath}</audio>"
-                    } else {
-                        "<audio>$path</audio>"
+                        parts.add("<audio>${wav.absolutePath}</audio>")
                     }
-                } else {
-                    if (!allowVideo) return@replace ""
-                    val (path, _) = mediaPathFor(id) ?: return@replace ""
-                    val file = File(path)
-                    val parts = mutableListOf<String>()
-                    if (caps.isVisual && allowVision) {
-                        val frame = extractVideoFrame(file)
-                        if (frame != null) {
-                            tempFiles.add(frame)
-                            parts.add("<img>${frame.absolutePath}</img>")
-                        }
-                    }
-                    if (caps.isAudio && allowAudio) {
-                        val wav = transcodeToWav16kMono(file)
-                        if (wav != null) {
-                            tempFiles.add(wav)
-                            parts.add("<audio>${wav.absolutePath}</audio>")
-                        }
-                    }
-                    parts.joinToString("")
                 }
+                parts.joinToString("")
             }
         }
-
-        text = replaceImageLinks(text, imageLinkPlain)
-        text = replaceImageLinks(text, imageLinkEscaped)
-        text = replaceMediaLinks(text, mediaLinkPlain)
-        text = replaceMediaLinks(text, mediaLinkEscaped)
 
         return MultimodalPreprocessResult(text = text, tempFiles = tempFiles)
     }

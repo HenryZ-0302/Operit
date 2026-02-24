@@ -5,10 +5,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.AssetCopyUtils
 import java.io.File
 import java.io.InputStream
 
-/** APK编辑器 - 提供链式调用API 支持APK解压、修改包名、修改应用名、更改图标和重新签名等操作 */
+/** APK编辑器 - 提供链式调用API 支持修改包名、应用名、图标和重新签名等操作 */
 class ApkEditor
 private constructor(
         private val context: Context,
@@ -26,7 +27,9 @@ private constructor(
          */
         @JvmStatic
         fun fromAsset(context: Context, assetPath: String): ApkEditor {
-            val apkFile = copyAssetToFile(context, assetPath)
+            val fileName = assetPath.substringAfterLast('/')
+            val outputFile = File(context.cacheDir, "apk_editor_$fileName")
+            val apkFile = AssetCopyUtils.copyAssetToFile(context, assetPath, outputFile, overwrite = true)
             val apkReverseEngineer = ApkReverseEngineer(context)
             return ApkEditor(context, apkFile, apkReverseEngineer)
         }
@@ -61,23 +64,8 @@ private constructor(
          * @param assetPath 资产路径
          * @return 缓存文件
          */
-        private fun copyAssetToFile(context: Context, assetPath: String): File {
-            val fileName = assetPath.substringAfterLast('/')
-            val outputFile = File(context.cacheDir, "apk_editor_$fileName")
-
-            if (outputFile.exists()) {
-                outputFile.delete()
-            }
-
-            context.assets.open(assetPath).use { input ->
-                outputFile.outputStream().use { output -> input.copyTo(output) }
-            }
-
-            return outputFile
-        }
     }
 
-    private var extractedDir: File? = null
     private var newPackageName: String? = null
     private var newAppName: String? = null
     private var newVersionName: String? = null
@@ -90,21 +78,6 @@ private constructor(
     private var keyPassword: String? = null
 
     private var outputFile: File? = null
-
-    /**
-     * 解压APK文件
-     * @return 当前APK编辑器实例
-     */
-    fun extract(): ApkEditor {
-        try {
-            AppLogger.d(TAG, "开始解压APK: ${apkFile.absolutePath}")
-            extractedDir = apkReverseEngineer.extractApk(apkFile)
-            return this
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "解压APK失败", e)
-            throw e
-        }
-    }
 
     /**
      * 修改包名
@@ -218,18 +191,15 @@ private constructor(
     }
 
     /**
-     * 重新打包APK（不签名）
-     * @return 重新打包后的APK文件
+     * 仅替换Web内容并更新清单信息的快速打包（不落地解压）
+     * @param webContentDir 网页内容目录
+     * @return 重新打包后的APK文件（未签名）
      */
-    fun repack(): File {
-        if (extractedDir == null) {
-            extract()
+    fun repackWithWebContent(webContentDir: File): File {
+        if (!webContentDir.exists() || !webContentDir.isDirectory) {
+            throw IllegalArgumentException("webContentDir is missing or not a directory: ${webContentDir.absolutePath}")
         }
 
-        // 应用修改
-        applyChanges()
-
-        // 确定输出文件
         val unsignedOutputFile =
                 if (outputFile != null) {
                     outputFile!!
@@ -237,8 +207,17 @@ private constructor(
                     File(context.cacheDir, "unsigned_${apkFile.name}")
                 }
 
-        // 重新打包
-        if (!apkReverseEngineer.repackageApk(extractedDir!!, unsignedOutputFile)) {
+        if (!apkReverseEngineer.repackageApkWithWebContent(
+                        apkFile,
+                        unsignedOutputFile,
+                        webContentDir,
+                        newPackageName,
+                        newAppName,
+                        newVersionName,
+                        newVersionCode,
+                        newIconBitmap
+                )
+        ) {
             throw RuntimeException(context.getString(R.string.apk_editor_repack_failed))
         }
 
@@ -246,22 +225,19 @@ private constructor(
     }
 
     /**
-     * 重新打包并签名APK
+     * 仅替换Web内容并更新清单信息后重新打包并签名APK
+     * @param webContentDir 网页内容目录
      * @return 签名后的APK文件
-     * @throws RuntimeException 如果签名失败，抛出包含详细错误信息的异常
      */
-    fun repackAndSign(): File {
-        // 先重新打包
-        val unsignedApk = repack()
+    fun repackAndSignWithWebContent(webContentDir: File): File {
+        val unsignedApk = repackWithWebContent(webContentDir)
 
         AppLogger.d(TAG, "未签名APK生成成功: ${unsignedApk.absolutePath}, 文件大小: ${unsignedApk.length()}")
 
-        // 确保文件确实存在
         if (!unsignedApk.exists() || unsignedApk.length() == 0L) {
             throw RuntimeException(context.getString(R.string.apk_editor_unsigned_apk_not_found, unsignedApk.absolutePath))
         }
 
-        // 检查签名信息
         if (keyStoreFile == null ||
                         keyStorePassword == null ||
                         keyAlias == null ||
@@ -270,9 +246,7 @@ private constructor(
             throw IllegalStateException(context.getString(R.string.apk_editor_signature_incomplete))
         }
 
-        // 确定签名后的输出文件
         val signedOutputFile = if (outputFile != null) {
-            // 如果已经指定了输出文件，创建一个新的临时文件用于签名过程
             File(unsignedApk.parentFile, "to_sign_${System.currentTimeMillis()}_${unsignedApk.name}")
         } else {
             File(context.cacheDir, "signed_${apkFile.name}")
@@ -280,7 +254,6 @@ private constructor(
 
         AppLogger.d(TAG, "开始签名APK，输入: ${unsignedApk.absolutePath}, 输出: ${signedOutputFile.absolutePath}")
 
-        // 签名APK
         val signResult = apkReverseEngineer.signApk(
                 unsignedApk,
                 keyStoreFile!!,
@@ -295,24 +268,19 @@ private constructor(
             throw RuntimeException(context.getString(R.string.apk_editor_sign_failed, errorMessage))
         }
 
-        // 如果指定了输出路径且签名成功，将签名后的文件移动到指定位置
         val finalOutputFile = if (outputFile != null && signedOutputFile.exists()) {
-            // 确保目标目录存在
             outputFile!!.parentFile?.mkdirs()
-            
-            // 如果目标文件存在，先删除
+
             if (outputFile!!.exists()) {
                 outputFile!!.delete()
             }
-            
-            // 复制文件内容
+
             signedOutputFile.inputStream().use { input ->
                 outputFile!!.outputStream().use { output -> input.copyTo(output) }
             }
-            
-            // 复制成功后删除临时文件
+
             signedOutputFile.delete()
-            
+
             AppLogger.d(TAG, "已将签名后的APK从临时文件复制到指定输出位置: ${outputFile!!.absolutePath}")
             outputFile!!
         } else {
@@ -323,56 +291,8 @@ private constructor(
         return finalOutputFile
     }
 
-    /** 应用所有修改 */
-    private fun applyChanges() {
-        if (extractedDir == null) {
-            throw IllegalStateException(context.getString(R.string.apk_editor_extract_first))
-        }
-
-        // 修改包名
-        if (newPackageName != null) {
-            AppLogger.d(TAG, "修改包名为: $newPackageName")
-            if (!apkReverseEngineer.modifyPackageName(extractedDir!!, newPackageName!!)) {
-                throw RuntimeException(context.getString(R.string.apk_editor_change_package_failed))
-            }
-        }
-
-        // 修改应用名称
-        if (newAppName != null) {
-            AppLogger.d(TAG, "修改应用名称为: $newAppName")
-            if (!apkReverseEngineer.modifyAppName(extractedDir!!, newAppName!!)) {
-                throw RuntimeException(context.getString(R.string.apk_editor_change_app_name_failed))
-            }
-        }
-
-        // 修改版本名和版本号
-        if (newVersionName != null && newVersionCode != null) {
-            AppLogger.d(TAG, "修改版本为: $newVersionName ($newVersionCode)")
-            if (!apkReverseEngineer.modifyVersion(extractedDir!!, newVersionName!!, newVersionCode!!)) {
-                throw RuntimeException(context.getString(R.string.apk_editor_change_version_failed))
-            }
-        }
-
-        // 更改应用图标
-        if (newIconBitmap != null) {
-            AppLogger.d(TAG, "更换应用图标")
-            if (!apkReverseEngineer.changeAppIcon(extractedDir!!, newIconBitmap!!)) {
-                throw RuntimeException(context.getString(R.string.apk_editor_change_icon_failed))
-            }
-        }
-    }
-
-    /**
-     * 获取APK解压后的目录
-     * @return 解压目录或null（如果未解压）
-     */
-    fun getExtractedDir(): File? {
-        return extractedDir
-    }
-
     /** 清理临时文件 */
     fun cleanup() {
-        apkReverseEngineer.cleanup()
         newIconBitmap?.recycle()
         newIconBitmap = null
     }

@@ -91,13 +91,53 @@ PACKAGE SYSTEM
 - Some additional functionality is available through packages
 - To use a package, call the use_package function with the package_name parameter
 - This will show you all the tools in the package and how to use them
-- Only after activating a package, you can use its tools directly"""
+- If use_package for a package has appeared earlier in this chat, treat that package as activated
+- After a package is activated, call its tools directly using function names like packageName:toolName
+- Package tools may not appear in the current system/tool list, but they are still callable after activation"""
+    private const val PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_STRICT_EN = """
+PACKAGE SYSTEM
+- Some additional functionality is available through packages
+- To use a package, call the use_package function with the package_name parameter
+- If use_package for a package has appeared earlier in this chat, treat that package as activated
+- For package tools, call package_proxy:
+  - Set tool_name to the actual package tool name (e.g. packageName:toolName)
+  - Put target tool arguments in params as a JSON object"""
+
+    private const val PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_STRICT_CN = """
+包系统：
+- 一些额外功能通过包提供
+- 要使用包，调用 use_package 函数并传入 package_name 参数
+- 只要本次聊天中该包曾出现过 use_package，就视为该包已激活
+- 调用包工具请使用 package_proxy：
+  - tool_name 填写真实工具名（例如 packageName:toolName）
+  - 将目标工具参数放入 params（JSON对象）"""
+
     private const val PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_CN = """
 包系统：
 - 一些额外功能通过包提供
 - 要使用包，调用 use_package 函数并传入 package_name 参数
 - 这将显示包中的所有工具及其使用方法
-- 只有在激活包后，才能直接使用其工具"""
+- 只要本次聊天中该包曾出现过 use_package，就视为该包已激活
+- 包激活后，请直接使用 packageName:toolName 形式的函数名调用包内工具
+- 包内工具可能不会出现在当前系统/工具列表中，但激活后依然可以直接调用"""
+
+    private const val PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_PROXY_EN = """
+PACKAGE SYSTEM
+- Some additional functionality is available through packages
+- To use a package, call the use_package function with the package_name parameter
+- If use_package for a package has appeared earlier in this chat, treat that package as activated
+- For package tools, call package_proxy:
+  - Set tool_name to the actual package tool name (e.g. packageName:toolName)
+  - Put target tool arguments in params as a JSON object"""
+
+    private const val PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_PROXY_CN = """
+包系统：
+- 一些额外功能通过包提供
+- 要使用包，调用 use_package 函数并传入 package_name 参数
+- 只要本次聊天中该包曾出现过 use_package，就视为该包已激活
+- 调用包工具请使用 package_proxy：
+  - tool_name 填写真实工具名（例如 packageName:toolName）
+  - 将目标工具参数放入 params（JSON对象）"""
 
     private fun getAvailableToolsEn(
         hasImageRecognition: Boolean,
@@ -106,7 +146,8 @@ PACKAGE SYSTEM
         hasVideoRecognition: Boolean,
         chatModelHasDirectAudio: Boolean,
         chatModelHasDirectVideo: Boolean,
-        safBookmarkNames: List<String>
+        safBookmarkNames: List<String>,
+        toolVisibility: Map<String, Boolean>
     ): String {
         return SystemToolPrompts.generateToolsPromptEn(
             hasBackendImageRecognition = hasImageRecognition,
@@ -116,12 +157,14 @@ PACKAGE SYSTEM
             hasBackendVideoRecognition = hasVideoRecognition,
             chatModelHasDirectAudio = chatModelHasDirectAudio,
             chatModelHasDirectVideo = chatModelHasDirectVideo,
-            safBookmarkNames = safBookmarkNames
+            safBookmarkNames = safBookmarkNames,
+            toolVisibility = toolVisibility
         )
     }
-    
-    private val MEMORY_TOOLS_EN: String
-        get() = SystemToolPrompts.memoryTools.toString()
+
+    private fun getMemoryToolsEn(toolVisibility: Map<String, Boolean>): String {
+        return SystemToolPrompts.generateMemoryToolsPromptEn(toolVisibility)
+    }
 
     private fun getAvailableToolsCn(
         hasImageRecognition: Boolean,
@@ -130,7 +173,8 @@ PACKAGE SYSTEM
         hasVideoRecognition: Boolean,
         chatModelHasDirectAudio: Boolean,
         chatModelHasDirectVideo: Boolean,
-        safBookmarkNames: List<String>
+        safBookmarkNames: List<String>,
+        toolVisibility: Map<String, Boolean>
     ): String {
         return SystemToolPrompts.generateToolsPromptCn(
             hasBackendImageRecognition = hasImageRecognition,
@@ -140,12 +184,14 @@ PACKAGE SYSTEM
             hasBackendVideoRecognition = hasVideoRecognition,
             chatModelHasDirectAudio = chatModelHasDirectAudio,
             chatModelHasDirectVideo = chatModelHasDirectVideo,
-            safBookmarkNames = safBookmarkNames
+            safBookmarkNames = safBookmarkNames,
+            toolVisibility = toolVisibility
         )
     }
-    
-    private val MEMORY_TOOLS_CN: String
-        get() = SystemToolPrompts.memoryToolsCn.toString()
+
+    private fun getMemoryToolsCn(toolVisibility: Map<String, Boolean>): String {
+        return SystemToolPrompts.generateMemoryToolsPromptCn(toolVisibility)
+    }
 
 
     /** Base system prompt template used by the enhanced AI service */
@@ -298,7 +344,10 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           hasVideoRecognition: Boolean = false,
           chatModelHasDirectAudio: Boolean = false,
           chatModelHasDirectVideo: Boolean = false,
-          useToolCallApi: Boolean = false
+          useToolCallApi: Boolean = false,
+          strictToolCall: Boolean = false,
+          disableLatexDescription: Boolean = false,
+          toolVisibility: Map<String, Boolean> = emptyMap()
   ): String {
     val importedPackages = packageManager.getImportedPackages()
     val mcpServers = packageManager.getAvailableServerPackages()
@@ -315,7 +364,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
 
     // Filter out imported packages that no longer exist in availablePackages
     val validImportedPackages = importedPackages.filter { packageName ->
-        packageManager.getPackageTools(packageName) != null
+        packageManager.getPackageTools(packageName) != null &&
+            !packageManager.isToolPkgContainer(packageName)
     }
 
     // Check if any packages (JS, MCP, or Skills) are available
@@ -390,7 +440,7 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     // 当使用Tool Call API时，不在系统提示词中包含工具描述（工具已通过API的tools字段发送）
     val availableToolsEn = if (useToolCallApi) "" else (
         if (enableMemoryQuery) {
-            MEMORY_TOOLS_EN +
+            getMemoryToolsEn(toolVisibility) +
                 getAvailableToolsEn(
                     hasImageRecognition = hasImageRecognition,
                     chatModelHasDirectImage = chatModelHasDirectImage,
@@ -398,7 +448,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                     hasVideoRecognition = hasVideoRecognition,
                     chatModelHasDirectAudio = chatModelHasDirectAudio,
                     chatModelHasDirectVideo = chatModelHasDirectVideo,
-                    safBookmarkNames = safBookmarkNames
+                    safBookmarkNames = safBookmarkNames,
+                    toolVisibility = toolVisibility
                 )
         } else {
             getAvailableToolsEn(
@@ -408,13 +459,14 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                 hasVideoRecognition = hasVideoRecognition,
                 chatModelHasDirectAudio = chatModelHasDirectAudio,
                 chatModelHasDirectVideo = chatModelHasDirectVideo,
-                safBookmarkNames = safBookmarkNames
+                safBookmarkNames = safBookmarkNames,
+                toolVisibility = toolVisibility
             )
         }
     )
     val availableToolsCn = if (useToolCallApi) "" else (
         if (enableMemoryQuery) {
-            MEMORY_TOOLS_CN +
+            getMemoryToolsCn(toolVisibility) +
                 getAvailableToolsCn(
                     hasImageRecognition = hasImageRecognition,
                     chatModelHasDirectImage = chatModelHasDirectImage,
@@ -422,7 +474,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                     hasVideoRecognition = hasVideoRecognition,
                     chatModelHasDirectAudio = chatModelHasDirectAudio,
                     chatModelHasDirectVideo = chatModelHasDirectVideo,
-                    safBookmarkNames = safBookmarkNames
+                    safBookmarkNames = safBookmarkNames,
+                    toolVisibility = toolVisibility
                 )
         } else {
             getAvailableToolsCn(
@@ -432,7 +485,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
                 hasVideoRecognition = hasVideoRecognition,
                 chatModelHasDirectAudio = chatModelHasDirectAudio,
                 chatModelHasDirectVideo = chatModelHasDirectVideo,
-                safBookmarkNames = safBookmarkNames
+                safBookmarkNames = safBookmarkNames,
+                toolVisibility = toolVisibility
             )
         }
     )
@@ -441,9 +495,23 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
     if (enableTools) {
         // 当使用Tool Call API时，使用简化的工具使用指南（保留"调用前描述"的重要指示），移除XML格式说明和工具列表
         if (useToolCallApi) {
+            val packageGuidelines =
+                if (useEnglish) {
+                    if (strictToolCall) {
+                        PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_PROXY_EN
+                    } else {
+                        PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_EN
+                    }
+                } else {
+                    if (strictToolCall) {
+                        PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_PROXY_CN
+                    } else {
+                        PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_CN
+                    }
+                }
             prompt = prompt
                 .replace("TOOL_USAGE_GUIDELINES_SECTION", if (useEnglish) TOOL_USAGE_BRIEF_EN else TOOL_USAGE_BRIEF_CN)
-                .replace("PACKAGE_SYSTEM_GUIDELINES_SECTION", if (useEnglish) PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_EN else PACKAGE_SYSTEM_GUIDELINES_TOOL_CALL_CN)
+                .replace("PACKAGE_SYSTEM_GUIDELINES_SECTION", packageGuidelines)
                 .replace("AVAILABLE_TOOLS_SECTION", "")
         } else {
             prompt = prompt
@@ -457,7 +525,10 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
             prompt = prompt
                 .replace("TOOL_USAGE_GUIDELINES_SECTION", if (useEnglish) TOOL_USAGE_GUIDELINES_EN else TOOL_USAGE_GUIDELINES_CN)
                 .replace("PACKAGE_SYSTEM_GUIDELINES_SECTION", "")
-                .replace("AVAILABLE_TOOLS_SECTION", if (useEnglish) MEMORY_TOOLS_EN else MEMORY_TOOLS_CN)
+                .replace(
+                    "AVAILABLE_TOOLS_SECTION",
+                    if (useEnglish) getMemoryToolsEn(toolVisibility) else getMemoryToolsCn(toolVisibility)
+                )
         } else {
             // Remove all guidance sections when tools and memory are disabled
             // Replace tool-related sections and remove behavior guidelines and workspace guidelines
@@ -470,6 +541,12 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         }
     }
 
+
+    if (disableLatexDescription) {
+        prompt = prompt
+                .replace(Regex("(?m)^\\s*FORMULA FORMATTING:.*(?:\\r?\\n)?"), "")
+                .replace(Regex("(?m)^\\s*公式格式化：.*(?:\\r?\\n)?"), "")
+    }
 
     // Clean up multiple consecutive blank lines (replace 3+ newlines with 2)
     prompt = prompt.replace(Regex("\n{3,}"), "\n\n")
@@ -485,8 +562,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
    * @return A string containing the appropriate workspace guidelines.
    */
   private fun getWorkspaceGuidelines(workspacePath: String?, workspaceEnv: String?, useEnglish: Boolean): String {
-      val envLabel = workspaceEnv?.trim().orEmpty()
-      val shouldShowEnv = envLabel.isNotBlank() && !envLabel.equals("android", ignoreCase = true)
+      val envLabel = workspaceEnv?.trim().orEmpty().ifBlank { "android" }
+      val shouldShowEnv = envLabel.isNotBlank()
       return if (workspacePath != null) {
           if (useEnglish) {
               """
@@ -498,6 +575,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
               - For more complex projects, consider creating `js` and `css` folders and organizing files accordingly.
               - Always use relative paths for file references.
               ${if (shouldShowEnv) "- When reading/writing workspace files via tools, pass `environment=\"$envLabel\"` and use absolute paths like `/...`." else ""}
+              - Terminal mount note: common mounts include `/storage/emulated/0 -> /sdcard`, `/storage/emulated/0 -> /storage/emulated/0`, and app sandbox `/data/user/0/com.ai.assistance.operit/files -> same path`.
+              - If the workspace is under mounted paths, execute workspace files directly in the Linux terminal environment; do not copy files before execution.
               - **Best Practice for Code Modifications**: Before modifying any file, use `grep_code` and `grep_context` to locate and understand relevant code with surrounding context. This ensures you understand the codebase structure before making changes.
               """.trimIndent()
           } else {
@@ -510,6 +589,8 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
               - 如果项目较为复杂，可以考虑新建js文件夹和css文件夹并创建多个文件。
               - 文件引用请使用相对路径。
               ${if (shouldShowEnv) "- 通过工具读写工作区文件时，请带上 `environment=\"$envLabel\"`，并使用 `/...` 形式的绝对路径。" else ""}
+              - 终端挂载说明：常见挂载包括 `/storage/emulated/0 -> /sdcard`、`/storage/emulated/0 -> /storage/emulated/0`，以及应用沙箱 `/data/user/0/com.ai.assistance.operit/files -> 同路径`。
+              - 若工作区位于已挂载路径中，直接在 Linux 终端环境中执行工作区文件；无需先复制再执行。
               - **代码修改最佳实践**：修改任何文件之前，建议组合使用 `grep_code` 与 `grep_context` 定位并理解相关代码及其上下文，避免在未理解项目结构时盲改。
               """.trimIndent()
           }
@@ -559,7 +640,10 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
           hasVideoRecognition: Boolean = false,
           chatModelHasDirectAudio: Boolean = false,
           chatModelHasDirectVideo: Boolean = false,
-          useToolCallApi: Boolean = false
+          useToolCallApi: Boolean = false,
+          strictToolCall: Boolean = false,
+          disableLatexDescription: Boolean = false,
+          toolVisibility: Map<String, Boolean> = emptyMap()
   ): String {
     // Get the base system prompt
     val basePrompt = getSystemPrompt(
@@ -578,7 +662,10 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         hasVideoRecognition = hasVideoRecognition,
         chatModelHasDirectAudio = chatModelHasDirectAudio,
         chatModelHasDirectVideo = chatModelHasDirectVideo,
-        useToolCallApi = useToolCallApi
+        useToolCallApi = useToolCallApi,
+        strictToolCall = strictToolCall,
+        disableLatexDescription = disableLatexDescription,
+        toolVisibility = toolVisibility
     )
 
     // Apply custom prompts
@@ -603,7 +690,9 @@ AVAILABLE_TOOLS_SECTION""".trimIndent()
         hasVideoRecognition = false,
         chatModelHasDirectAudio = false,
         chatModelHasDirectVideo = false,
-        useToolCallApi = false
+        useToolCallApi = false,
+        strictToolCall = false,
+        disableLatexDescription = false
     )
   }
 }

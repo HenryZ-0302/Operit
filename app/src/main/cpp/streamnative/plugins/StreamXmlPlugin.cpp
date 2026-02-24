@@ -28,6 +28,7 @@ void StreamXmlPlugin::reset() {
     endMatcher_.reset();
     endPattern_.clear();
     haveEndPattern_ = false;
+    lastChar_ = 0;
 }
 
 bool StreamXmlPlugin::isAsciiLetter(char16_t c) {
@@ -36,16 +37,26 @@ bool StreamXmlPlugin::isAsciiLetter(char16_t c) {
 
 bool StreamXmlPlugin::isPunctuationTrigger(char16_t c) {
     switch (c) {
-        case u'，':
-        case u'。':
-        case u'？':
-        case u'！':
-        case u'：':
+        case u'\uFF0C': // ，
+        case u'\u3002': // 。
+        case u'\uFF1F': // ？
+        case u'\uFF01': // ！
+        case u'\uFF1A': // ：
+        case u'\uFF08': // （
+        case u'\uFF09': // ）
+        case u'\u3010': // 【
+        case u'\u3011': // 】
+        case u'\u300A': // 《
+        case u'\u300B': // 》
         case u':':
         case u',':
         case u'.':
         case u'?':
         case u'!':
+        case u'~':
+        case u'\uFF5E': // ～
+        case u'>':
+        case u'\uFF1E': // ＞
             return true;
         default:
             return false;
@@ -128,25 +139,31 @@ void StreamXmlPlugin::buildEndPattern() {
 }
 
 bool StreamXmlPlugin::processChar(char16_t c, bool atStartOfLine) {
+    const char16_t prevChar = lastChar_;
+    auto finish = [&](bool result) {
+        lastChar_ = c;
+        return result;
+    };
+
     if (state_ == PluginState::PROCESSING) {
         if (haveEndPattern_) {
             if (endMatcher_.process(c)) {
                 allowStartAfterEndTag_ = true;
                 allowStartAfterPunctuation_ = false;
                 reset();
-                return includeTagsInOutput_;
+                return finish(includeTagsInOutput_);
             }
         }
-        return includeTagsInOutput_;
+        return finish(includeTagsInOutput_);
     }
 
     if (state_ == PluginState::IDLE && !atStartOfLine) {
         const bool allowStart = allowStartAfterEndTag_ || allowStartAfterPunctuation_;
         if (!allowStart) {
-            return handleDefaultCharacter(c);
+            return finish(handleDefaultCharacter(c));
         }
         if (c == u' ' || c == u'\t') {
-            return handleDefaultCharacter(c);
+            return finish(handleDefaultCharacter(c));
         }
     }
 
@@ -154,17 +171,22 @@ bool StreamXmlPlugin::processChar(char16_t c, bool atStartOfLine) {
     const bool startMatched = processStartMatcher(c);
 
     if (startMatched) {
+        if (prevChar == u'/') {
+            // Treat self-closing tags like <br/> as plain text to avoid entering XML mode.
+            reset();
+            return finish(true);
+        }
         state_ = PluginState::PROCESSING;
         allowStartAfterEndTag_ = false;
         allowStartAfterPunctuation_ = false;
         buildEndPattern();
         startState_ = StartState::WAIT_LT;
-        return includeTagsInOutput_;
+        return finish(includeTagsInOutput_);
     }
 
     if (state_ == PluginState::TRYING) {
         allowStartAfterPunctuation_ = false;
-        return includeTagsInOutput_;
+        return finish(includeTagsInOutput_);
     }
 
     if (previousState == PluginState::TRYING) {
@@ -172,7 +194,7 @@ bool StreamXmlPlugin::processChar(char16_t c, bool atStartOfLine) {
     }
     allowStartAfterEndTag_ = false;
     allowStartAfterPunctuation_ = false;
-    return handleDefaultCharacter(c);
+    return finish(handleDefaultCharacter(c));
 }
 
 } // namespace streamnative

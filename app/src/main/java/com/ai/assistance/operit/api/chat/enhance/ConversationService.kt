@@ -38,7 +38,7 @@ import com.ai.assistance.operit.core.tools.ComputerDesktopActionResultData
 import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.api.chat.enhance.MultiServiceManager
 import com.ai.assistance.operit.data.repository.CustomEmojiRepository
-
+import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkBuilder
 
 /** 处理会话相关功能的服务类，包括会话总结、偏好处理和对话切割准备 */
 class ConversationService(
@@ -234,23 +234,40 @@ class ConversationService(
             thinkingGuidance: Boolean = false,
             customSystemPromptTemplate: String? = null,
             enableMemoryQuery: Boolean = true,
+            roleCardId: String? = null,
+            proxySenderName: String? = null,
             hasImageRecognition: Boolean = false,
             hasAudioRecognition: Boolean = false,
             hasVideoRecognition: Boolean = false,
             chatModelHasDirectAudio: Boolean = false,
             chatModelHasDirectVideo: Boolean = false,
             useToolCallApi: Boolean = false,
+            strictToolCall: Boolean = false,
             chatModelHasDirectImage: Boolean = false
     ): List<Pair<String, String>> {
         val preparedHistory = mutableListOf<Pair<String, String>>()
         conversationMutex.withLock {
             // Add system prompt if not already present
             if (!chatHistory.any { it.first == "system" }) {
-                val activeProfile = preferencesManager.getUserPreferencesFlow().first()
-                val preferencesText = buildPreferencesText(activeProfile)
+                val safeProxySenderName = proxySenderName?.takeIf { it.isNotBlank() }
+
+                val preferencesText = if (safeProxySenderName == null) {
+                    val activeProfile = preferencesManager.getUserPreferencesFlow().first()
+                    buildPreferencesText(activeProfile)
+                } else {
+                    val proxyCard = characterCardManager.findCharacterCardByName(safeProxySenderName)
+                    if (proxyCard == null) {
+                        ""
+                    } else {
+                        characterCardManager.combinePrompts(proxyCard.id)
+                    }
+                }
 
                 // 根据功能类型获取对应的提示词
-                val activeCard = characterCardManager.activeCharacterCardFlow.first()
+                val effectiveRoleCardId = roleCardId?.takeIf { it.isNotBlank() }
+                val activeCard = effectiveRoleCardId?.let {
+                    characterCardManager.getCharacterCardFlow(it).first()
+                }
                 val systemTagId =
                         when (promptFunctionType) {
                             PromptFunctionType.VOICE -> PromptTagManager.SYSTEM_VOICE_TAG_ID
@@ -259,17 +276,24 @@ class ConversationService(
                             else -> PromptTagManager.SYSTEM_CHAT_TAG_ID
                         }
                 
-                val introPrompt =
-                        characterCardManager.combinePrompts(
-                                activeCard.id,
-                                listOf(systemTagId)
-                        )
+                val introPrompt = activeCard?.let {
+                    characterCardManager.combinePrompts(
+                        it.id,
+                        listOf(systemTagId)
+                    )
+                }.orEmpty()
 
                 // 获取自定义系统提示模板
                 val finalCustomSystemPromptTemplate = customSystemPromptTemplate ?: apiPreferences.customSystemPromptTemplateFlow.first()
 
                 // 获取工具启用状态
                 val enableTools = apiPreferences.enableToolsFlow.first()
+                val disableUserPreferenceDescription =
+                        apiPreferences.disableUserPreferenceDescriptionFlow.first()
+                val disableLatexDescription = apiPreferences.disableLatexDescriptionFlow.first()
+                val toolPromptVisibility = runCatching {
+                    apiPreferences.toolPromptVisibilityFlow.first()
+                }.getOrElse { emptyMap() }
 
                 val safBookmarkNames = runCatching {
                     apiPreferences.safBookmarksFlow.first().map { it.name }
@@ -295,7 +319,10 @@ class ConversationService(
                     hasVideoRecognition = hasVideoRecognition,
                     chatModelHasDirectAudio = chatModelHasDirectAudio,
                     chatModelHasDirectVideo = chatModelHasDirectVideo,
-                    useToolCallApi = useToolCallApi
+                    useToolCallApi = useToolCallApi,
+                    strictToolCall = strictToolCall,
+                    disableLatexDescription = disableLatexDescription,
+                    toolVisibility = toolPromptVisibility
                 )
 
                 // 构建waifu特殊规则
@@ -307,18 +334,19 @@ class ConversationService(
                 // 构建最终的系统提示词
                 val finalSystemPrompt = buildString {
                     append(desktopPetRulesText)
-                    append(systemPrompt) 
+                    append(systemPrompt)
                     append(waifuRulesText)
-                    if (preferencesText.isNotEmpty()) {
+                    if (!disableUserPreferenceDescription && preferencesText.isNotEmpty()) {
                         append("\n\nUser preference description: ")
                         append(preferencesText)
                     }
                 }
 
                 // 替换提示词中的占位符
+                val aiName = activeCard?.name ?: context.getString(R.string.app_name)
                 val finalSystemPromptWithReplacements = replacePromptPlaceholders(
                     finalSystemPrompt,
-                    activeCard.name
+                    aiName
                 )
                 preparedHistory.add(0, Pair("system", finalSystemPromptWithReplacements))
             }
@@ -833,7 +861,7 @@ ${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
             }
 
             // 构建提示词，包含用户意图和图片链接
-            val imageLink = context.getString(R.string.conversation_media_image_link, imageId)
+            val imageLink = MediaLinkBuilder.image(context, imageId)
             val prompt = if (userIntent.isNullOrBlank()) {
                 "$imageLink\n${context.getString(R.string.conversation_analyze_image_prompt)}"
             } else {
@@ -881,7 +909,7 @@ ${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
                 return "Failed to load audio: $audioPath"
             }
 
-            val audioLink = context.getString(R.string.conversation_media_audio_link, mediaId)
+            val audioLink = MediaLinkBuilder.audio(context, mediaId)
             val prompt = if (userIntent.isNullOrBlank()) {
                 "$audioLink\n${context.getString(R.string.conversation_analyze_audio_prompt)}"
             } else {
@@ -925,7 +953,7 @@ ${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
                 return "Failed to load video: $videoPath"
             }
 
-            val videoLink = context.getString(R.string.conversation_media_video_link, mediaId)
+            val videoLink = MediaLinkBuilder.video(context, mediaId)
             val prompt = if (userIntent.isNullOrBlank()) {
                 "$videoLink\n${context.getString(R.string.conversation_analyze_video_prompt)}"
             } else {

@@ -1,7 +1,11 @@
 /* METADATA
 {
     name: "Automatic_ui_subagent"
-    description: {
+
+    display_name: {
+      zh: "自动化AutoGLM子代理"
+      en: "Automated AutoGLM Sub-agent"
+    }description: {
         zh: '''
 兼容AutoGLM，提供基于独立UI控制器模型（例如 autoglm-phone-9b）的高层UI自动化子代理工具，用于根据自然语言意图自动规划并执行点击/输入/滑动等一系列界面操作。
 当用户提出需要帮忙完成某个界面操作任务（例如打开应用、搜索内容、在多个页面之间完成一套步骤）时，可以调用本包由子代理自动规划和执行具体步骤。
@@ -118,6 +122,7 @@ When the user asks you to complete a UI task (e.g. open an app, search content, 
  - Failure vs done (important): partial success is not done; keep correcting and progressing. Only stop after 2-3 consecutive failures with a clear reason and alternatives.
 '''
                     }
+                    advice: true
                     parameters: []
                 }
 
@@ -369,6 +374,15 @@ When the user asks you to complete a UI task (e.g. open an app, search content, 
                 }
 
                 {
+                    name: "close_all_virtual_displays"
+                    description: {
+                        zh: "关闭所有虚拟屏幕。",
+                        en: "Close all virtual displays."
+                    }
+                    parameters: []
+                }
+
+                {
                     name: "run_subagent_main"
                     description: {
                         zh: "在主屏幕运行 UI 子代理（强制主屏）。",
@@ -443,6 +457,7 @@ When the user asks you to complete a UI task (e.g. open an app, search content, 
  - Failure vs done (important): partial success is not done; keep progressing. Only stop after 2-3 consecutive failures with a clear reason and alternatives.
 '''
                     }
+                    advice: true
                     parameters: []
                 }
 
@@ -766,6 +781,18 @@ const UIAutomationSubAgentTools = (function () {
     async function run_subagent_parallel_virtual(params) {
         return run_subagent_parallel_internal(params);
     }
+    async function close_all_virtual_displays(_params) {
+        const result = await toolCall('close_all_virtual_displays', {});
+        const ok = (result === null || result === void 0 ? void 0 : result.success) !== false;
+        const error = result === null || result === void 0 ? void 0 : result.error;
+        return {
+            success: ok,
+            message: ok
+                ? '已关闭所有虚拟屏幕。'
+                : `关闭虚拟屏幕失败：${error ? String(error) : 'unknown error'}`,
+            data: result,
+        };
+    }
     async function wrapToolExecution(func, params) {
         try {
             const result = await func(params);
@@ -783,10 +810,12 @@ const UIAutomationSubAgentTools = (function () {
         usage_advice: (params) => wrapToolExecution(usage_advice, params),
         run_subagent_main: (params) => wrapToolExecution(run_subagent_main, params),
         run_subagent_virtual: (params) => wrapToolExecution(run_subagent_virtual, params),
+        close_all_virtual_displays: (params) => wrapToolExecution(close_all_virtual_displays, params),
         run_subagent_parallel_virtual: (params) => wrapToolExecution(run_subagent_parallel_virtual, params),
     };
 })();
 exports.usage_advice = UIAutomationSubAgentTools.usage_advice;
 exports.run_subagent_main = UIAutomationSubAgentTools.run_subagent_main;
 exports.run_subagent_virtual = UIAutomationSubAgentTools.run_subagent_virtual;
+exports.close_all_virtual_displays = UIAutomationSubAgentTools.close_all_virtual_displays;
 exports.run_subagent_parallel_virtual = UIAutomationSubAgentTools.run_subagent_parallel_virtual;
