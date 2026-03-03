@@ -35,23 +35,69 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.data.updates.FullUpdateInstaller
 import com.ai.assistance.operit.data.updates.UpdateManager
 import com.ai.assistance.operit.data.updates.UpdateStatus
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.updates.PatchUpdateInstaller
 import com.ai.assistance.operit.util.GithubReleaseUtil
 import com.ai.assistance.operit.util.AppLogger
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.ai.assistance.operit.ui.components.CustomScaffold
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import android.widget.Toast
-import java.io.File
+import java.util.Locale
 
 private const val GITHUB_PROJECT_URL = "https://github.com/AAswordman/Operit"
+
+private enum class PatchUpdatePhase {
+    SELECTING_MIRROR,
+    DOWNLOADING_META,
+    DOWNLOADING_PATCH,
+    APPLYING_PATCH,
+    VERIFYING_APK,
+    READY_TO_INSTALL,
+    ERROR
+}
+
+private data class PatchUpdateDialogState(
+    val phase: PatchUpdatePhase,
+    val message: String,
+    val progressPercent: Int? = null,
+    val readBytes: Long = 0L,
+    val totalBytes: Long? = null,
+    val speedBytesPerSec: Long = 0L,
+    val mirrorResults: Map<String, PatchUpdateInstaller.MirrorProbeSummary> = emptyMap(),
+    val mirrorCompleted: Int = 0,
+    val mirrorTotal: Int = 0,
+    val selectedMirror: String? = null,
+    val errorMessage: String? = null
+)
+
+private enum class FullUpdatePhase {
+    DOWNLOADING_APK,
+    READY_TO_INSTALL,
+    ERROR
+}
+
+private data class FullUpdateDialogState(
+    val phase: FullUpdatePhase,
+    val message: String,
+    val progressPercent: Int? = null,
+    val readBytes: Long = 0L,
+    val totalBytes: Long? = null,
+    val speedBytesPerSec: Long = 0L,
+    val errorMessage: String? = null
+)
+
 
 @Composable
 fun HtmlText(
@@ -82,189 +128,174 @@ fun HtmlText(
     )
 }
 
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PatchDownloadSourceDialog(
-    patchUrl: String,
-    metaUrl: String,
-    onDismiss: () -> Unit,
-    onDownload: (String) -> Unit
-) {
-    val patchMirrors = remember(patchUrl) { GithubReleaseUtil.getMirroredUrls(patchUrl) }
-    val metaMirrors = remember(metaUrl) { GithubReleaseUtil.getMirroredUrls(metaUrl) }
-
-    val patchProbeUrls = remember(patchUrl, patchMirrors) {
-        buildMap {
-            putAll(patchMirrors)
-            put("GitHub", patchUrl)
-        }
+private fun mapPatchStage(stage: PatchUpdateInstaller.Stage): PatchUpdatePhase {
+    return when (stage) {
+        PatchUpdateInstaller.Stage.SELECTING_MIRROR -> PatchUpdatePhase.SELECTING_MIRROR
+        PatchUpdateInstaller.Stage.DOWNLOADING_META -> PatchUpdatePhase.DOWNLOADING_META
+        PatchUpdateInstaller.Stage.DOWNLOADING_PATCH -> PatchUpdatePhase.DOWNLOADING_PATCH
+        PatchUpdateInstaller.Stage.APPLYING_PATCH -> PatchUpdatePhase.APPLYING_PATCH
+        PatchUpdateInstaller.Stage.VERIFYING_APK -> PatchUpdatePhase.VERIFYING_APK
+        PatchUpdateInstaller.Stage.READY_TO_INSTALL -> PatchUpdatePhase.READY_TO_INSTALL
     }
-    val metaProbeUrls = remember(metaUrl, metaMirrors) {
-        buildMap {
-            putAll(metaMirrors)
-            put("GitHub", metaUrl)
-        }
-    }
-
-    var probeResults by remember(patchProbeUrls, metaProbeUrls) {
-        mutableStateOf<Map<String, GithubReleaseUtil.ProbeResult>>(emptyMap())
-    }
-
-    LaunchedEffect(patchProbeUrls, metaProbeUrls) {
-        probeResults = emptyMap()
-
-        val keys = LinkedHashSet<String>().apply {
-            addAll(patchProbeUrls.keys)
-            addAll(metaProbeUrls.keys)
-        }
-
-        coroutineScope {
-            keys.forEach { key ->
-                launch {
-                    val p = patchProbeUrls[key]?.let { url ->
-                        withContext(Dispatchers.IO) {
-                            GithubReleaseUtil.probeMirrorUrls(mapOf(key to url))[key]
-                        }
-                    }
-                    val m = metaProbeUrls[key]?.let { url ->
-                        withContext(Dispatchers.IO) {
-                            GithubReleaseUtil.probeMirrorUrls(mapOf(key to url))[key]
-                        }
-                    }
-
-                    val ok = (p?.ok != false) && (m?.ok != false) && (p != null) && (m != null)
-                    val latency = when {
-                        p?.latencyMs != null && m?.latencyMs != null -> maxOf(p.latencyMs, m.latencyMs)
-                        p?.latencyMs != null -> p.latencyMs
-                        m?.latencyMs != null -> m.latencyMs
-                        else -> null
-                    }
-
-                    val error = when {
-                        p == null || m == null -> "probe_failed"
-                        p.ok && m.ok -> null
-                        !p.ok && !m.ok -> "patch:${p.error ?: "fail"}, meta:${m.error ?: "fail"}"
-                        !p.ok -> "patch:${p.error ?: "fail"}"
-                        else -> "meta:${m.error ?: "fail"}"
-                    }
-
-                    val combined = GithubReleaseUtil.ProbeResult(ok = ok, latencyMs = latency, error = error)
-                    probeResults = probeResults.toMutableMap().apply { put(key, combined) }
-                }
-            }
-        }
-    }
-
-    val keys = remember(patchUrl, metaUrl, patchMirrors, metaMirrors) {
-        val set = LinkedHashSet<String>()
-        set.addAll(patchMirrors.keys)
-        set.addAll(metaMirrors.keys)
-        set.add("GitHub")
-        set.toList()
-    }
-
-    @Composable
-    fun MirrorSourceRow(
-        title: String,
-        desc: String,
-        icon: ImageVector,
-        probe: GithubReleaseUtil.ProbeResult?,
-        onClick: () -> Unit
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onClick() }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, contentDescription = null)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = desc,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            if (probe == null) {
-                CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
-            } else {
-                val text = if (probe.ok) {
-                    probe.latencyMs?.let { "${it}ms" } ?: "ok"
-                } else {
-                    probe.error ?: "fail"
-                }
-                Text(
-                    text = text,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (probe.ok) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.widthIn(min = 64.dp, max = 140.dp)
-                )
-            }
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(id = R.string.select_download_source)) },
-        text = {
-            Column {
-                Text(
-                    text = stringResource(id = R.string.patch_update_desc),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                LazyColumn {
-                    items(keys) { name ->
-                        val probe = probeResults[name]
-                        val title =
-                            if (name == "GitHub") {
-                                stringResource(id = R.string.github_source)
-                            } else {
-                                stringResource(id = R.string.mirror_download, name)
-                            }
-                        val desc =
-                            if (name == "GitHub") {
-                                stringResource(id = R.string.github_source_desc)
-                            } else {
-                                stringResource(id = R.string.china_mirror_desc)
-                            }
-                        val icon = if (name == "GitHub") Icons.Default.Language else Icons.Default.Storage
-                        MirrorSourceRow(
-                            title = title,
-                            desc = desc,
-                            icon = icon,
-                            probe = probe,
-                            onClick = { onDownload(name) }
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(id = R.string.cancel))
-            }
-        }
-    )
 }
+
+private fun reducePatchUpdateState(
+    previous: PatchUpdateDialogState?,
+    event: PatchUpdateInstaller.ProgressEvent
+): PatchUpdateDialogState {
+    val base =
+        previous
+            ?: PatchUpdateDialogState(
+                phase = PatchUpdatePhase.SELECTING_MIRROR,
+                message = "",
+                mirrorTotal = 0
+            )
+
+    return when (event) {
+        is PatchUpdateInstaller.ProgressEvent.StageChanged -> {
+            base.copy(
+                phase = mapPatchStage(event.stage),
+                message = event.message,
+                progressPercent = null,
+                readBytes = 0L,
+                totalBytes = null,
+                speedBytesPerSec = 0L
+            )
+        }
+        is PatchUpdateInstaller.ProgressEvent.MirrorProbeStarted -> {
+            base.copy(
+                phase = PatchUpdatePhase.SELECTING_MIRROR,
+                message = "正在测速镜像",
+                mirrorResults = emptyMap(),
+                mirrorCompleted = 0,
+                mirrorTotal = event.total
+            )
+        }
+        is PatchUpdateInstaller.ProgressEvent.MirrorProbeResult -> {
+            val updated = base.mirrorResults.toMutableMap()
+            updated[event.name] = event.summary
+            base.copy(
+                phase = PatchUpdatePhase.SELECTING_MIRROR,
+                mirrorResults = updated,
+                mirrorCompleted = event.completed,
+                mirrorTotal = event.total
+            )
+        }
+        is PatchUpdateInstaller.ProgressEvent.MirrorSelected -> {
+            base.copy(
+                selectedMirror = event.name,
+                message = "已选择镜像：${event.name}"
+            )
+        }
+        is PatchUpdateInstaller.ProgressEvent.DownloadProgress -> {
+            val percent =
+                if (event.totalBytes != null && event.totalBytes > 0) {
+                    ((event.readBytes * 100) / event.totalBytes).toInt().coerceIn(0, 100)
+                } else {
+                    null
+                }
+            base.copy(
+                progressPercent = percent,
+                readBytes = event.readBytes,
+                totalBytes = event.totalBytes,
+                speedBytesPerSec = event.speedBytesPerSec
+            )
+        }
+    }
+}
+
+private fun mapFullUpdateStage(stage: FullUpdateInstaller.Stage): FullUpdatePhase {
+    return when (stage) {
+        FullUpdateInstaller.Stage.DOWNLOADING_APK -> FullUpdatePhase.DOWNLOADING_APK
+        FullUpdateInstaller.Stage.READY_TO_INSTALL -> FullUpdatePhase.READY_TO_INSTALL
+    }
+}
+
+private fun reduceFullUpdateState(
+    previous: FullUpdateDialogState?,
+    event: FullUpdateInstaller.ProgressEvent
+): FullUpdateDialogState {
+    val base =
+        previous
+            ?: FullUpdateDialogState(
+                phase = FullUpdatePhase.DOWNLOADING_APK,
+                message = ""
+            )
+
+    return when (event) {
+        is FullUpdateInstaller.ProgressEvent.StageChanged -> {
+            base.copy(
+                phase = mapFullUpdateStage(event.stage),
+                message = event.message,
+                progressPercent = null,
+                readBytes = 0L,
+                totalBytes = null,
+                speedBytesPerSec = 0L
+            )
+        }
+
+        is FullUpdateInstaller.ProgressEvent.DownloadProgress -> {
+            val percent =
+                if (event.totalBytes != null && event.totalBytes > 0) {
+                    ((event.readBytes * 100) / event.totalBytes).toInt().coerceIn(0, 100)
+                } else {
+                    null
+                }
+            base.copy(
+                progressPercent = percent,
+                readBytes = event.readBytes,
+                totalBytes = event.totalBytes,
+                speedBytesPerSec = event.speedBytesPerSec
+            )
+        }
+    }
+}
+
+private fun pickBestMirrorKey(
+    results: Map<String, PatchUpdateInstaller.MirrorProbeSummary>
+): String? {
+    var bestKey: String? = null
+    var bestSpeed = Long.MIN_VALUE
+    var bestLatency = Long.MAX_VALUE
+
+    for ((key, summary) in results) {
+        if (!summary.ok) continue
+        val speed = summary.speedBytesPerSec
+        val latency = summary.latencyMs ?: Long.MAX_VALUE
+
+        if (speed != null) {
+            if (speed > bestSpeed || (speed == bestSpeed && latency < bestLatency)) {
+                bestKey = key
+                bestSpeed = speed
+                bestLatency = latency
+            }
+        } else if (bestKey == null) {
+            bestKey = key
+            bestLatency = latency
+        }
+    }
+
+    return bestKey
+}
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes < 1024L) return "${bytes} B"
+    val kb = 1024.0
+    val mb = kb * 1024.0
+    val gb = mb * 1024.0
+    val value = bytes.toDouble()
+    return when {
+        value >= gb -> String.format(Locale.US, "%.2f GB", value / gb)
+        value >= mb -> String.format(Locale.US, "%.2f MB", value / mb)
+        else -> String.format(Locale.US, "%.2f KB", value / kb)
+    }
+}
+
+private fun formatSpeed(bytesPerSec: Long): String {
+    if (bytesPerSec <= 0L) return "--/s"
+    return "${formatBytes(bytesPerSec)}/s"
+}
+
 
 @Composable
 fun InfoItem(
@@ -399,20 +430,16 @@ fun AboutScreen(
 
     // 显示更新对话框
     var showUpdateDialog by remember { mutableStateOf(false) }
-    // 添加下载源选择对话框状态
-    var showDownloadSourceMenu by remember { mutableStateOf(false) }
-
-    // 补丁更新下载源选择
-    var showPatchSourceMenu by remember { mutableStateOf(false) }
-
-    // 保存 patch info
-    var patchUrl by remember { mutableStateOf("") }
-    var metaUrl by remember { mutableStateOf("") }
-    var patchNewVersion by remember { mutableStateOf("") }
-
-    var showPatchInstallConfirm by remember { mutableStateOf(false) }
-    var pendingPatchApkPath by remember { mutableStateOf<String?>(null) }
-    var pendingPatchApkVersion by remember { mutableStateOf("") }
+    val patchUpdateStateFlow = remember { MutableStateFlow<PatchUpdateDialogState?>(null) }
+    val patchUpdateState by patchUpdateStateFlow.collectAsState()
+    var patchUpdateJob by remember { mutableStateOf<Job?>(null) }
+    val fullUpdateStateFlow = remember { MutableStateFlow<FullUpdateDialogState?>(null) }
+    val fullUpdateState by fullUpdateStateFlow.collectAsState()
+    var fullUpdateJob by remember { mutableStateOf<Job?>(null) }
+    var pendingFullUpdateMethod by remember { mutableStateOf<UpdateStatus.Available?>(null) }
+    var pendingFullUpdate by remember { mutableStateOf<UpdateStatus.Available?>(null) }
+    var pendingFullUpdateInApp by remember { mutableStateOf<UpdateStatus.Available?>(null) }
+    var pendingPatchUpdate by remember { mutableStateOf<UpdateStatus.PatchAvailable?>(null) }
 
     // 添加开源许可对话框状态
     var showLicenseDialog by remember { mutableStateOf(false) }
@@ -442,12 +469,198 @@ fun AboutScreen(
         scope.launch { updateManager.checkForUpdates(appVersion) }
     }
 
-    // 处理下载更新 - 显示下载源选择对话框
+    // 从指定源下载
+    fun downloadFromUrl(downloadUrl: String) {
+        // 打开浏览器下载
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            data = Uri.parse(downloadUrl)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        showUpdateDialog = false
+    }
+
+    fun startPatchUpdateWithMirror(
+        patchUrl: String,
+        metaUrl: String,
+        patchVersion: String,
+        mirrorKey: String
+    ) {
+        if (patchUpdateJob?.isActive == true) return
+        showUpdateDialog = false
+
+        patchUpdateStateFlow.value =
+            PatchUpdateDialogState(
+                phase = PatchUpdatePhase.DOWNLOADING_META,
+                message = "准备更新到 $patchVersion，正在下载补丁",
+                mirrorTotal = 0
+            )
+
+        patchUpdateJob =
+            scope.launch {
+                try {
+                    val apk =
+                        PatchUpdateInstaller.downloadAndPreparePatchUpdateWithProgressUsingMirror(
+                            context = context,
+                            patchUrl = patchUrl,
+                            metaUrl = metaUrl,
+                            mirrorKey = mirrorKey
+                        ) { event ->
+                            patchUpdateStateFlow.update { current ->
+                                if (current == null) {
+                                    null
+                                } else {
+                                    reducePatchUpdateState(current, event)
+                                }
+                            }
+                        }
+
+                    patchUpdateStateFlow.update { current ->
+                        (current ?: PatchUpdateDialogState(
+                            phase = PatchUpdatePhase.READY_TO_INSTALL,
+                            message = "准备安装"
+                        )).copy(
+                            phase = PatchUpdatePhase.READY_TO_INSTALL,
+                            message = "准备安装"
+                        )
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        PatchUpdateInstaller.installApk(context, apk)
+                    }
+                    patchUpdateStateFlow.value = null
+                } catch (e: CancellationException) {
+                    patchUpdateStateFlow.value = null
+                } catch (e: Exception) {
+                    AppLogger.e("AboutScreen", "patch update failed", e)
+                    patchUpdateStateFlow.value =
+                        PatchUpdateDialogState(
+                            phase = PatchUpdatePhase.ERROR,
+                            message = "补丁更新失败",
+                            errorMessage = e.message ?: context.getString(R.string.unknown_error)
+                        )
+                } finally {
+                    patchUpdateJob = null
+                }
+            }
+    }
+
+    fun startPatchUpdate(patchUrl: String, metaUrl: String, patchVersion: String) {
+        if (patchUpdateJob?.isActive == true) return
+        showUpdateDialog = false
+
+        patchUpdateStateFlow.value =
+            PatchUpdateDialogState(
+                phase = PatchUpdatePhase.SELECTING_MIRROR,
+                message = "准备更新到 $patchVersion，正在测速镜像",
+                mirrorTotal = 0
+            )
+
+        patchUpdateJob =
+            scope.launch {
+                try {
+                    val apk =
+                        PatchUpdateInstaller.downloadAndPreparePatchUpdateWithProgress(
+                            context = context,
+                            patchUrl = patchUrl,
+                            metaUrl = metaUrl
+                        ) { event ->
+                            patchUpdateStateFlow.update { current ->
+                                if (current == null) {
+                                    null
+                                } else {
+                                    reducePatchUpdateState(current, event)
+                                }
+                            }
+                        }
+
+                    patchUpdateStateFlow.update { current ->
+                        (current ?: PatchUpdateDialogState(
+                            phase = PatchUpdatePhase.READY_TO_INSTALL,
+                            message = "准备安装"
+                        )).copy(
+                            phase = PatchUpdatePhase.READY_TO_INSTALL,
+                            message = "准备安装"
+                        )
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        PatchUpdateInstaller.installApk(context, apk)
+                    }
+                    patchUpdateStateFlow.value = null
+                } catch (e: CancellationException) {
+                    patchUpdateStateFlow.value = null
+                } catch (e: Exception) {
+                    AppLogger.e("AboutScreen", "patch update failed", e)
+                    patchUpdateStateFlow.value =
+                        PatchUpdateDialogState(
+                            phase = PatchUpdatePhase.ERROR,
+                            message = "补丁更新失败",
+                            errorMessage = e.message ?: context.getString(R.string.unknown_error)
+                        )
+                } finally {
+                    patchUpdateJob = null
+                }
+            }
+    }
+
+    fun startFullUpdateInApp(apkUrl: String, targetVersion: String) {
+        if (fullUpdateJob?.isActive == true) return
+        showUpdateDialog = false
+
+        fullUpdateStateFlow.value =
+            FullUpdateDialogState(
+                phase = FullUpdatePhase.DOWNLOADING_APK,
+                message = context.getString(R.string.full_update_preparing, targetVersion)
+            )
+
+        fullUpdateJob =
+            scope.launch {
+                try {
+                    val apk =
+                        FullUpdateInstaller.downloadAndPrepareUpdate(
+                            context = context,
+                            apkUrl = apkUrl,
+                            downloadMessage = context.getString(R.string.full_update_downloading),
+                            readyMessage = context.getString(R.string.full_update_ready_to_install)
+                        ) { event ->
+                            fullUpdateStateFlow.update { current ->
+                                if (current == null) {
+                                    null
+                                } else {
+                                    reduceFullUpdateState(current, event)
+                                }
+                            }
+                        }
+
+                    withContext(Dispatchers.Main) {
+                        PatchUpdateInstaller.installApk(context, apk)
+                    }
+                    fullUpdateStateFlow.value = null
+                } catch (e: CancellationException) {
+                    fullUpdateStateFlow.value = null
+                } catch (e: Exception) {
+                    AppLogger.e("AboutScreen", "full update failed", e)
+                    val errorText = e.message ?: context.getString(R.string.unknown_error)
+                    fullUpdateStateFlow.value =
+                        FullUpdateDialogState(
+                            phase = FullUpdatePhase.ERROR,
+                            message = context.getString(R.string.full_update_failed, errorText),
+                            errorMessage = errorText
+                        )
+                } finally {
+                    fullUpdateJob = null
+                }
+            }
+    }
+
+    // 处理下载更新 - 自动测速并选择最快下载源
     fun handleDownload() {
         when (val status = updateStatus) {
             is UpdateStatus.Available -> {
                 if (status.downloadUrl.isNotEmpty() && status.downloadUrl.endsWith(".apk")) {
-                    showDownloadSourceMenu = true // 显示下载源选择对话框
+                    showUpdateDialog = false
+                    pendingFullUpdateMethod = status
                 } else {
                     // 如果没有APK下载链接，则直接打开更新页面
                     val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -459,69 +672,98 @@ fun AboutScreen(
                 }
             }
             is UpdateStatus.PatchAvailable -> {
-                patchUrl = status.patchUrl
-                metaUrl = status.metaUrl
-                patchNewVersion = status.newVersion
-                showPatchSourceMenu = true
+                showUpdateDialog = false
+                pendingPatchUpdate = status
             }
             else -> return
-        }
-    }
-
-    // 从指定源下载
-    fun downloadFromUrl(downloadUrl: String) {
-        // 打开浏览器下载
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = Uri.parse(downloadUrl)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(intent)
-        showDownloadSourceMenu = false
-        showUpdateDialog = false
-    }
-
-    fun downloadPatchAndInstallFromMirror(mirrorKey: String) {
-        showPatchSourceMenu = false
-        showUpdateDialog = false
-        scope.launch {
-            try {
-                val cached = PatchUpdateInstaller.getPreparedRebuiltApkIfMatchesVersion(context, patchNewVersion)
-                val preparedApk: File
-                val preparedVersion: String
-                if (cached != null) {
-                    preparedApk = cached
-                    preparedVersion = patchNewVersion
-                } else {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, context.getString(R.string.prepare_patch_update), Toast.LENGTH_SHORT).show()
-                    }
-                    val result = PatchUpdateInstaller.downloadAndPreparePatchUpdateAutoResult(context, mirrorKey)
-                    preparedApk = result.apkFile
-                    preparedVersion = result.finalVersion.ifBlank { patchNewVersion }
-                }
-
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, context.getString(R.string.patch_update_success), Toast.LENGTH_LONG).show()
-                    pendingPatchApkPath = preparedApk.absolutePath
-                    pendingPatchApkVersion = preparedVersion
-                    showPatchInstallConfirm = true
-                }
-            } catch (e: Exception) {
-                AppLogger.e("AboutScreen", "patch update failed", e)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        context.getString(R.string.patch_update_failed, e.message ?: ""),
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
         }
     }
 
     // 显示开源许可对话框
     if (showLicenseDialog) {
         LicenseDialog(onDismiss = { showLicenseDialog = false })
+    }
+
+    if (patchUpdateState != null) {
+        PatchUpdateProgressDialog(
+            state = patchUpdateState!!,
+            onCancel = {
+                patchUpdateJob?.cancel()
+                patchUpdateJob = null
+                patchUpdateStateFlow.value = null
+            }
+        )
+    }
+
+    if (fullUpdateState != null) {
+        FullUpdateProgressDialog(
+            state = fullUpdateState!!,
+            onCancel = {
+                fullUpdateJob?.cancel()
+                fullUpdateJob = null
+                fullUpdateStateFlow.value = null
+            }
+        )
+    }
+
+    if (pendingFullUpdateMethod != null) {
+        val status = pendingFullUpdateMethod!!
+        FullUpdateMethodDialog(
+            onDismiss = { pendingFullUpdateMethod = null },
+            onBrowser = {
+                pendingFullUpdateMethod = null
+                pendingFullUpdate = status
+            },
+            onInApp = {
+                pendingFullUpdateMethod = null
+                pendingFullUpdateInApp = status
+            }
+        )
+    }
+
+    if (pendingFullUpdate != null) {
+        val status = pendingFullUpdate!!
+        DownloadSourceDialog(
+            updateStatus = status,
+            onDismiss = { pendingFullUpdate = null },
+            onDownload = { url ->
+                pendingFullUpdate = null
+                downloadFromUrl(url)
+            }
+        )
+    }
+
+    if (pendingFullUpdateInApp != null) {
+        val status = pendingFullUpdateInApp!!
+        DownloadSourceDialog(
+            updateStatus = status,
+            onDismiss = { pendingFullUpdateInApp = null },
+            onDownload = { url ->
+                pendingFullUpdateInApp = null
+                startFullUpdateInApp(
+                    apkUrl = url,
+                    targetVersion = status.newVersion
+                )
+            }
+        )
+    }
+
+    if (pendingPatchUpdate != null) {
+        val status = pendingPatchUpdate!!
+        PatchDownloadSourceDialog(
+            patchUrl = status.patchUrl,
+            metaUrl = status.metaUrl,
+            onDismiss = { pendingPatchUpdate = null },
+            onDownload = { mirrorKey ->
+                pendingPatchUpdate = null
+                startPatchUpdateWithMirror(
+                    patchUrl = status.patchUrl,
+                    metaUrl = status.metaUrl,
+                    patchVersion = status.newVersion,
+                    mirrorKey = mirrorKey
+                )
+            }
+        )
     }
 
     // 更新对话框
@@ -535,50 +777,6 @@ fun AboutScreen(
                     handleDownload()
                 } else if (updateStatus !is UpdateStatus.Checking) {
                     showUpdateDialog = false
-                }
-            }
-        )
-    }
-
-    // 下载源选择对话框
-    if (showDownloadSourceMenu) {
-        DownloadSourceDialog(
-            updateStatus = updateStatus,
-            onDismiss = { showDownloadSourceMenu = false },
-            onDownload = { downloadFromUrl(it) }
-        )
-    }
-
-    if (showPatchSourceMenu) {
-        PatchDownloadSourceDialog(
-            patchUrl = patchUrl,
-            metaUrl = metaUrl,
-            onDismiss = { showPatchSourceMenu = false },
-            onDownload = { key -> downloadPatchAndInstallFromMirror(key) }
-        )
-    }
-
-    if (showPatchInstallConfirm) {
-        AlertDialog(
-            onDismissRequest = { showPatchInstallConfirm = false },
-            title = { Text(text = stringResource(R.string.patch_update)) },
-            text = { Text(text = pendingPatchApkVersion) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val path = pendingPatchApkPath
-                        if (path != null) {
-                            PatchUpdateInstaller.installApk(context, File(path))
-                        }
-                        showPatchInstallConfirm = false
-                    }
-                ) {
-                    Text(text = stringResource(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPatchInstallConfirm = false }) {
-                    Text(text = stringResource(R.string.cancel))
                 }
             }
         )
@@ -878,6 +1076,326 @@ fun UpdateDialog(
     )
 }
 
+@Composable
+private fun PatchUpdateProgressDialog(
+    state: PatchUpdateDialogState,
+    onCancel: () -> Unit
+) {
+    val isError = state.phase == PatchUpdatePhase.ERROR
+    val showCancel = !isError
+
+    Dialog(
+        onDismissRequest = { },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(id = R.string.patch_update),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                when (state.phase) {
+                    PatchUpdatePhase.SELECTING_MIRROR -> {
+                        if (state.mirrorTotal > 0) {
+                            Text(
+                                text = "测速进度：${state.mirrorCompleted}/${state.mirrorTotal}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (state.selectedMirror != null) {
+                            Text(
+                                text = "已选择：${state.selectedMirror}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            state.mirrorResults.toSortedMap().forEach { (name, summary) ->
+                                val statusText = if (summary.ok) "可用" else "不可用"
+                                val detail =
+                                    if (summary.ok) {
+                                        val speed = summary.speedBytesPerSec ?: 0L
+                                        val latency = summary.latencyMs ?: 0L
+                                        "${formatSpeed(speed)} · ${latency}ms"
+                                    } else {
+                                        summary.error ?: "测速失败"
+                                    }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = statusText,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (summary.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            text = detail,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (state.mirrorResults.isEmpty()) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+
+                    PatchUpdatePhase.DOWNLOADING_META,
+                    PatchUpdatePhase.DOWNLOADING_PATCH -> {
+                        if (state.progressPercent != null) {
+                            LinearProgressIndicator(
+                                progress = state.progressPercent / 100f,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                        val sizeText =
+                            if (state.totalBytes != null && state.totalBytes > 0) {
+                                "${formatBytes(state.readBytes)} / ${formatBytes(state.totalBytes)}"
+                            } else {
+                                formatBytes(state.readBytes)
+                            }
+                        Text(
+                            text = "$sizeText · ${formatSpeed(state.speedBytesPerSec)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    PatchUpdatePhase.APPLYING_PATCH,
+                    PatchUpdatePhase.VERIFYING_APK,
+                    PatchUpdatePhase.READY_TO_INSTALL -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Text(
+                                text = if (state.phase == PatchUpdatePhase.READY_TO_INSTALL) "正在拉起安装..." else "处理中...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    PatchUpdatePhase.ERROR -> {
+                        Text(
+                            text = state.errorMessage ?: stringResource(id = R.string.unknown_error),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    if (showCancel) {
+                        TextButton(onClick = onCancel) {
+                            Text(stringResource(id = R.string.cancel))
+                        }
+                    } else if (isError) {
+                        TextButton(onClick = onCancel) {
+                            Text(stringResource(id = R.string.close))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FullUpdateMethodDialog(
+    onDismiss: () -> Unit,
+    onBrowser: () -> Unit,
+    onInApp: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(id = R.string.select_update_method)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = stringResource(id = R.string.select_update_method_desc),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable { onInApp() },
+                    shape = RoundedCornerShape(10.dp),
+                    tonalElevation = 1.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = stringResource(id = R.string.update_in_app),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = stringResource(id = R.string.update_in_app_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable { onBrowser() },
+                    shape = RoundedCornerShape(10.dp),
+                    tonalElevation = 1.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = stringResource(id = R.string.update_via_browser),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = stringResource(id = R.string.update_via_browser_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
+}
+
+@Composable
+private fun FullUpdateProgressDialog(
+    state: FullUpdateDialogState,
+    onCancel: () -> Unit
+) {
+    val isError = state.phase == FullUpdatePhase.ERROR
+    val showCancel = !isError
+
+    Dialog(
+        onDismissRequest = { },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
+    ) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = stringResource(id = R.string.full_update),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = state.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                when (state.phase) {
+                    FullUpdatePhase.DOWNLOADING_APK -> {
+                        if (state.progressPercent != null) {
+                            LinearProgressIndicator(
+                                progress = state.progressPercent / 100f,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                        val sizeText =
+                            if (state.totalBytes != null && state.totalBytes > 0) {
+                                "${formatBytes(state.readBytes)} / ${formatBytes(state.totalBytes)}"
+                            } else {
+                                formatBytes(state.readBytes)
+                            }
+                        Text(
+                            text = "$sizeText · ${formatSpeed(state.speedBytesPerSec)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    FullUpdatePhase.READY_TO_INSTALL -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Text(
+                                text = state.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    FullUpdatePhase.ERROR -> {
+                        Text(
+                            text = state.errorMessage ?: stringResource(id = R.string.unknown_error),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    if (showCancel) {
+                        TextButton(onClick = onCancel) {
+                            Text(stringResource(id = R.string.cancel))
+                        }
+                    } else if (isError) {
+                        TextButton(onClick = onCancel) {
+                            Text(stringResource(id = R.string.close))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadSourceDialog(
@@ -923,18 +1441,45 @@ fun DownloadSourceDialog(
         }
     }
 
+    fun autoSelect() {
+        var bestKey: String? = null
+        var bestSpeed = Long.MIN_VALUE
+        var bestLatency = Long.MAX_VALUE
+        probeResults.forEach { (key, result) ->
+            if (!result.ok) return@forEach
+            val speed = result.bytesPerSec
+            val latency = result.latencyMs ?: Long.MAX_VALUE
+            if (speed != null) {
+                if (speed > bestSpeed || (speed == bestSpeed && latency < bestLatency)) {
+                    bestKey = key
+                    bestSpeed = speed
+                    bestLatency = latency
+                }
+            } else if (bestKey == null) {
+                bestKey = key
+                bestLatency = latency
+            }
+        }
+        val selected = bestKey ?: return
+        val url = probeUrls[selected] ?: return
+        onDownload(url)
+    }
+
+    val autoEnabled = probeResults.values.any { it.ok }
+
     @Composable
     fun MirrorSourceRow(
         title: String,
         desc: String?,
         icon: ImageVector,
         probe: GithubReleaseUtil.ProbeResult?,
+        enabled: Boolean,
         onClick: () -> Unit
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onClick() }
+                .clickable(enabled = enabled) { onClick() }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -995,22 +1540,26 @@ fun DownloadSourceDialog(
                 LazyColumn {
                     items(mirroredUrls.toList()) { (name, url) ->
                         val probe = probeResults[name]
+                        val enabled = probe?.ok == true
                         MirrorSourceRow(
                             title = stringResource(id = R.string.mirror_download, name),
                             desc = null,
                             icon = Icons.Default.Storage,
                             probe = probe,
+                            enabled = enabled,
                             onClick = { onDownload(url) }
                         )
                     }
                     if (status != null) {
                         item {
                             val probe = probeResults["GitHub"]
+                            val enabled = probe?.ok == true
                             MirrorSourceRow(
                                 title = stringResource(id = R.string.github_source),
                                 desc = stringResource(id = R.string.github_source_desc),
                                 icon = Icons.Default.Language,
                                 probe = probe,
+                                enabled = enabled,
                                 onClick = { onDownload(status.downloadUrl) }
                             )
                         }
@@ -1019,8 +1568,215 @@ fun DownloadSourceDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(id = R.string.cancel))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(id = R.string.cancel))
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(onClick = { autoSelect() }, enabled = autoEnabled) {
+                    Text(stringResource(id = R.string.auto_select))
+                }
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PatchDownloadSourceDialog(
+    patchUrl: String,
+    metaUrl: String,
+    onDismiss: () -> Unit,
+    onDownload: (String) -> Unit
+) {
+    val patchMirrors = remember(patchUrl) { GithubReleaseUtil.getMirroredUrls(patchUrl) }
+    val metaMirrors = remember(metaUrl) { GithubReleaseUtil.getMirroredUrls(metaUrl) }
+
+    val keys = remember(patchUrl, metaUrl, patchMirrors, metaMirrors) {
+        val set = LinkedHashSet<String>()
+        set.addAll(patchMirrors.keys)
+        set.addAll(metaMirrors.keys)
+        set.add("GitHub")
+        set.toList()
+    }
+
+    var probeResults by remember(patchUrl, metaUrl) {
+        mutableStateOf<Map<String, PatchUpdateInstaller.MirrorProbeSummary>>(emptyMap())
+    }
+
+    LaunchedEffect(patchUrl, metaUrl) {
+        probeResults = emptyMap()
+        coroutineScope {
+            keys.forEach { key ->
+                launch {
+                    val patchProbeUrl = if (key == "GitHub") patchUrl else patchMirrors[key] ?: patchUrl
+                    val metaProbeUrl = if (key == "GitHub") metaUrl else metaMirrors[key] ?: metaUrl
+
+                    val patchRes = withContext(Dispatchers.IO) {
+                        GithubReleaseUtil.probeMirrorUrls(mapOf(key to patchProbeUrl))[key]
+                    }
+                    val metaRes = withContext(Dispatchers.IO) {
+                        GithubReleaseUtil.probeMirrorUrls(mapOf(key to metaProbeUrl))[key]
+                    }
+
+                    val ok = patchRes?.ok == true && metaRes?.ok == true
+                    val speed =
+                        if (patchRes?.bytesPerSec != null && metaRes?.bytesPerSec != null) {
+                            minOf(patchRes.bytesPerSec, metaRes.bytesPerSec)
+                        } else {
+                            null
+                        }
+                    val latency =
+                        when {
+                            patchRes?.latencyMs != null && metaRes?.latencyMs != null ->
+                                maxOf(patchRes.latencyMs, metaRes.latencyMs)
+                            patchRes?.latencyMs != null -> patchRes.latencyMs
+                            else -> metaRes?.latencyMs
+                        }
+                    val error =
+                        when {
+                            patchRes?.ok != true -> patchRes?.error ?: "patch_failed"
+                            metaRes?.ok != true -> metaRes?.error ?: "meta_failed"
+                            else -> null
+                        }
+
+                    val summary =
+                        PatchUpdateInstaller.MirrorProbeSummary(
+                            ok = ok,
+                            latencyMs = latency,
+                            speedBytesPerSec = speed,
+                            error = error
+                        )
+
+                    probeResults = probeResults.toMutableMap().apply { put(key, summary) }
+                }
+            }
+        }
+    }
+
+    fun autoSelect() {
+        val bestKey = pickBestMirrorKey(probeResults) ?: return
+        onDownload(bestKey)
+    }
+
+    val autoEnabled = probeResults.values.any { it.ok }
+
+    @Composable
+    fun MirrorSourceRow(
+        title: String,
+        desc: String?,
+        icon: ImageVector,
+        summary: PatchUpdateInstaller.MirrorProbeSummary?,
+        enabled: Boolean,
+        onClick: () -> Unit
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = enabled) { onClick() }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(icon, contentDescription = null)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (desc != null) {
+                    Text(
+                        text = desc,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            if (summary == null && keys.isNotEmpty()) {
+                CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+            } else if (summary != null) {
+                val text = if (summary.ok) {
+                    summary.latencyMs?.let { "${it}ms" } ?: "ok"
+                } else {
+                    summary.error ?: "fail"
+                }
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (summary.ok) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.widthIn(min = 64.dp, max = 140.dp)
+                )
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(id = R.string.select_download_source)) },
+        text = {
+            Column {
+                Text(
+                    stringResource(id = R.string.patch_update_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                LazyColumn {
+                    items(keys) { name ->
+                        val summary = probeResults[name]
+                        val title =
+                            if (name == "GitHub") {
+                                stringResource(id = R.string.github_source)
+                            } else {
+                                stringResource(id = R.string.mirror_download, name)
+                            }
+                        val desc =
+                            if (name == "GitHub") {
+                                stringResource(id = R.string.github_source_desc)
+                            } else {
+                                stringResource(id = R.string.china_mirror_desc)
+                            }
+                        val icon = if (name == "GitHub") Icons.Default.Language else Icons.Default.Storage
+                        val enabled = summary?.ok == true
+                        MirrorSourceRow(
+                            title = title,
+                            desc = desc,
+                            icon = icon,
+                            summary = summary,
+                            enabled = enabled,
+                            onClick = { onDownload(name) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(id = R.string.cancel))
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(onClick = { autoSelect() }, enabled = autoEnabled) {
+                    Text(stringResource(id = R.string.auto_select))
+                }
             }
         }
     )

@@ -8,6 +8,15 @@
 // Import types that will be used in global declarations
 import { ToolReturnType, NativeInterface as CoreNativeInterface } from './core';
 import {
+    JavaBridgeApi as JavaBridgeApiType,
+    JavaBridgeClass as JavaBridgeClassType,
+    JavaBridgeInstance as JavaBridgeInstanceType,
+    JavaBridgeHandle as JavaBridgeHandleType,
+    JavaBridgePackage as JavaBridgePackageType,
+    JavaBridgeJsInterfaceMarker as JavaBridgeJsInterfaceMarkerType,
+    JavaBridgeJsInterfaceImpl as JavaBridgeJsInterfaceImplType
+} from './java-bridge';
+import {
     CalculationResultData as _CalculationResultData,
     SleepResultData as _SleepResultData,
     SystemSettingData as _SystemSettingData,
@@ -32,7 +41,18 @@ import {
     FileApplyResultData as _FileApplyResultData,
     GrepResultData as _GrepResultData,
     GrepFileMatch as _GrepFileMatch,
-    GrepLineMatch as _GrepLineMatch
+    GrepLineMatch as _GrepLineMatch,
+    ModelConfigResultItem as _ModelConfigResultItem,
+    FunctionModelMappingResultItem as _FunctionModelMappingResultItem,
+    ModelConfigsResultData as _ModelConfigsResultData,
+    ModelConfigCreateResultData as _ModelConfigCreateResultData,
+    ModelConfigUpdateResultData as _ModelConfigUpdateResultData,
+    ModelConfigDeleteResultData as _ModelConfigDeleteResultData,
+    FunctionModelConfigsResultData as _FunctionModelConfigsResultData,
+    FunctionModelConfigResultData as _FunctionModelConfigResultData,
+    FunctionModelBindingResultData as _FunctionModelBindingResultData,
+    ModelConfigConnectionTestItemResultData as _ModelConfigConnectionTestItemResultData,
+    ModelConfigConnectionTestResultData as _ModelConfigConnectionTestResultData
 } from './results';
 import { Intent as AndroidIntent, IntentFlag as AndroidIntentFlag, IntentAction as AndroidIntentAction, IntentCategory as AndroidIntentCategory } from './android';
 import { UINode as UINodeClass, UI as UINamespace } from './ui';
@@ -51,13 +71,16 @@ export * from './results';
 
 // Export tool type definitions
 export * from './tool-types';
+export * from './java-bridge';
 
 // Export compose-dsl definitions for toolpkg ui_modules
 export * from './compose-dsl';
+export * from './compose-dsl.material3.generated';
 
 import { Files as FilesType } from './files';
 import { Net as NetType } from './network';
 import { System as SystemType } from './system';
+import { SoftwareSettings as SoftwareSettingsType } from './software_settings';
 import { UI as UIType } from './ui';
 import { FFmpeg as FFmpegType } from './ffmpeg';
 import { Tasker as TaskerType } from './tasker';
@@ -67,6 +90,7 @@ import { Memory as MemoryType } from './memory';
 
 export { Net } from './network';
 export { System } from './system';
+export { SoftwareSettings } from './software_settings';
 export { UI, UINode } from './ui';
 export { FFmpegVideoCodec, FFmpegAudioCodec, FFmpegResolution, FFmpegBitrate } from './ffmpeg';
 export { Tasker } from './tasker';
@@ -105,6 +129,13 @@ declare global {
     type ComposeDslContext = ComposeDslContextType;
     type ComposeDslScreen = ComposeDslScreenType;
     type ComposeNode = ComposeNodeType;
+    type JavaBridgeApi = JavaBridgeApiType;
+    type JavaBridgeClass = JavaBridgeClassType;
+    type JavaBridgeInstance = JavaBridgeInstanceType;
+    type JavaBridgeHandle = JavaBridgeHandleType;
+    type JavaBridgePackage = JavaBridgePackageType;
+    type JavaBridgeJsInterfaceMarker = JavaBridgeJsInterfaceMarkerType;
+    type JavaBridgeJsInterfaceImpl = JavaBridgeJsInterfaceImplType;
 
 
     // Make result types available globally
@@ -133,6 +164,17 @@ declare global {
     type GrepResultData = _GrepResultData;
     type GrepFileMatch = _GrepFileMatch;
     type GrepLineMatch = _GrepLineMatch;
+    type ModelConfigResultItem = _ModelConfigResultItem;
+    type FunctionModelMappingResultItem = _FunctionModelMappingResultItem;
+    type ModelConfigsResultData = _ModelConfigsResultData;
+    type ModelConfigCreateResultData = _ModelConfigCreateResultData;
+    type ModelConfigUpdateResultData = _ModelConfigUpdateResultData;
+    type ModelConfigDeleteResultData = _ModelConfigDeleteResultData;
+    type FunctionModelConfigsResultData = _FunctionModelConfigsResultData;
+    type FunctionModelConfigResultData = _FunctionModelConfigResultData;
+    type FunctionModelBindingResultData = _FunctionModelBindingResultData;
+    type ModelConfigConnectionTestItemResultData = _ModelConfigConnectionTestItemResultData;
+    type ModelConfigConnectionTestResultData = _ModelConfigConnectionTestResultData;
 
     namespace Tasker {
         export type TriggerTaskerEventParams = TaskerType.TriggerTaskerEventParams;
@@ -226,6 +268,7 @@ declare global {
         Files: typeof FilesType;
         Net: typeof NetType;
         System: typeof SystemType;
+        SoftwareSettings: typeof SoftwareSettingsType;
         UI: typeof UIType;
         FFmpeg: typeof FFmpegType;
         Tasker: typeof TaskerType;
@@ -237,6 +280,10 @@ declare global {
 
     // CommonJS exports
     const exports: Record<string, any>;
+
+    // Java/Kotlin bridge (Rhino-like)
+    const Java: JavaBridgeApiType;
+    const Kotlin: JavaBridgeApiType;
 
     // NativeInterface
     const NativeInterface: typeof CoreNativeInterface;

@@ -431,13 +431,14 @@ $toolList
             2) 角色描述：简短的角色描述
             3) 角色设定：详细的角色设定，包括身份、外貌、性格等
             4) 开场白：角色的第一句话或开场白，用于开始对话时的问候语
-            5) 其他内容：背景故事、特殊能力等补充信息
-            6) 高级自定义：特殊的提示词或交互方式
-            7) 备注：不会被拼接到提示词的备注信息，用于记录创作想法或注意事项
+            5) 其他内容（聊天）：背景故事、特殊能力等补充信息
+            6) 其他内容（语音）：语音模式的表达与节奏要求
+            7) 高级自定义：特殊的提示词或交互方式
+            8) 备注：不会被拼接到提示词的备注信息，用于记录创作想法或注意事项
 
             [重要规则]
             - 全程语气要活泼可爱喵～
-            - 严格按照 1→2→3→4→5→6→7 的顺序进行，不要跳跃
+            - 严格按照 1→2→3→4→5→6→7→8 的顺序进行，不要跳跃
             - 每轮对话只能处理一个步骤，完成后进入下一步
             - 如果用户输入了角色设定，对其进行适当优化与丰富
             - 如果用户说\"随便/你看着写\"，就帮用户体贴地生成设定内容
@@ -446,12 +447,12 @@ $toolList
             - 不要重复问已经确认过的内容
 
             [完成条件]
-            - 当所有7个步骤都完成时，输出：\"🎉 角色卡生成完成！所有信息都已保存。\"
+            - 当所有8个步骤都完成时，输出：\"🎉 角色卡生成完成！所有信息都已保存。\"
             - 完成后不再询问任何问题，等待用户的新指令
 
             [工具调用]
             - 每轮对话如果得到了新的角色信息，必须调用工具保存
-            - field 取值：\"name\" | \"description\" | \"characterSetting\" | \"openingStatement\" | \"otherContent\" | \"advancedCustomPrompt\" | \"marks\"
+            - field 取值：\"name\" | \"description\" | \"characterSetting\" | \"openingStatement\" | \"otherContentChat\" | \"otherContentVoice\" | \"advancedCustomPrompt\" | \"marks\"
             - 工具调用格式为: <tool name=\"save_character_info\"><param name=\"field\">字段名</param><param name=\"content\">内容</param></tool>
             - 例如，如果角色名称确认是\"奶糖\"，则必须在回答的末尾调用: <tool name=\"save_character_info\"><param name=\"field\">name</param><param name=\"content\">奶糖</param></tool>
             """.trimIndent()
@@ -464,13 +465,14 @@ $toolList
             2) Character Description: Brief character description
             3) Character Setting: Detailed character settings, including identity, appearance, personality, etc.
             4) Opening Line: The character's first words or opening greeting for starting conversations
-            5) Other Content: Supplementary information like backstory, special abilities, etc.
-            6) Advanced Customization: Special prompts or interaction methods
-            7) Notes: Notes that won't be appended to prompts, used for recording creative ideas or considerations
+            5) Other Content (Chat): Supplementary information like backstory, special abilities, etc.
+            6) Other Content (Voice): Voice-mode expression and rhythm requirements
+            7) Advanced Customization: Special prompts or interaction methods
+            8) Notes: Notes that won't be appended to prompts, used for recording creative ideas or considerations
 
             [Important Rules]
             - Keep a lively and cute tone throughout meow~
-            - Strictly follow the order of 1→2→3→4→5→6→7, do not skip
+            - Strictly follow the order of 1→2→3→4→5→6→7→8, do not skip
             - Each round of dialogue can only handle one step, then move to the next
             - If the user inputs character settings, appropriately optimize and enrich them
             - If the user says \"whatever/you decide\", help generate settings thoughtfully
@@ -479,12 +481,12 @@ $toolList
             - Don't repeat what has already been confirmed
 
             [Completion Conditions]
-            - When all 7 steps are completed, output: \"🎉 Character card generation complete! All information has been saved.\"
+            - When all 8 steps are completed, output: \"🎉 Character card generation complete! All information has been saved.\"
             - After completion, don't ask any more questions, wait for user's new instructions
 
             [Tool Calling]
             - Each round of dialogue must call the tool to save if new character information is obtained
-            - field values: \"name\" | \"description\" | \"characterSetting\" | \"openingStatement\" | \"otherContent\" | \"advancedCustomPrompt\" | \"marks\"
+            - field values: \"name\" | \"description\" | \"characterSetting\" | \"openingStatement\" | \"otherContentChat\" | \"otherContentVoice\" | \"advancedCustomPrompt\" | \"marks\"
             - Tool call format: <tool name=\"save_character_info\"><param name=\"field\">field name</param><param name=\"content\">content</param></tool>
             - For example, if the character name is confirmed as \"Candy\", must call at the end: <tool name=\"save_character_info\"><param name=\"field\">name</param><param name=\"content\">Candy</param></tool>
             """.trimIndent()
@@ -940,8 +942,8 @@ $existingMemoriesPrompt
 $existingFoldersPrompt
 
 【写入前先过筛】
-- 只记录“用户特异且可复用”的信息：稳定偏好、约束、已确认决策、反复错误、项目事实、长期世界观中的稳定设定。
-- 不记录常识/公开定义（如“TS是什么”“Node是什么”“磁偏角是什么”）。
+- 只记录"用户特异且可复用"的信息：稳定偏好、约束、已确认决策、反复错误、项目事实、长期世界观中的稳定设定。
+- 不记录常识/公开定义（如"TS是什么""Node是什么""磁偏角是什么"）。
 - 不记录未来推测项：下一步建议、TODO、暂定计划。
 - 若没有长期价值信号，直接返回 `{}`。
 
@@ -949,7 +951,7 @@ $existingFoldersPrompt
 - 优先 `update` / `merge`，其次才是 `new`。
 - `new` 仅在确实新增概念时使用（最多 5 条）。
 - 长期小说/世界观场景中，反复出现且影响连续性的角色、地点、组织、规则、时间线可以入库。
-- 若核心是“更新旧概念”，`main` 必须为 `null`，只用 `update`。
+- 若核心是"更新旧概念"，`main` 必须为 `null`，只用 `update`。
 - 如果只是对已有记忆的改写（同主体 + 同动作 + 同结果），按重复处理：优先 `update`/`merge`，不要再 `new`。
 - 如果 `main` 与已有记忆在语义上是同一事件，`main` 设为 `null`，改用 `update` 或 `merge`。
 - 如果当前轮的大部分事实已被已有记忆覆盖，不要再创建平行 `new`，优先给出一次 `update` 或一次 `merge`。
@@ -968,7 +970,7 @@ $existingFoldersPrompt
   - 事件：`[领域] 事件：动作 + 结果`
   - 世界观实体：`实体：名称（身份/类型）`
 - 不推荐标题：`X是什么`、`X的定义`、百科式泛标题。
-- 内容只写“已发生事实 + 当前已确认状态”。
+- 内容只写"已发生事实 + 当前已确认状态"。
 - 内容禁止写未来动作、TODO、推测性计划。
 
 【连接关系规则】
@@ -977,26 +979,26 @@ $existingFoldersPrompt
   - 事件流程：`FOLLOWS`、`CORRECTS`、`UPDATES`
   - 参与与上下文：`INVOLVES`、`HAPPENS_AT`
   - 世界观结构：`PART_OF`、`ALLIED_WITH`、`OPPOSES`
-- 不能仅凭“同段提到过”就连边。
+- 不能仅凭"同段提到过"就连边。
 - 拿不准就不连。
-- 建边范围不应只限于本轮新输出；如果“已有样本记忆”与本轮事件/实体关系明确，也应主动建边。
+- 建边范围不应只限于本轮新输出；如果"已有样本记忆"与本轮事件/实体关系明确，也应主动建边。
 - 输出前请在全量对象上做两两关系检查：`main`、`new`、`update` 目标、以及提供的已有记忆；凡有明确证据都应建边。
 
 【示例（必须遵循）】
-- 仅在问答常识（如“磁偏角是什么”）且无用户特异信号：返回 `{}`。
+- 仅在问答常识（如"磁偏角是什么"）且无用户特异信号：返回 `{}`。
 - 仅解释 TS/Node 等公开定义：返回 `{}`。
 - 闲聊但有实际交流内容：压缩成一条事件型 `main` 记录，不拆技术细节。
-- 只有空泛寒暄（如仅“你好/在吗”）：返回 `{}`。
-- 本轮出现“用户犯错并被纠正”：作为事件写入 `main`。
+- 只有空泛寒暄（如仅"你好/在吗"）：返回 `{}`。
+- 本轮出现"用户犯错并被纠正"：作为事件写入 `main`。
 - 长期小说/世界观讨论：反复出现且影响连续性的角色、地名、组织、规则、时间线应入库，按需使用 `new`/`links`。
-- 仅解释医疗定义（如“流感是什么”）：返回 `{}`。
-- 仅解释金融定义（如“ETF是什么”）：返回 `{}`。
+- 仅解释医疗定义（如"流感是什么"）：返回 `{}`。
+- 仅解释金融定义（如"ETF是什么"）：返回 `{}`。
 - 项目本轮有明确进展（修复完成/摘要完成/任务终止）：写一条事件型 `main`。
 - 反复解释但没有新进展/新决策：返回 `{}`。
 - 世界观设定发生变化（关系/归属变更）：优先 `update`，并在证据明确时连 `UPDATES` / `PART_OF`。
 - 本轮只是重述已存在事件：优先 `update`/`merge`，不要 `new`。
 - 事件里明确出现参与者/工具包且关系清晰：补充 `INVOLVES` 链接。
-- 本轮确认了“已有样本记忆”和其他记忆的明确关系：即使没有 `new`，也应在 `links` 中体现。
+- 本轮确认了"已有样本记忆"和其他记忆的明确关系：即使没有 `new`，也应在 `links` 中体现。
 
 【输出格式（严格JSON）】
 - 顶层键：`main`、`new`、`update`、`merge`、`links`、`user`。
@@ -1012,6 +1014,72 @@ $existingFoldersPrompt
 
 只返回合法 JSON 对象，不要输出其他内容。
 """.trimIndent()
+        }
+    }
+
+    /**
+     * Prompt for group chat role response planner.
+     * Returns a JSON object with the response order for group members.
+     * Supports multi-turn conversations where members can discuss with each other.
+     */
+    const val GROUP_ROLE_RESPONSE_PLANNER_PROMPT = """
+You are a role response planner. Return ONLY valid JSON.
+Task: plan the response order for this turn. You may plan multiple rounds of conversation.
+Output schema:
+{"rounds":[[{"id":"<memberId>","speak":true}],[{"id":"<memberId2>","speak":true}]]}
+Rules:
+- Each round is an array of members who should speak in that round.
+- You can plan multiple rounds to allow members to discuss with each other.
+- For simple responses, use a single round with one or more members.
+- For discussions, use multiple rounds (e.g., member A speaks, then member B responds, then member A replies).
+- You may omit members to skip them, or set speak=false.
+- If no one should respond, return {"rounds":[[]]}.
+- Use ONLY the provided member ids.
+- Maximum 5 rounds to avoid excessive back-and-forth.
+    """
+
+    const val GROUP_ROLE_RESPONSE_PLANNER_PROMPT_CN = """
+你是群聊角色发言规划器。只返回有效的 JSON。
+任务：规划本轮的发言顺序。你可以规划多轮对话。
+输出格式：
+{"rounds":[[{"id":"<成员ID>","speak":true}],[{"id":"<成员ID2>","speak":true}]]}
+规则：
+- 每一轮（round）是一个数组，包含该轮应该发言的成员。
+- 你可以规划多轮对话，让成员之间相互讨论。
+- 对于简单回应，使用单轮，包含一个或多个成员。
+- 对于讨论场景，使用多轮（例如：成员A发言，然后成员B回应，然后成员A再回复）。
+- 你可以省略成员来跳过他们，或设置 speak=false。
+- 如果没有人应该回应，返回 {"rounds":[[]]}。
+- 只使用提供的成员 ID。
+- 最多 5 轮，避免过度来回。
+    """
+
+    fun groupRoleResponsePlannerPrompt(useEnglish: Boolean): String {
+        return if (useEnglish) GROUP_ROLE_RESPONSE_PLANNER_PROMPT else GROUP_ROLE_RESPONSE_PLANNER_PROMPT_CN
+    }
+
+    fun buildGroupRoleResponsePlannerPrompt(
+        memberLines: String,
+        userText: String,
+        useEnglish: Boolean
+    ): String {
+        val basePrompt = groupRoleResponsePlannerPrompt(useEnglish)
+        return buildString {
+            append(basePrompt)
+            appendLine()
+            if (useEnglish) {
+                appendLine("Members:")
+                appendLine(memberLines.ifBlank { "(none)" })
+                appendLine()
+                appendLine("User message:")
+                appendLine(userText.ifBlank { "(user sent attachments or empty text)" })
+            } else {
+                appendLine("成员列表：")
+                appendLine(memberLines.ifBlank { "（无）" })
+                appendLine()
+                appendLine("用户消息：")
+                appendLine(userText.ifBlank { "（用户发送了附件或空文本）" })
+            }
         }
     }
 

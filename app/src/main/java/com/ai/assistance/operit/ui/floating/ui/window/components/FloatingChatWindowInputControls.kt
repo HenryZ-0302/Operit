@@ -193,7 +193,12 @@ private fun BottomInputBar(
                         else
                             MaterialTheme.colorScheme.surfaceVariant
                     )
-                    .clickable { viewModel.toggleAttachmentPanel() },
+                    .clickable {
+                        focusManager.clearFocus(force = true)
+                        keyboardController?.hide()
+                        floatContext.onInputFocusRequest?.invoke(false)
+                        viewModel.toggleAttachmentPanel()
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

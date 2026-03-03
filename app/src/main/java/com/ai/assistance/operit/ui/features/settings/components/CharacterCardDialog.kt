@@ -31,11 +31,16 @@ import androidx.compose.ui.platform.LocalContext
 import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.CharacterCard
+import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
+import com.ai.assistance.operit.data.model.ModelConfigSummary
 import com.ai.assistance.operit.data.model.PromptTag
+import com.ai.assistance.operit.data.model.getModelByIndex
+import com.ai.assistance.operit.data.model.getModelList
+import com.ai.assistance.operit.data.model.getValidModelIndex
+import com.ai.assistance.operit.data.preferences.ModelConfigManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.api.chat.EnhancedAIService
 import kotlinx.coroutines.launch
-import android.content.Context
 
 // 角色卡名片对话框
 @OptIn(ExperimentalLayoutApi::class)
@@ -53,10 +58,22 @@ fun CharacterCardDialog(
     var description by remember(characterCard.id) { mutableStateOf(characterCard.description) }
     var characterSetting by remember(characterCard.id) { mutableStateOf(characterCard.characterSetting) }
     var openingStatement by remember(characterCard.id) { mutableStateOf(characterCard.openingStatement) } // 新增：开场白
-    var otherContent by remember(characterCard.id) { mutableStateOf(characterCard.otherContent) }
+    var otherContentChat by remember(characterCard.id) { mutableStateOf(characterCard.otherContentChat) }
+    var otherContentVoice by remember(characterCard.id) { mutableStateOf(characterCard.otherContentVoice) }
     var attachedTagIds by remember(characterCard.id) { mutableStateOf(characterCard.attachedTagIds) }
     var advancedCustomPrompt by remember(characterCard.id) { mutableStateOf(characterCard.advancedCustomPrompt) }
     var marks by remember(characterCard.id) { mutableStateOf(characterCard.marks) }
+    var chatModelBindingMode by remember(characterCard.id) {
+        mutableStateOf(CharacterCardChatModelBindingMode.normalize(characterCard.chatModelBindingMode))
+    }
+    var fixedChatModelConfigId by remember(characterCard.id) {
+        mutableStateOf(characterCard.chatModelConfigId ?: "")
+    }
+    var fixedChatModelIndex by remember(characterCard.id) {
+        mutableStateOf(characterCard.chatModelIndex.coerceAtLeast(0))
+    }
+    var showFixedConfigPickerDialog by remember(characterCard.id) { mutableStateOf(false) }
+    var popupExpandedFixedConfigId by remember(characterCard.id) { mutableStateOf<String?>(null) }
     var showAdvanced by remember { mutableStateOf(false) }
     
     // 翻译相关状态
@@ -70,8 +87,37 @@ fun CharacterCardDialog(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val modelConfigManager = remember { ModelConfigManager(context) }
+    var configSummaries by remember { mutableStateOf<List<ModelConfigSummary>>(emptyList()) }
     val avatarUri by userPreferencesManager.getAiAvatarForCharacterCardFlow(characterCard.id)
         .collectAsState(initial = null)
+
+    LaunchedEffect(Unit) {
+        modelConfigManager.initializeIfNeeded()
+        configSummaries = modelConfigManager.getAllConfigSummaries()
+    }
+
+    LaunchedEffect(chatModelBindingMode, configSummaries) {
+        if (
+            chatModelBindingMode == CharacterCardChatModelBindingMode.FIXED_CONFIG &&
+            configSummaries.isNotEmpty()
+        ) {
+            if (fixedChatModelConfigId.isBlank() || configSummaries.none { it.id == fixedChatModelConfigId }) {
+                fixedChatModelConfigId = configSummaries.first().id
+            }
+            val selectedConfig = configSummaries.find { it.id == fixedChatModelConfigId }
+            if (selectedConfig != null) {
+                fixedChatModelIndex = getValidModelIndex(selectedConfig.modelName, fixedChatModelIndex)
+            }
+        }
+    }
+
+    LaunchedEffect(chatModelBindingMode) {
+        if (chatModelBindingMode != CharacterCardChatModelBindingMode.FIXED_CONFIG) {
+            showFixedConfigPickerDialog = false
+            popupExpandedFixedConfigId = null
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -242,23 +288,44 @@ fun CharacterCardDialog(
                         }
                     )
 
-                    // 其他内容
+                    // 其他内容（聊天）
                     Text(
-                        text = stringResource(R.string.character_card_other_content),
+                        text = stringResource(R.string.character_card_other_content_chat),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.primary
                     )
                     CompactTextFieldWithExpand(
-                        value = otherContent,
-                        onValueChange = { otherContent = it },
-                        placeholder = stringResource(R.string.character_card_other_content_placeholder),
+                        value = otherContentChat,
+                        onValueChange = { otherContentChat = it },
+                        placeholder = stringResource(R.string.character_card_other_content_chat_placeholder),
                         minLines = 2,
                         maxLines = 4,
                         onExpandClick = {
-                            fullScreenEditTitle = context.getString(R.string.character_card_edit_other_content)
-                            fullScreenEditValue = otherContent
-                            fullScreenEditField = "otherContent"
+                            fullScreenEditTitle = context.getString(R.string.character_card_edit_other_content_chat)
+                            fullScreenEditValue = otherContentChat
+                            fullScreenEditField = "otherContentChat"
+                            showFullScreenEdit = true
+                        }
+                    )
+
+                    // 其他内容（语音）
+                    Text(
+                        text = stringResource(R.string.character_card_other_content_voice),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    CompactTextFieldWithExpand(
+                        value = otherContentVoice,
+                        onValueChange = { otherContentVoice = it },
+                        placeholder = stringResource(R.string.character_card_other_content_voice_placeholder),
+                        minLines = 2,
+                        maxLines = 4,
+                        onExpandClick = {
+                            fullScreenEditTitle = context.getString(R.string.character_card_edit_other_content_voice)
+                            fullScreenEditValue = otherContentVoice
+                            fullScreenEditField = "otherContentVoice"
                             showFullScreenEdit = true
                         }
                     )
@@ -270,13 +337,13 @@ fun CharacterCardDialog(
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    val customTags = allTags.filter { !it.isSystemTag }
-                    if (customTags.isNotEmpty()) {
+                    val availableTags = allTags
+                    if (availableTags.isNotEmpty()) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            customTags.forEach { tag ->
+                            availableTags.forEach { tag ->
                                 val isSelected = attachedTagIds.contains(tag.id)
                                 FilterChip(
                                     selected = isSelected,
@@ -328,6 +395,116 @@ fun CharacterCardDialog(
                     }
 
                     if (showAdvanced) {
+                        val selectedFixedConfig = configSummaries.find { it.id == fixedChatModelConfigId }
+                        val effectiveFixedModelIndex = if (selectedFixedConfig != null) {
+                            getValidModelIndex(selectedFixedConfig.modelName, fixedChatModelIndex)
+                        } else {
+                            0
+                        }
+
+                        Text(
+                            text = stringResource(R.string.character_card_chat_model_binding),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FilterChip(
+                                selected = chatModelBindingMode == CharacterCardChatModelBindingMode.FOLLOW_GLOBAL,
+                                onClick = {
+                                    chatModelBindingMode = CharacterCardChatModelBindingMode.FOLLOW_GLOBAL
+                                },
+                                label = { Text(stringResource(R.string.character_card_chat_model_follow_global), fontSize = 10.sp) }
+                            )
+                            FilterChip(
+                                selected = chatModelBindingMode == CharacterCardChatModelBindingMode.FIXED_CONFIG,
+                                onClick = {
+                                    chatModelBindingMode = CharacterCardChatModelBindingMode.FIXED_CONFIG
+                                },
+                                label = { Text(stringResource(R.string.character_card_chat_model_fixed_config), fontSize = 10.sp) }
+                            )
+                        }
+
+                        if (chatModelBindingMode == CharacterCardChatModelBindingMode.FIXED_CONFIG) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = configSummaries.isNotEmpty()) {
+                                        showFixedConfigPickerDialog = true
+                                    },
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(
+                                    width = 0.8.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = selectedFixedConfig?.name ?: stringResource(R.string.select_model_config),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+
+                                        if (selectedFixedConfig != null) {
+                                            Text(
+                                                text = getModelByIndex(
+                                                    selectedFixedConfig.modelName,
+                                                    effectiveFixedModelIndex
+                                                ).ifBlank { stringResource(R.string.not_selected) },
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
+                                            )
+                                        } else {
+                                            Text(
+                                                text = stringResource(R.string.not_selected),
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f)
+                                            )
+                                        }
+                                    }
+
+                                    if (configSummaries.isNotEmpty()) {
+                                        Icon(
+                                            imageVector = Icons.Default.KeyboardArrowDown,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            CharacterCardFixedModelPickerDialog(
+                                visible = showFixedConfigPickerDialog,
+                                configSummaries = configSummaries,
+                                selectedConfigId = fixedChatModelConfigId,
+                                selectedModelIndex = fixedChatModelIndex,
+                                onSelect = { configId, modelIndex ->
+                                    fixedChatModelConfigId = configId
+                                    fixedChatModelIndex = modelIndex
+                                    showFixedConfigPickerDialog = false
+                                    popupExpandedFixedConfigId = null
+                                },
+                                expandedConfigId = popupExpandedFixedConfigId,
+                                onExpandedConfigIdChange = { popupExpandedFixedConfigId = it },
+                                onDismiss = {
+                                    showFixedConfigPickerDialog = false
+                                    popupExpandedFixedConfigId = null
+                                }
+                            )
+                        }
                         // 高级自定义提示词
                         CompactTextFieldWithExpand(
                             value = advancedCustomPrompt,
@@ -381,16 +558,39 @@ fun CharacterCardDialog(
                     
                     Button(
                         onClick = {
+                            val selectedFixedConfig = configSummaries.find { it.id == fixedChatModelConfigId }
+                            val normalizedFixedModelIndex = if (selectedFixedConfig != null) {
+                                getValidModelIndex(selectedFixedConfig.modelName, fixedChatModelIndex)
+                            } else {
+                                0
+                            }
                             onSave(
                                 characterCard.copy(
                                     name = name,
                                     description = description,
                                     characterSetting = characterSetting,
                                     openingStatement = openingStatement, // 新增
-                                    otherContent = otherContent,
+                                    otherContentChat = otherContentChat,
+                                    otherContentVoice = otherContentVoice,
                                     attachedTagIds = attachedTagIds,
                                     advancedCustomPrompt = advancedCustomPrompt,
-                                    marks = marks
+                                    marks = marks,
+                                    chatModelBindingMode = CharacterCardChatModelBindingMode.normalize(chatModelBindingMode),
+                                    chatModelConfigId = if (
+                                        chatModelBindingMode == CharacterCardChatModelBindingMode.FIXED_CONFIG &&
+                                        !fixedChatModelConfigId.isBlank()
+                                    ) {
+                                        fixedChatModelConfigId
+                                    } else {
+                                        null
+                                    },
+                                    chatModelIndex = if (
+                                        chatModelBindingMode == CharacterCardChatModelBindingMode.FIXED_CONFIG
+                                    ) {
+                                        normalizedFixedModelIndex
+                                    } else {
+                                        0
+                                    }
                                 )
                             )
                         },
@@ -416,13 +616,215 @@ fun CharacterCardDialog(
                     "description" -> description = newValue
                     "characterSetting" -> characterSetting = newValue
                     "openingStatement" -> openingStatement = newValue // 新增
-                    "otherContent" -> otherContent = newValue
+                    "otherContentChat" -> otherContentChat = newValue
+                    "otherContentVoice" -> otherContentVoice = newValue
                     "advancedCustomPrompt" -> advancedCustomPrompt = newValue
                     "marks" -> marks = newValue
                 }
                 showFullScreenEdit = false
             }
         )
+    }
+}
+
+@Composable
+private fun CharacterCardFixedModelPickerDialog(
+    visible: Boolean,
+    configSummaries: List<ModelConfigSummary>,
+    selectedConfigId: String,
+    selectedModelIndex: Int,
+    onSelect: (String, Int) -> Unit,
+    expandedConfigId: String?,
+    onExpandedConfigIdChange: (String?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (!visible) return
+
+    val scrollState = rememberScrollState()
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(10.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            border = BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.select_config),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 300.dp)
+                        .verticalScroll(scrollState)
+                ) {
+                    configSummaries.forEach { summary ->
+                        val isSelectedConfig = summary.id == selectedConfigId
+                        val modelList = getModelList(summary.modelName)
+                        val hasMultipleModels = modelList.size > 1
+                        val isExpanded = expandedConfigId == summary.id
+
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp)
+                                    .clickable {
+                                        if (hasMultipleModels) {
+                                            onExpandedConfigIdChange(if (isExpanded) null else summary.id)
+                                        } else {
+                                            onSelect(summary.id, 0)
+                                        }
+                                    },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSelectedConfig) {
+                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                border = BorderStroke(
+                                    width = if (isSelectedConfig) 0.dp else 0.5.dp,
+                                    color = if (isSelectedConfig) {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                                    } else {
+                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                    }
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (isSelectedConfig && !hasMultipleModels) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
+
+                                    Text(
+                                        text = summary.name,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isSelectedConfig) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelectedConfig) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurface
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1
+                                    )
+
+                                    if (hasMultipleModels) {
+                                        Icon(
+                                            imageVector = if (isExpanded) {
+                                                Icons.Default.KeyboardArrowUp
+                                            } else {
+                                                Icons.Default.KeyboardArrowDown
+                                            },
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (hasMultipleModels && isExpanded) {
+                                val validSelectedIndex = if (isSelectedConfig) {
+                                    getValidModelIndex(summary.modelName, selectedModelIndex)
+                                } else {
+                                    0
+                                }
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 12.dp, top = 2.dp, bottom = 2.dp, end = 4.dp)
+                                ) {
+                                    modelList.forEachIndexed { index, modelName ->
+                                        val isModelSelected = isSelectedConfig && validSelectedIndex == index
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 1.dp)
+                                                .clickable { onSelect(summary.id, index) },
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = if (isModelSelected) {
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (isModelSelected) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(12.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                }
+                                                Text(
+                                                    text = modelName,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (isModelSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (isModelSelected) {
+                                                        MaterialTheme.colorScheme.primary
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurface
+                                                    },
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel), fontSize = 12.sp)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -579,7 +981,7 @@ fun CompactAvatarPicker(
         // 头像
         Box(
             modifier = Modifier
-                .size(60.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable(onClick = onAvatarChange)
@@ -597,7 +999,7 @@ fun CompactAvatarPicker(
                 Icon(
                     imageVector = Icons.Default.Person,
                     contentDescription = stringResource(R.string.character_card_default_avatar),
-                    modifier = Modifier.size(30.dp),
+                    modifier = Modifier.size(24.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

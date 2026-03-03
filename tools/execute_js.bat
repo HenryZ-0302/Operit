@@ -8,6 +8,7 @@ if "%~1"=="" (
     echo Example: %0 example.js main
     echo Example: %0 example.js main "{\"name\":\"John\"}"
     echo Example: %0 example.js main "{}" .env.local
+    echo Note: set OPERIT_LOG_WAIT_SECONDS to customize log wait, default is 6 seconds
     exit /b 1
 )
 
@@ -26,6 +27,12 @@ if "%~2"=="" (
         set "PARAMS=%~3"
         set "ENV_FILE_PATH=%~4"
     )
+)
+
+if "%OPERIT_LOG_WAIT_SECONDS%"=="" (
+    set "LOG_WAIT_SECONDS=6"
+) else (
+    set "LOG_WAIT_SECONDS=%OPERIT_LOG_WAIT_SECONDS%"
 )
 
 REM Check if file exists
@@ -128,6 +135,9 @@ if not "!ENV_FILE_PATH!"=="" (
 REM Escape JSON quotes
 set "PARAMS=!PARAMS:"=\"!"
 
+REM Reset logcat buffer to avoid old logs
+adb -s "!DEVICE_SERIAL!" logcat -c
+
 REM Execute JS function
 echo Executing [!FUNCTION_NAME!] with params: !PARAMS!
 if "!HAS_ENV_FILE!"=="true" (
@@ -136,8 +146,9 @@ if "!HAS_ENV_FILE!"=="true" (
     adb -s "!DEVICE_SERIAL!" shell "am broadcast -a com.ai.assistance.operit.EXECUTE_JS -n com.ai.assistance.operit/.core.tools.javascript.ScriptExecutionReceiver --include-stopped-packages --es file_path '!TARGET_FILE!' --es function_name '!FUNCTION_NAME!' --es params '!PARAMS!' --ez temp_file true"
 )
 
-echo Waiting for execution to complete...
-timeout /t 2 >nul
+echo Waiting !LOG_WAIT_SECONDS!s for execution and logs...
+set /a __PING_WAIT=!LOG_WAIT_SECONDS!+1
+ping 127.0.0.1 -n !__PING_WAIT! >nul
 
-echo Capturing logcat output for JsEngine tag (Press Ctrl+C to stop):
-adb -s "!DEVICE_SERIAL!" logcat -s JsEngine:*
+echo Capturing logcat output and exiting...
+adb -s "!DEVICE_SERIAL!" logcat -d -s ScriptExecutionReceiver:* JsEngine:*

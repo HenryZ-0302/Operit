@@ -18,7 +18,6 @@ import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.WaifuPreferences
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.model.PromptFunctionType
-import com.ai.assistance.operit.data.preferences.PromptTagManager
 import com.ai.assistance.operit.data.preferences.preferencesManager
 import com.ai.assistance.operit.util.ChatUtils
 import com.ai.assistance.operit.core.tools.ToolProgressBus
@@ -235,6 +234,7 @@ class ConversationService(
             customSystemPromptTemplate: String? = null,
             enableMemoryQuery: Boolean = true,
             roleCardId: String? = null,
+            enableGroupOrchestrationHint: Boolean = false,
             proxySenderName: String? = null,
             hasImageRecognition: Boolean = false,
             hasAudioRecognition: Boolean = false,
@@ -259,7 +259,10 @@ class ConversationService(
                     if (proxyCard == null) {
                         ""
                     } else {
-                        characterCardManager.combinePrompts(proxyCard.id)
+                        characterCardManager.combinePrompts(
+                            proxyCard.id,
+                            promptFunctionType = promptFunctionType
+                        )
                     }
                 }
 
@@ -268,18 +271,10 @@ class ConversationService(
                 val activeCard = effectiveRoleCardId?.let {
                     characterCardManager.getCharacterCardFlow(it).first()
                 }
-                val systemTagId =
-                        when (promptFunctionType) {
-                            PromptFunctionType.VOICE -> PromptTagManager.SYSTEM_VOICE_TAG_ID
-                            PromptFunctionType.DESKTOP_PET ->
-                                    PromptTagManager.SYSTEM_DESKTOP_PET_TAG_ID
-                            else -> PromptTagManager.SYSTEM_CHAT_TAG_ID
-                        }
-                
                 val introPrompt = activeCard?.let {
                     characterCardManager.combinePrompts(
                         it.id,
-                        listOf(systemTagId)
+                        promptFunctionType = promptFunctionType
                     )
                 }.orEmpty()
 
@@ -322,7 +317,10 @@ class ConversationService(
                     useToolCallApi = useToolCallApi,
                     strictToolCall = strictToolCall,
                     disableLatexDescription = disableLatexDescription,
-                    toolVisibility = toolPromptVisibility
+                    toolVisibility = toolPromptVisibility,
+                    enableGroupOrchestrationHint = enableGroupOrchestrationHint,
+                    groupOrchestrationRoleName = activeCard?.name?.takeIf { it.isNotBlank() }
+                        ?: context.getString(R.string.app_name)
                 )
 
                 // 构建waifu特殊规则

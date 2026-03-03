@@ -155,6 +155,87 @@ export namespace NativeInterface {
      * @param errorStack - Error stack trace
      */
     function reportError(errorType: string, errorMessage: string, errorLine: number, errorStack: string): void;
+
+    /**
+     * Check whether a Java/Kotlin class exists.
+     */
+    function javaClassExists(className: string): boolean;
+
+    /**
+     * Get the Android application Context as a bridge handle payload.
+     * @returns Bridge JSON string: {"success":boolean,"data"?:{"__javaHandle":string,"__javaClass":string},"error"?:string}
+     */
+    function javaGetApplicationContext(): string;
+
+    /**
+     * Get the current foreground Activity as a bridge handle payload.
+     * @returns Bridge JSON string: {"success":boolean,"data"?:{"__javaHandle":string,"__javaClass":string},"error"?:string}
+     */
+    function javaGetCurrentActivity(): string;
+
+    /**
+     * Create a Java/Kotlin instance.
+     * @param className - Fully qualified class name
+     * @param argsJson - JSON array string of arguments
+     * @returns Bridge JSON string: {"success":boolean,"data"?:any,"error"?:string}
+     */
+    function javaNewInstance(className: string, argsJson: string): string;
+
+    /**
+     * Invoke a static Java/Kotlin method.
+     * @param className - Fully qualified class name
+     * @param methodName - Static method name
+     * @param argsJson - JSON array string of arguments
+     * @returns Bridge JSON string: {"success":boolean,"data"?:any,"error"?:string}
+     */
+    function javaCallStatic(className: string, methodName: string, argsJson: string): string;
+
+    /**
+     * Invoke an instance Java/Kotlin method.
+     * @param instanceHandle - Bridge object handle
+     * @param methodName - Instance method name
+     * @param argsJson - JSON array string of arguments
+     * @returns Bridge JSON string: {"success":boolean,"data"?:any,"error"?:string}
+     */
+    function javaCallInstance(instanceHandle: string, methodName: string, argsJson: string): string;
+
+    /**
+     * Get a static field/property from a class.
+     * @returns Bridge JSON string: {"success":boolean,"data"?:any,"error"?:string}
+     */
+    function javaGetStaticField(className: string, fieldName: string): string;
+
+    /**
+     * Set a static field/property on a class.
+     * @param valueJson - JSON value string
+     * @returns Bridge JSON string: {"success":boolean,"data"?:any,"error"?:string}
+     */
+    function javaSetStaticField(className: string, fieldName: string, valueJson: string): string;
+
+    /**
+     * Get an instance field/property.
+     * @returns Bridge JSON string: {"success":boolean,"data"?:any,"error"?:string}
+     */
+    function javaGetInstanceField(instanceHandle: string, fieldName: string): string;
+
+    /**
+     * Set an instance field/property.
+     * @param valueJson - JSON value string
+     * @returns Bridge JSON string: {"success":boolean,"data"?:any,"error"?:string}
+     */
+    function javaSetInstanceField(instanceHandle: string, fieldName: string, valueJson: string): string;
+
+    /**
+     * Release one Java/Kotlin instance handle.
+     * @returns Bridge JSON string: {"success":boolean,"data"?:boolean,"error"?:string}
+     */
+    function javaReleaseInstance(instanceHandle: string): string;
+
+    /**
+     * Release all Java/Kotlin instance handles in current engine session.
+     * @returns Bridge JSON string: {"success":boolean,"data"?:number,"error"?:string}
+     */
+    function javaReleaseAllInstances(): string;
 }
 
 /**

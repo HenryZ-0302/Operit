@@ -27,6 +27,8 @@ import com.ai.assistance.operit.data.model.CharacterCard
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.PromptTag
 import com.ai.assistance.operit.data.model.ToolResult
+import com.ai.assistance.operit.data.preferences.ActivePromptManager
+import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.PromptTagManager
@@ -90,7 +92,9 @@ private object LocalCharacterToolExecutor {
                 "description" -> currentCard.copy(description = content)
                 "characterSetting" -> currentCard.copy(characterSetting = content)
                 "openingStatement" -> currentCard.copy(openingStatement = content)
-                "otherContent" -> currentCard.copy(otherContent = content)
+                "otherContentChat" -> currentCard.copy(otherContentChat = content)
+                "otherContentVoice" -> currentCard.copy(otherContentVoice = content)
+                "otherContent" -> currentCard.copy(otherContentChat = content)
                 "advancedCustomPrompt" -> currentCard.copy(advancedCustomPrompt = content)
                 "marks" -> currentCard.copy(marks = content)
                 else -> {
@@ -181,6 +185,7 @@ fun PersonaCardGenerationScreen(
 
     // 角色卡数据
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
+    val activePromptManager = remember { ActivePromptManager.getInstance(context) }
     val tagManager = remember { PromptTagManager.getInstance(context) }
     val chatHistoryManager = remember { PersonaCardChatHistoryManager.getInstance(context) }
     var allCharacterCards by remember { mutableStateOf(listOf<CharacterCard>()) }
@@ -202,7 +207,8 @@ fun PersonaCardGenerationScreen(
     var editDescription by remember { mutableStateOf("") }
     var editCharacterSetting by remember { mutableStateOf("") }
     var editOpeningStatement by remember { mutableStateOf("") }
-    var editOtherContent by remember { mutableStateOf("") }
+    var editOtherContentChat by remember { mutableStateOf("") }
+    var editOtherContentVoice by remember { mutableStateOf("") }
     var editAdvancedCustomPrompt by remember { mutableStateOf("") }
     var editMarks by remember { mutableStateOf("") }
 
@@ -213,16 +219,20 @@ fun PersonaCardGenerationScreen(
             val cards = characterCardManager.getAllCharacterCards()
             val tags = tagManager.getAllTags()
 
-            var currentId = characterCardManager.activeCharacterCardIdFlow.first()
+            val currentPrompt = activePromptManager.getActivePrompt()
+            var currentId = when (currentPrompt) {
+                is ActivePrompt.CharacterCard -> currentPrompt.id
+                is ActivePrompt.CharacterGroup -> null
+            }
 
-            // 如果记录的活跃ID无效（例如卡被删除），则默认使用第一张卡
-            if (characterCardManager.getCharacterCard(currentId) == null && cards.isNotEmpty()) {
+            // 如果没有活跃角色卡，则使用第一张卡
+            if (currentId == null && cards.isNotEmpty()) {
                 val firstCardId = cards.first().id
-                characterCardManager.setActiveCharacterCard(firstCardId)
+                activePromptManager.setActivePrompt(ActivePrompt.CharacterCard(firstCardId))
                 currentId = firstCardId
             }
 
-            Triple(cards, tags, currentId)
+            Triple(cards, tags, currentId ?: "")
         }
 
         withContext(Dispatchers.Main) {
@@ -238,7 +248,7 @@ fun PersonaCardGenerationScreen(
             // 没有活跃卡片的情况
             activeCard = null
             editName = ""; editDescription = ""; editCharacterSetting = ""; editOpeningStatement = ""
-            editOtherContent = ""; editAdvancedCustomPrompt = ""; editMarks = ""
+            editOtherContentChat = ""; editOtherContentVoice = ""; editAdvancedCustomPrompt = ""; editMarks = ""
             chatMessages.clear()
             chatMessages.add(CharacterChatMessage("assistant", context.getString(R.string.please_select_or_create_card)))
             return@LaunchedEffect
@@ -261,13 +271,14 @@ fun PersonaCardGenerationScreen(
                 editDescription = it.description
                 editCharacterSetting = it.characterSetting
                 editOpeningStatement = it.openingStatement
-                editOtherContent = it.otherContent
+                editOtherContentChat = it.otherContentChat
+                editOtherContentVoice = it.otherContentVoice
                 editAdvancedCustomPrompt = it.advancedCustomPrompt
                 editMarks = it.marks
             } ?: run {
                 // 如果卡片加载失败，则清空编辑器
                 editName = ""; editDescription = ""; editCharacterSetting = ""; editOpeningStatement = ""
-                editOtherContent = ""; editAdvancedCustomPrompt = ""; editMarks = ""
+                editOtherContentChat = ""; editOtherContentVoice = ""; editAdvancedCustomPrompt = ""; editMarks = ""
             }
 
             // 加载该角色卡的聊天历史
@@ -292,16 +303,20 @@ fun PersonaCardGenerationScreen(
             val result = withContext(Dispatchers.IO) {
                 characterCardManager.initializeIfNeeded()
                 val cards = characterCardManager.getAllCharacterCards()
-                var id = characterCardManager.activeCharacterCardIdFlow.first()
+                val currentPrompt = activePromptManager.getActivePrompt()
+                var id = when (currentPrompt) {
+                    is ActivePrompt.CharacterCard -> currentPrompt.id
+                    is ActivePrompt.CharacterGroup -> null
+                }
 
-                // 如果记录的活跃ID无效（例如卡被删除），则默认使用第一张卡
-                if (characterCardManager.getCharacterCard(id) == null && cards.isNotEmpty()) {
+                // 如果没有活跃角色卡，则使用第一张卡
+                if (id == null && cards.isNotEmpty()) {
                     val firstCardId = cards.first().id
-                    characterCardManager.setActiveCharacterCard(firstCardId)
+                    activePromptManager.setActivePrompt(ActivePrompt.CharacterCard(firstCardId))
                     id = firstCardId
                 }
 
-                Triple(cards, id, characterCardManager.getCharacterCard(id))
+                Triple(cards, id ?: "", characterCardManager.getCharacterCard(id ?: ""))
             }
 
             withContext(Dispatchers.Main) {
@@ -314,7 +329,8 @@ fun PersonaCardGenerationScreen(
                     editDescription = card.description
                     editCharacterSetting = card.characterSetting
                     editOpeningStatement = card.openingStatement
-                    editOtherContent = card.otherContent
+                    editOtherContentChat = card.otherContentChat
+                    editOtherContentVoice = card.otherContentVoice
                     editAdvancedCustomPrompt = card.advancedCustomPrompt
                     editMarks = card.marks
                 }
@@ -336,7 +352,7 @@ fun PersonaCardGenerationScreen(
                 card.description, 
                 card.characterSetting,
                 card.openingStatement,
-                card.otherContent,
+                card.otherContentChat,
                 card.advancedCustomPrompt,
                 card.marks
             ).all { it.isNotBlank() }
@@ -580,7 +596,7 @@ fun PersonaCardGenerationScreen(
                                     onClick = {
                                         expanded = false
                                         scope.launch {
-                                            characterCardManager.setActiveCharacterCard(card.id)
+                                            activePromptManager.setActivePrompt(ActivePrompt.CharacterCard(card.id))
                                             activeCardId = card.id // 更新ID以触发Effect
                                         }
                                     }
@@ -636,13 +652,14 @@ fun PersonaCardGenerationScreen(
                                                 name = name,
                                                 description = "",
                                                 characterSetting = CharacterCardBilingualData.getDefaultCharacterSetting(context),
-                                                otherContent = CharacterCardBilingualData.getDefaultOtherContent(context),
+                                                otherContentChat = CharacterCardBilingualData.getDefaultOtherContentChat(context),
+                                                otherContentVoice = "",
                                                 attachedTagIds = emptyList(),
                                                 advancedCustomPrompt = "",
                                                 isDefault = false
                                             )
                                             val newId = characterCardManager.createCharacterCard(newCard)
-                                            characterCardManager.setActiveCharacterCard(newId)
+                                            activePromptManager.setActivePrompt(ActivePrompt.CharacterCard(newId))
                                         }
                                         refreshData()
                                     }
@@ -667,8 +684,7 @@ fun PersonaCardGenerationScreen(
                                         activeCard?.let { card ->
                                             withContext(Dispatchers.IO) {
                                                 characterCardManager.deleteCharacterCard(card.id)
-                                                // 删除后，activeCharacterCardIdFlow 会自动更新为列表中的第一项
-                                                // 或者如果没有角色卡，会是空字符串
+                                                // 删除后，如果没有活跃角色卡，则会回退到列表中的第一项
                                             }
                                             refreshData()
                                         }
@@ -765,20 +781,40 @@ fun PersonaCardGenerationScreen(
                     
                     Spacer(Modifier.height(8.dp))
                     
-                    // 其他内容
+                    // 其他内容（聊天）
                     OutlinedTextField(
-                        value = editOtherContent,
+                        value = editOtherContentChat,
                         onValueChange = { newValue ->
-                            editOtherContent = newValue
+                            editOtherContentChat = newValue
                             scope.launch {
                                 activeCard?.let { card ->
                                     withContext(Dispatchers.IO) {
-                                        characterCardManager.updateCharacterCard(card.copy(otherContent = newValue))
+                                        characterCardManager.updateCharacterCard(card.copy(otherContentChat = newValue))
                                     }
                                 }
                             }
                         },
-                        label = { Text(context.getString(R.string.other_content)) },
+                        label = { Text(context.getString(R.string.other_content_chat)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 6
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // 其他内容（语音）
+                    OutlinedTextField(
+                        value = editOtherContentVoice,
+                        onValueChange = { newValue ->
+                            editOtherContentVoice = newValue
+                            scope.launch {
+                                activeCard?.let { card ->
+                                    withContext(Dispatchers.IO) {
+                                        characterCardManager.updateCharacterCard(card.copy(otherContentVoice = newValue))
+                                    }
+                                }
+                            }
+                        },
+                        label = { Text(context.getString(R.string.other_content_voice)) },
                         modifier = Modifier.fillMaxWidth(),
                         maxLines = 6
                     )

@@ -390,6 +390,77 @@ fun getJsToolsDefinition(): String {
                     return toolCall("send_broadcast", options);
                 }
             },
+            // 软件设置
+            SoftwareSettings: {
+                readEnvironmentVariable: (key) => {
+                    return toolCall("read_environment_variable", { key: String(key ?? "") });
+                },
+                writeEnvironmentVariable: (key, value) => {
+                    const params = { key: String(key ?? "") };
+                    if (value !== undefined && value !== null) params.value = String(value);
+                    else params.value = "";
+                    return toolCall("write_environment_variable", params);
+                },
+                listSandboxPackages: () => {
+                    return toolCall("list_sandbox_packages", {});
+                },
+                setSandboxPackageEnabled: (packageName, enabled) => {
+                    const params = { package_name: String(packageName ?? "") };
+                    params.enabled = !!enabled;
+                    return toolCall("set_sandbox_package_enabled", params);
+                },
+                restartMcpWithLogs: (timeoutMs) => {
+                    const params = {};
+                    if (timeoutMs !== undefined && timeoutMs !== null) params.timeout_ms = String(timeoutMs);
+                    return toolCall("restart_mcp_with_logs", params);
+                },
+                getSpeechServicesConfig: () => {
+                    return toolCall("get_speech_services_config", {});
+                },
+                setSpeechServicesConfig: (updates = {}) => {
+                    const params = { ...(updates || {}) };
+                    if (params.tts_headers !== undefined && params.tts_headers !== null && typeof params.tts_headers === 'object') {
+                        params.tts_headers = JSON.stringify(params.tts_headers);
+                    }
+                    if (params.tts_cleaner_regexs !== undefined && params.tts_cleaner_regexs !== null && Array.isArray(params.tts_cleaner_regexs)) {
+                        params.tts_cleaner_regexs = JSON.stringify(params.tts_cleaner_regexs);
+                    }
+                    return toolCall("set_speech_services_config", params);
+                },
+                listModelConfigs: () => {
+                    return toolCall("list_model_configs", {});
+                },
+                createModelConfig: (options = {}) => {
+                    const params = { ...(options || {}) };
+                    return toolCall("create_model_config", params);
+                },
+                updateModelConfig: (configId, updates = {}) => {
+                    const params = { ...(updates || {}), config_id: String(configId ?? "") };
+                    return toolCall("update_model_config", params);
+                },
+                deleteModelConfig: (configId) => {
+                    return toolCall("delete_model_config", { config_id: String(configId ?? "") });
+                },
+                listFunctionModelConfigs: () => {
+                    return toolCall("list_function_model_configs", {});
+                },
+                getFunctionModelConfig: (functionType) => {
+                    return toolCall("get_function_model_config", { function_type: String(functionType ?? "") });
+                },
+                setFunctionModelConfig: (functionType, configId, modelIndex) => {
+                    const params = {
+                        function_type: String(functionType ?? ""),
+                        config_id: String(configId ?? "")
+                    };
+                    if (modelIndex !== undefined && modelIndex !== null) params.model_index = String(modelIndex);
+                    return toolCall("set_function_model_config", params);
+                },
+                testModelConfigConnection: (configId, modelIndex) => {
+                    const params = { config_id: String(configId ?? "") };
+                    if (modelIndex !== undefined && modelIndex !== null) params.model_index = String(modelIndex);
+                    return toolCall("test_model_config_connection", params);
+                }
+            },
             // Tasker event
             Tasker: {
                 triggerEvent: (params) => {
@@ -666,6 +737,13 @@ fun getJsToolsDefinition(): String {
                 agentStatus: (chatId) => toolCall("agent_status", { chat_id: chatId }),
                 // 切换对话
                 switchTo: (chatId) => toolCall("switch_chat", { chat_id: chatId }),
+                updateTitle: (chatId, title) => {
+                    const params = { chat_id: String(chatId ?? ""), title: String(title ?? "") };
+                    return toolCall("update_chat_title", params);
+                },
+                deleteChat: (chatId) => {
+                    return toolCall("delete_chat", { chat_id: String(chatId ?? "") });
+                },
                 getMessages: (chatId, order, limit) => {
                     const params = { chat_id: chatId };
                     if (order !== undefined && order !== null && String(order).trim() !== "") params.order = String(order);

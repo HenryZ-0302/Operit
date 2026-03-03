@@ -47,6 +47,7 @@ import com.ai.assistance.operit.ui.features.permission.screens.PermissionGuideSc
 import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingScreenWithState
 import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingState
 import com.ai.assistance.operit.ui.features.startup.screens.LocalPluginLoadingState
+import com.ai.assistance.operit.ui.features.startup.screens.PluginLoadingStateRegistry
 import com.ai.assistance.operit.ui.theme.OperitTheme
 import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay
 import com.ai.assistance.operit.util.AnrMonitor
@@ -64,6 +65,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.res.stringResource
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val ACTION_OPEN_SETTINGS_SHORTCUT = "com.ai.assistance.operit.action.OPEN_SETTINGS_SHORTCUT"
+    }
+
     private val TAG = "MainActivity"
 
     // ======== 屏幕方向变更状态 ========
@@ -96,6 +101,7 @@ class MainActivity : ComponentActivity() {
     // UpdateManager实例
     private lateinit var updateManager: UpdateManager
 
+
     // 是否显示权限引导界面
     private var showPermissionGuide by mutableStateOf(false)
 
@@ -106,6 +112,7 @@ class MainActivity : ComponentActivity() {
     private var pendingSharedFileUris: List<Uri>? = null
 
     private var pendingSharedLinks: List<String>? = null
+    private var pendingShortcutNavItem: NavItem? = null
 
     // 通知权限请求启动器
     private val notificationPermissionLauncher = registerForActivityResult(
@@ -247,6 +254,7 @@ class MainActivity : ComponentActivity() {
 
         // 设置上下文以便获取插件元数据
         pluginLoadingState.setAppContext(this)
+        PluginLoadingStateRegistry.bind(pluginLoadingState, lifecycleScope)
 
         // 设置跳过加载的回调
         pluginLoadingState.setOnSkipCallback {
@@ -280,9 +288,14 @@ class MainActivity : ComponentActivity() {
         val isGitHubOAuthCallback = intent?.data?.let { uri ->
             uri.scheme == "operit" && uri.host == "github-oauth-callback"
         } == true
-        handleIntent(intent)
+        val handledShortcutIntent = handleIntent(intent)
 
         if (isGitHubOAuthCallback) {
+            return
+        }
+
+        if (handledShortcutIntent) {
+            setAppContent()
             return
         }
         
@@ -296,7 +309,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun handleIntent(intent: Intent?) {
+    private fun handleIntent(intent: Intent?): Boolean {
+        if (intent?.action == ACTION_OPEN_SETTINGS_SHORTCUT) {
+            pendingShortcutNavItem = NavItem.Settings
+            AppLogger.d(TAG, "Shortcut requested opening settings")
+            return true
+        }
+
         val uri = intent?.data
         if (uri != null && uri.scheme == "operit" && uri.host == "github-oauth-callback") {
             val code = uri.getQueryParameter("code")
@@ -307,7 +326,7 @@ class MainActivity : ComponentActivity() {
                 val error = uri.getQueryParameter("error")
                 AppLogger.e(TAG, "GitHub OAuth error from onCreate: $error")
             }
-            return
+            return false
         }
         
         // Handle opened and shared files
@@ -335,7 +354,7 @@ class MainActivity : ComponentActivity() {
                 uri?.let {
                     pendingSharedFileUris = listOf(it)
                     AppLogger.d(TAG, "Received shared file: $it")
-                    return
+                    return false
                 }
 
                 val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
@@ -369,6 +388,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        return false
     }
 
     private fun extractHttpUrls(text: String): List<String> {
@@ -513,6 +533,8 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         AppLogger.d(TAG, "onDestroy called")
+
+        PluginLoadingStateRegistry.unbind(pluginLoadingState)
 
         // 确保隐藏加载界面
         pluginLoadingState.hide()
@@ -730,15 +752,19 @@ class MainActivity : ComponentActivity() {
                             // 处理待处理的分享文件
                             processPendingSharedFiles()
                             processPendingSharedLinks()
+                            val initialNavItem = when {
+                                showPreferencesGuide -> NavItem.UserPreferencesGuide
+                                pendingShortcutNavItem != null -> pendingShortcutNavItem!!
+                                else -> NavItem.AiChat
+                            }
+                            if (!showPreferencesGuide && pendingShortcutNavItem != null) {
+                                pendingShortcutNavItem = null
+                            }
                             
                             CompositionLocalProvider(LocalPluginLoadingState provides pluginLoadingState) {
                                 // 主应用界面 (始终存在于底层)
                                 OperitApp(
-                                        initialNavItem =
-                                                when {
-                                                    showPreferencesGuide -> NavItem.UserPreferencesGuide
-                                                    else -> NavItem.AiChat
-                                                },
+                                        initialNavItem = initialNavItem,
                                         toolHandler = toolHandler
                                 )
                             }
@@ -766,69 +792,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    // ======== 设置更新管理器 ========
-    private fun setupUpdateManager() {
-        // 获取UpdateManager实例
-        updateManager = UpdateManager.getInstance(this)
-
-        // 观察更新状态
-        updateManager.updateStatus.observe(
-                this,
-                Observer { status ->
-                    if (status is UpdateStatus.Available) {
-                        showUpdateNotification(status)
-                    }
-                }
-        )
-
-        // 自动检查更新
-        lifecycleScope.launch {
-            // 延迟几秒，等待应用完全启动
-            delay(3000)
-            checkForUpdates()
-        }
-    }
-
-    private fun checkForUpdates() {
-        if (updateCheckPerformed) return
-        updateCheckPerformed = true
-
-        val appVersion =
-                try {
-                    packageManager.getPackageInfo(packageName, 0).versionName
-                } catch (e: PackageManager.NameNotFoundException) {
-                    getString(R.string.unknown_value)
-                }
-
-        // 使用UpdateManager检查更新
-        lifecycleScope.launch {
-            try {
-                updateManager.checkForUpdatesSilently(appVersion)
-                // 不需要显式处理更新状态，因为我们已经设置了观察者
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "更新检查失败: ${e.message}")
-            }
-        }
-    }
-
-    private fun showUpdateNotification(updateInfo: UpdateStatus.Available) {
-        val currentVersion =
-                try {
-                    packageManager.getPackageInfo(packageName, 0).versionName
-                } catch (e: Exception) {
-                    getString(R.string.unknown_value)
-                }
-
-        AppLogger.d(TAG, "发现新版本: ${updateInfo.newVersion}，当前版本: $currentVersion")
-
-        // 显示更新提示
-        Toast.makeText(
-            this,
-            getString(R.string.main_update_available_toast, updateInfo.newVersion),
-            Toast.LENGTH_LONG
-        ).show()
     }
 
     private fun getHighestRefreshRate(): Int {
@@ -875,6 +838,71 @@ class MainActivity : ComponentActivity() {
 
         AppLogger.d(TAG, "Selected refresh rate: $refreshRate Hz")
         return refreshRate
+    }
+
+    // ======== 设置更新管理器 ========
+    private fun setupUpdateManager() {
+        // 获取UpdateManager实例
+        updateManager = UpdateManager.getInstance(this)
+
+        // 观察更新状态（beta / 非 beta 都提示新版本）
+        updateManager.updateStatus.observe(
+            this,
+            Observer { status ->
+                when (status) {
+                    is UpdateStatus.Available -> showUpdateNotification(status.newVersion)
+                    is UpdateStatus.PatchAvailable -> showUpdateNotification(status.newVersion)
+                    else -> Unit
+                }
+            }
+        )
+
+        // 自动检查更新（仅提示，不自动下载）
+        lifecycleScope.launch {
+            // 延迟几秒，等待应用完全启动
+            delay(3000)
+            checkForUpdates()
+        }
+    }
+
+    private fun checkForUpdates() {
+        if (updateCheckPerformed) return
+        updateCheckPerformed = true
+
+        val appVersion =
+            try {
+                packageManager.getPackageInfo(packageName, 0).versionName
+            } catch (e: PackageManager.NameNotFoundException) {
+                getString(R.string.unknown_value)
+            }
+
+        // 使用UpdateManager检查更新
+        lifecycleScope.launch {
+            try {
+                updateManager.checkForUpdatesSilently(appVersion)
+                // 不需要显式处理更新状态，因为我们已经设置了观察者
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "更新检查失败: ${e.message}")
+            }
+        }
+    }
+
+    private fun showUpdateNotification(newVersion: String) {
+        val currentVersion =
+            try {
+                packageManager.getPackageInfo(packageName, 0).versionName
+            } catch (e: Exception) {
+                getString(R.string.unknown_value)
+            }
+
+        AppLogger.d(TAG, "发现新版本: $newVersion，当前版本: $currentVersion")
+
+        // 显示更新提示
+        Toast.makeText(
+            this,
+            getString(R.string.main_update_available_toast, newVersion),
+            Toast.LENGTH_LONG
+        ).show()
     }
 
     /** 清理临时文件目录 删除Download/Operit/cleanOnExit目录中的所有文件 */

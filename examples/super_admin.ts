@@ -9,10 +9,11 @@ METADATA
     },
     "description": { "zh": "超级管理员工具集，提供终端命令和Shell操作的高级功能。terminal工具运行在Ubuntu环境中（已正确挂载sdcard和storage），shell工具通过Shizuku/Root直接执行Android系统命令。适合需要进行底层系统管理和命令行操作的场景。", "en": "Super admin toolkit providing advanced terminal and shell capabilities. The terminal tool runs in an Ubuntu environment (with sdcard/storage mounted). The shell tool executes Android system commands directly via Shizuku/Root. Useful for low-level system administration and CLI operations." },
     "enabledByDefault": true,
+    "category": "System",
     "tools": [
         {
             "name": "terminal",
-            "description": { "zh": "在Ubuntu环境中执行命令并收集输出结果。运行环境：完整的Ubuntu系统，已正确挂载sdcard和storage目录，可访问Android存储空间。所有命令将会在相同的会话执行且上下文连贯，若使用ssh连接，则后续命令将会执行在ssh上，且可继续直接使用terminal工具执行命令，无需改用terminal_input。强烈建议每次都显式传 timeoutMs，避免命令卡住。若未传，前台默认15秒超时；background=true 时不使用该默认超时。命令超时时不会被自动取消，不需要重新执行命令，请继续通过 terminal_getscreen 跟踪当前屏幕内容。", "en": "Execute commands in an Ubuntu environment and collect output. Environment: full Ubuntu system with sdcard/storage mounted, allowing access to Android storage. Automatically preserves working-directory context. Strongly recommend explicitly passing timeoutMs every time to avoid hangs. If omitted, foreground mode defaults to 15s timeout; background=true does not use this default timeout. When a command times out, it is not automatically cancelled. Do not rerun the command; continue tracking the current screen via terminal_getscreen." },
+            "description": { "zh": "在Ubuntu环境中执行命令并收集输出结果。运行环境：完整的Ubuntu系统，已正确挂载sdcard和storage目录，可访问Android存储空间。所有命令将会在相同的会话执行且上下文连贯。强烈建议每次都显式传 timeoutMs，避免命令卡住。若未传，前台默认15秒超时；background=true 时不使用该默认超时。命令超时时不会被自动取消，不需要重新执行命令，请继续通过 terminal_getscreen 跟踪当前屏幕内容。", "en": "Execute commands in an Ubuntu environment and collect output. Environment: full Ubuntu system with sdcard/storage mounted, allowing access to Android storage. Automatically preserves working-directory context. Strongly recommend explicitly passing timeoutMs every time to avoid hangs. If omitted, foreground mode defaults to 15s timeout; background=true does not use this default timeout. When a command times out, it is not automatically cancelled. Do not rerun the command; continue tracking the current screen via terminal_getscreen." },
             "parameters": [
                 {
                     "name": "command",
@@ -88,8 +89,7 @@ METADATA
             ]
         }
     ]
-}
-*/
+}*/
 
 const superAdmin = (function () {
     const MAX_INLINE_TERMINAL_OUTPUT_CHARS = 12_000;

@@ -125,6 +125,11 @@ object ApiProviderConfigs {
             defaultApiEndpoint = "https://api.siliconflow.cn/v1/chat/completions"
         ),
         ProviderApiConfig(
+            providerType = ApiProviderType.IFLOW,
+            defaultModelName = "TBStars2-200B-A13B",
+            defaultApiEndpoint = "https://apis.iflow.cn/v1/chat/completions"
+        ),
+        ProviderApiConfig(
             providerType = ApiProviderType.OPENROUTER,
             defaultModelName = "google/gemini-pro",
             defaultApiEndpoint = "https://openrouter.ai/api/v1/chat/completions"
@@ -148,6 +153,11 @@ object ApiProviderConfigs {
             providerType = ApiProviderType.LMSTUDIO,
             defaultModelName = "meta-llama-3.1-8b-instruct",
             defaultApiEndpoint = "http://localhost:1234/v1/chat/completions"
+        ),
+        ProviderApiConfig(
+            providerType = ApiProviderType.OLLAMA,
+            defaultModelName = "",
+            defaultApiEndpoint = "http://localhost:11434/v1/chat/completions"
         ),
         ProviderApiConfig(
             providerType = ApiProviderType.MNN,

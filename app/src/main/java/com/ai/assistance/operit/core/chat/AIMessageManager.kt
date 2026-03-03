@@ -253,13 +253,31 @@ object AIMessageManager {
         characterName: String? = null,
         avatarUri: String? = null,
         roleCardId: String,
-        proxySenderName: String? = null
+        currentRoleName: String? = null,
+        splitHistoryByRole: Boolean = false,
+        groupOrchestrationMode: Boolean = false,
+        proxySenderName: String? = null,
+        chatModelConfigIdOverride: String? = null,
+        chatModelIndexOverride: Int? = null
     ): SharedStream<String> {
         val chatKey = chatId ?: DEFAULT_CHAT_KEY
         lastActiveChatKey = chatKey
         activeEnhancedAiServiceByChatId[chatKey] = enhancedAiService
 
-        val memory = getMemoryFromMessages(chatHistory)
+        val memory = getMemoryFromMessages(
+            messages = chatHistory,
+            splitByRole = splitHistoryByRole,
+            targetRoleName = currentRoleName,
+            groupOrchestrationMode = groupOrchestrationMode
+        )
+        if (splitHistoryByRole && !currentRoleName.isNullOrBlank()) {
+            val assistantCount = memory.count { it.first == "assistant" }
+            val userCount = memory.count { it.first == "user" }
+            AppLogger.d(
+                TAG,
+                "按角色拆解历史: role=$currentRoleName, assistant=$assistantCount, user=$userCount, total=${memory.size}"
+            )
+        }
 
         // 检查是否启用了深度搜索模式（计划模式）
         val isDeepSearchEnabled = apiPreferences.enableAiPlanningFlow.first()
@@ -348,7 +366,10 @@ object AIMessageManager {
                 characterName = characterName,
                 avatarUri = avatarUri,
                 roleCardId = roleCardId,
+                enableGroupOrchestrationHint = groupOrchestrationMode,
                 proxySenderName = proxySenderName,
+                chatModelConfigIdOverride = chatModelConfigIdOverride,
+                chatModelIndexOverride = chatModelIndexOverride,
                 stream = enableStream
             ).share(
                 scope = scope,
@@ -451,7 +472,8 @@ object AIMessageManager {
     suspend fun summarizeMemory(
         enhancedAiService: EnhancedAIService,
         messages: List<ChatMessage>,
-        autoContinue: Boolean = false
+        autoContinue: Boolean = false,
+        isGroupChat: Boolean = false
     ): ChatMessage? {
         val lastSummaryIndex = messages.indexOfLast { it.sender == "summary" }
         val previousSummary = if (lastSummaryIndex != -1) messages[lastSummaryIndex].content.trim() else null
@@ -642,19 +664,64 @@ object AIMessageManager {
             return if (combined.isBlank()) "[Empty]" else combined
         }
 
-        val conversationToSummarize = messagesToSummarize.mapIndexed { index, message ->
-            val role = if (message.sender == "user") "user" else "assistant"
-            val cleanedContent = if (role == "user") {
-                message.content.replace(memoryTagRegex, "").trim()
-            } else {
-                stripMediaLinksForAssistant(message.content)
+        // 群聊模式：将消息打包成多角色格式
+        val conversationToSummarize = if (isGroupChat) {
+            // 打包所有消息到一条用户消息
+            val packedContent = buildString {
+                messagesToSummarize.forEach { message ->
+                    // 清理消息内容：移除 memory 标签和 thinking 内容
+                    val cleanedContent = if (message.sender == "user") {
+                        message.content.replace(memoryTagRegex, "").trim()
+                    } else {
+                        // AI 消息需要先移除 thinking 内容，再移除媒体链接
+                        val withoutThinking = ChatUtils.removeThinkingContent(message.content)
+                        stripMediaLinksForAssistant(withoutThinking)
+                    }
+
+                    if (cleanedContent.isNotBlank()) {
+                        val displayContent = if (message.sender == "assistant") {
+                            condenseAssistantForReview(cleanedContent)
+                        } else {
+                            condenseUserForReview(cleanedContent)
+                        }
+
+                        val speakerLabel = if (message.sender == "user") {
+                            "user"
+                        } else {
+                            message.roleName?.takeIf { it.isNotBlank() } ?: "AI"
+                        }
+
+                        conversationReviewEntries.add(speakerLabel to displayContent)
+
+                        if (isNotEmpty()) append(" ")
+                        append("$speakerLabel: $cleanedContent")
+                    }
+                }
             }
-            if (cleanedContent.isNotBlank()) {
-                val displayContent =
-                    if (role == "assistant") condenseAssistantForReview(cleanedContent) else condenseUserForReview(cleanedContent)
-                conversationReviewEntries.add(role to displayContent)
+            listOf(Pair("user", packedContent))
+        } else {
+            // 非群聊模式：保持原有逻辑
+            messagesToSummarize.mapIndexed { index, message ->
+                val role = if (message.sender == "user") "user" else "assistant"
+                val cleanedContent = if (role == "user") {
+                    message.content.replace(memoryTagRegex, "").trim()
+                } else {
+                    stripMediaLinksForAssistant(message.content)
+                }
+                if (cleanedContent.isNotBlank()) {
+                    val displayContent =
+                        if (role == "assistant") condenseAssistantForReview(cleanedContent) else condenseUserForReview(cleanedContent)
+                    val speakerLabel =
+                        if (message.sender == "user") {
+                            "user"
+                        } else {
+                            val roleName = message.roleName?.takeIf { it.isNotBlank() }
+                            if (roleName != null) roleName else "AI"
+                        }
+                    conversationReviewEntries.add(speakerLabel to displayContent)
+                }
+                Pair(role, "#${index + 1}: $cleanedContent")
             }
-            Pair(role, "#${index + 1}: $cleanedContent")
         }
 
         return try {
@@ -672,9 +739,9 @@ object AIMessageManager {
                     append(trimmedSummary)
                     if (conversationReviewEntries.isNotEmpty()) {
                         append(context.getString(R.string.ai_message_dialogue_review))
-                        conversationReviewEntries.forEach { (role, content) ->
+                        conversationReviewEntries.forEach { (speaker, content) ->
                             append("- ")
-                            append(if (role == "user") context.getString(R.string.ai_message_user_label) else "AI")
+                            append(speaker)
                             append(": ")
                             append(content)
                             append("\n")
@@ -762,18 +829,102 @@ object AIMessageManager {
      * @param messages 完整的聊天记录。
      * @return 一个Pair列表，包含角色和内容，用于AI请求。
      */
-    fun getMemoryFromMessages(messages: List<ChatMessage>): List<Pair<String, String>> {
+    fun getMemoryFromMessages(
+        messages: List<ChatMessage>,
+        splitByRole: Boolean = false,
+        targetRoleName: String? = null,
+        groupOrchestrationMode: Boolean = false
+    ): List<Pair<String, String>> {
+        // 1. 找到最后一条总结消息，只处理总结之后的消息
         val lastSummaryIndex = messages.indexOfLast { it.sender == "summary" }
         val relevantMessages = if (lastSummaryIndex != -1) {
             messages.subList(lastSummaryIndex, messages.size)
         } else {
             messages
         }
+
+        // 2. 判断是否启用角色隔离模式
+        val isRoleScopedMode = splitByRole && !targetRoleName.isNullOrBlank()
+        val normalizedTargetRole = targetRoleName?.trim().orEmpty()
+
+        // 3. 辅助函数：移除状态标签
+        fun removeStatusTags(text: String): String {
+            val noStatus = ChatMarkupRegex.statusTag.replace(text, " ")
+            return ChatMarkupRegex.statusSelfClosingTag.replace(noStatus, " ").trim()
+        }
+
+        // 4. 处理每条消息
         return relevantMessages
             .filter { it.sender == "user" || it.sender == "ai" || it.sender == "summary" }
-            .map {
-                val role = if (it.sender == "ai") "assistant" else "user" // "summary" is treated as user-side context
-                Pair(role, it.content)
+            .mapNotNull { message ->
+                when (message.sender) {
+                    "ai" -> processAiMessage(
+                        message,
+                        isRoleScopedMode,
+                        normalizedTargetRole,
+                        ::removeStatusTags
+                    )
+                    "user" -> processUserMessage(
+                        message,
+                        isRoleScopedMode,
+                        groupOrchestrationMode
+                    )
+                    "summary" -> "user" to message.content
+                    else -> null
+                }
             }
     }
-} 
+
+    private fun processAiMessage(
+        message: ChatMessage,
+        isRoleScopedMode: Boolean,
+        targetRoleName: String,
+        removeStatusTags: (String) -> String
+    ): Pair<String, String>? {
+        // 清理思考内容
+        val cleanedContent = ChatUtils.removeThinkingContent(message.content).trim()
+        val contentWithoutStatus = removeStatusTags(cleanedContent)
+
+        // 非角色隔离模式：直接返回 assistant 消息
+        if (!isRoleScopedMode) {
+            return "assistant" to message.content
+        }
+
+        // 角色隔离模式：判断是当前角色还是其他角色
+        val messageRoleName = message.roleName.trim()
+        return if (messageRoleName == targetRoleName) {
+            // 当前角色的消息：作为 assistant 返回
+            "assistant" to message.content
+        } else {
+            // 其他角色的消息：转换为 user 消息，添加角色标签
+            val roleLabel = if (messageRoleName.isNotBlank()) messageRoleName else "unknown"
+            val bridgedContent = removeStatusTags(cleanedContent)
+            if (bridgedContent.isBlank()) {
+                null
+            } else {
+                "user" to "[From role: $roleLabel]\n$bridgedContent"
+            }
+        }
+    }
+
+    private fun processUserMessage(
+        message: ChatMessage,
+        isRoleScopedMode: Boolean,
+        groupOrchestrationMode: Boolean
+    ): Pair<String, String> {
+        val baseContent = message.content
+
+        // 群组编排模式 + 角色隔离模式：给用户消息添加 [From user] 前缀
+        if (groupOrchestrationMode && isRoleScopedMode) {
+            val trimmed = baseContent.trim()
+            return when {
+                trimmed.isBlank() -> "user" to baseContent
+                trimmed.startsWith("[From user]") -> "user" to trimmed
+                else -> "user" to "[From user]\n$trimmed"
+            }
+        }
+
+        // 其他模式：直接返回
+        return "user" to baseContent
+    }
+}

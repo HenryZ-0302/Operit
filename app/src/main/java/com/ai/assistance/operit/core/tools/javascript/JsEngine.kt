@@ -2,6 +2,7 @@ package com.ai.assistance.operit.core.tools.javascript
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
+import android.os.Looper
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.annotation.Keep
@@ -21,9 +22,11 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.json.JSONObject
+import org.json.JSONTokener
 import com.ai.assistance.operit.data.preferences.EnvPreferences
 import android.graphics.Bitmap
 import android.util.Base64
+import com.ai.assistance.operit.core.application.ActivityLifecycleManager
 import com.ai.assistance.operit.core.tools.BinaryResultData
 import com.ai.assistance.operit.core.tools.javascript.JsTimeoutConfig
 import com.ai.assistance.operit.util.ImagePoolManager
@@ -66,6 +69,8 @@ class JsEngine(private val context: Context) {
     private val bitmapRegistry = ConcurrentHashMap<String, Bitmap>()
     // 存储大型二进制数据的注册表
     private val binaryDataRegistry = ConcurrentHashMap<String, ByteArray>()
+    // 存储 Java/Kotlin 桥接对象实例
+    private val javaObjectRegistry = ConcurrentHashMap<String, Any>()
 
     // WebView 实例用于执行 JavaScript
     private var webView: WebView? = null
@@ -125,6 +130,125 @@ class JsEngine(private val context: Context) {
 
     private fun getComposeDslContextBridgeDefinition(): String {
         return buildComposeDslContextBridgeDefinition()
+    }
+
+    private fun getJavaClassBridgeDefinition(): String {
+        return buildJavaClassBridgeDefinition()
+    }
+
+    private fun getJavaBridgeClassLoader(): ClassLoader {
+        return context.classLoader
+            ?: this::class.java.classLoader
+            ?: ClassLoader.getSystemClassLoader()
+    }
+
+    private fun decodeEvaluateJavascriptResult(raw: String?): String {
+        if (raw.isNullOrBlank() || raw == "null") {
+            return ""
+        }
+        return try {
+            val token = JSONTokener(raw).nextValue()
+            when (token) {
+                is String -> token
+                else -> token?.toString().orEmpty()
+            }
+        } catch (_: Exception) {
+            raw
+        }
+    }
+
+    private fun invokeJavaBridgeJsObjectCallbackSync(
+        jsObjectId: String,
+        methodName: String,
+        argsJson: String
+    ): String {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return JSONObject()
+                .put("success", false)
+                .put("error", "java bridge callback cannot synchronously invoke JS on main thread")
+                .toString()
+        }
+
+        val targetWebView = webView
+        if (targetWebView == null) {
+            return JSONObject()
+                .put("success", false)
+                .put("error", "webview is not initialized")
+                .toString()
+        }
+
+        val safeArgsJson = argsJson.trim().ifEmpty { "[]" }
+        val callbackScript =
+            """
+            (function() {
+                try {
+                    var __invoker =
+                        (typeof globalThis !== 'undefined' && typeof globalThis.__operitJavaBridgeInvokeJsObject === 'function')
+                            ? globalThis.__operitJavaBridgeInvokeJsObject
+                            : undefined;
+                    if (!__invoker) {
+                        return JSON.stringify({
+                            success: false,
+                            error: 'java bridge js callback runtime unavailable'
+                        });
+                    }
+                    var __result = __invoker(
+                        ${JSONObject.quote(jsObjectId)},
+                        ${JSONObject.quote(methodName)},
+                        $safeArgsJson
+                    );
+                    return JSON.stringify({
+                        success: true,
+                        data: __result
+                    });
+                } catch (e) {
+                    return JSON.stringify({
+                        success: false,
+                        error: (e && e.message) ? e.message : String(e)
+                    });
+                }
+            })();
+            """.trimIndent()
+
+        val latch = CountDownLatch(1)
+        var decodedResult: String? = null
+
+        ContextCompat.getMainExecutor(context).execute {
+            try {
+                targetWebView.evaluateJavascript(callbackScript) { raw ->
+                    decodedResult = decodeEvaluateJavascriptResult(raw)
+                    latch.countDown()
+                }
+            } catch (e: Exception) {
+                decodedResult =
+                    JSONObject()
+                        .put("success", false)
+                        .put("error", "java bridge callback evaluation failed: ${e.message}")
+                        .toString()
+                latch.countDown()
+            }
+        }
+
+        return try {
+            if (!latch.await(6, TimeUnit.SECONDS)) {
+                JSONObject()
+                    .put("success", false)
+                    .put("error", "java bridge callback timed out")
+                    .toString()
+            } else {
+                decodedResult
+                    ?: JSONObject()
+                        .put("success", false)
+                        .put("error", "java bridge callback returned empty result")
+                        .toString()
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            JSONObject()
+                .put("success", false)
+                .put("error", "java bridge callback interrupted: ${e.message}")
+                .toString()
+        }
     }
 
     /** 初始化 JavaScript 环境 加载核心功能、工具库和辅助函数 这些代码只需要执行一次 */
@@ -505,7 +629,10 @@ class JsEngine(private val context: Context) {
 
             // compose_dsl 上下文桥接（让 UI 脚本可直接使用 toolCall / Tools）
             ${getComposeDslContextBridgeDefinition()}
-             
+
+            // Java/Kotlin 类桥接（Rhino 风格 Java.type）
+            ${getJavaClassBridgeDefinition()}
+              
             // 定义完成回调
             function complete(result) {
                 try {
@@ -607,12 +734,10 @@ class JsEngine(private val context: Context) {
             function __handleAsync(possiblePromise) {
                 if (possiblePromise instanceof Promise) {
                     // 更强大的异步处理
-                    console.log("Detected async Promise, waiting for resolution...");
                     
                     // 创建一个超时保护，确保非常长时间运行的Promise最终会被处理
                     const asyncTimeout = setTimeout(() => {
                         if (!window._hasCompleted) {
-                            console.log("Async Promise timeout reached after ${JsTimeoutConfig.ASYNC_PROMISE_TIMEOUT_SECONDS} seconds");
                             // 尝试安全地完成执行
                             try {
                                 window._hasCompleted = true;
@@ -623,7 +748,6 @@ class JsEngine(private val context: Context) {
                                 };
                                 
                                 NativeInterface.setResult(JSON.stringify(timeoutResult));
-                                console.log("Timeout result set from Promise handler");
                             } catch (e) {
                                 console.error("Error during timeout handling:", e);
                             }
@@ -633,7 +757,6 @@ class JsEngine(private val context: Context) {
                     possiblePromise
                         .then(result => {
                             clearTimeout(asyncTimeout);
-                            console.log("Async Promise resolved successfully");
                             if (!window._hasCompleted) {
                                 try {
                                     window._hasCompleted = true;
@@ -651,13 +774,10 @@ class JsEngine(private val context: Context) {
                                         });
                                     }
                                     NativeInterface.setResult(serializedResult);
-                                    console.log("Result set from Promise resolution");
                                 } catch (completionError) {
                                     console.error("Error during async completion:", completionError);
                                     NativeInterface.setError("Async completion error: " + completionError.message);
                                 }
-                            } else {
-                                console.log("Promise resolved, but execution was already completed");
                             }
                         })
                         .catch(error => {
@@ -676,8 +796,6 @@ class JsEngine(private val context: Context) {
                                         details: errorReport.details,
                                         formatted: errorReport.formatted
                                     }));
-                                    
-                                    console.log("Detailed error information reported from Promise rejection");
                                 } catch (errorHandlingError) {
                                     console.error("Error during async error handling:", errorHandlingError);
                                     
@@ -1575,6 +1693,7 @@ class JsEngine(private val context: Context) {
 
         // 清理二进制数据注册表
         binaryDataRegistry.clear()
+        javaObjectRegistry.clear()
 
         // 如果WebView已经存在，执行轻量级清理
         if (webView != null) {
@@ -1762,6 +1881,185 @@ class JsEngine(private val context: Context) {
         }
 
         @JavascriptInterface
+        fun javaClassExists(className: String): Boolean {
+            return JsJavaBridgeDelegates.classExists(className = className)
+        }
+
+        @JavascriptInterface
+        fun javaGetApplicationContext(): String {
+            return try {
+                val appContext = context.applicationContext
+                val handle = UUID.randomUUID().toString()
+                javaObjectRegistry[handle] = appContext
+
+                JSONObject()
+                    .put("success", true)
+                    .put(
+                        "data",
+                        JSONObject()
+                            .put("__javaHandle", handle)
+                            .put("__javaClass", appContext.javaClass.name)
+                    )
+                    .toString()
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to expose application context: ${e.message}", e)
+                JSONObject()
+                    .put("success", false)
+                    .put("error", e.message ?: "failed to expose application context")
+                    .toString()
+            }
+        }
+
+        @JavascriptInterface
+        fun javaGetCurrentActivity(): String {
+            return try {
+                val activity =
+                    ActivityLifecycleManager.getCurrentActivity()
+                        ?: throw IllegalStateException("current activity is null")
+                val handle = UUID.randomUUID().toString()
+                javaObjectRegistry[handle] = activity
+
+                JSONObject()
+                    .put("success", true)
+                    .put(
+                        "data",
+                        JSONObject()
+                            .put("__javaHandle", handle)
+                            .put("__javaClass", activity.javaClass.name)
+                    )
+                    .toString()
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to expose current activity: ${e.message}", e)
+                JSONObject()
+                    .put("success", false)
+                    .put("error", e.message ?: "failed to expose current activity")
+                    .toString()
+            }
+        }
+
+        @JavascriptInterface
+        fun javaNewInstance(className: String, argsJson: String): String {
+            return JsJavaBridgeDelegates.newInstance(
+                    className = className,
+                    argsJson = argsJson,
+                    objectRegistry = javaObjectRegistry,
+                    jsCallbackInvoker = { jsObjectId, methodName, callbackArgsJson ->
+                        invokeJavaBridgeJsObjectCallbackSync(
+                            jsObjectId = jsObjectId,
+                            methodName = methodName,
+                            argsJson = callbackArgsJson
+                        )
+                    },
+                    bridgeClassLoader = getJavaBridgeClassLoader()
+            )
+        }
+
+        @JavascriptInterface
+        fun javaCallStatic(className: String, methodName: String, argsJson: String): String {
+            return JsJavaBridgeDelegates.callStatic(
+                    className = className,
+                    methodName = methodName,
+                    argsJson = argsJson,
+                    objectRegistry = javaObjectRegistry,
+                    jsCallbackInvoker = { jsObjectId, callbackMethod, callbackArgsJson ->
+                        invokeJavaBridgeJsObjectCallbackSync(
+                            jsObjectId = jsObjectId,
+                            methodName = callbackMethod,
+                            argsJson = callbackArgsJson
+                        )
+                    },
+                    bridgeClassLoader = getJavaBridgeClassLoader()
+            )
+        }
+
+        @JavascriptInterface
+        fun javaCallInstance(instanceHandle: String, methodName: String, argsJson: String): String {
+            return JsJavaBridgeDelegates.callInstance(
+                    instanceHandle = instanceHandle,
+                    methodName = methodName,
+                    argsJson = argsJson,
+                    objectRegistry = javaObjectRegistry,
+                    jsCallbackInvoker = { jsObjectId, callbackMethod, callbackArgsJson ->
+                        invokeJavaBridgeJsObjectCallbackSync(
+                            jsObjectId = jsObjectId,
+                            methodName = callbackMethod,
+                            argsJson = callbackArgsJson
+                        )
+                    },
+                    bridgeClassLoader = getJavaBridgeClassLoader()
+            )
+        }
+
+        @JavascriptInterface
+        fun javaGetStaticField(className: String, fieldName: String): String {
+            return JsJavaBridgeDelegates.getStaticField(
+                    className = className,
+                    fieldName = fieldName,
+                    objectRegistry = javaObjectRegistry
+            )
+        }
+
+        @JavascriptInterface
+        fun javaSetStaticField(className: String, fieldName: String, valueJson: String): String {
+            return JsJavaBridgeDelegates.setStaticField(
+                    className = className,
+                    fieldName = fieldName,
+                    valueJson = valueJson,
+                    objectRegistry = javaObjectRegistry,
+                    jsCallbackInvoker = { jsObjectId, callbackMethod, callbackArgsJson ->
+                        invokeJavaBridgeJsObjectCallbackSync(
+                            jsObjectId = jsObjectId,
+                            methodName = callbackMethod,
+                            argsJson = callbackArgsJson
+                        )
+                    },
+                    bridgeClassLoader = getJavaBridgeClassLoader()
+            )
+        }
+
+        @JavascriptInterface
+        fun javaGetInstanceField(instanceHandle: String, fieldName: String): String {
+            return JsJavaBridgeDelegates.getInstanceField(
+                    instanceHandle = instanceHandle,
+                    fieldName = fieldName,
+                    objectRegistry = javaObjectRegistry
+            )
+        }
+
+        @JavascriptInterface
+        fun javaSetInstanceField(instanceHandle: String, fieldName: String, valueJson: String): String {
+            return JsJavaBridgeDelegates.setInstanceField(
+                    instanceHandle = instanceHandle,
+                    fieldName = fieldName,
+                    valueJson = valueJson,
+                    objectRegistry = javaObjectRegistry,
+                    jsCallbackInvoker = { jsObjectId, callbackMethod, callbackArgsJson ->
+                        invokeJavaBridgeJsObjectCallbackSync(
+                            jsObjectId = jsObjectId,
+                            methodName = callbackMethod,
+                            argsJson = callbackArgsJson
+                        )
+                    },
+                    bridgeClassLoader = getJavaBridgeClassLoader()
+            )
+        }
+
+        @JavascriptInterface
+        fun javaReleaseInstance(instanceHandle: String): String {
+            return JsJavaBridgeDelegates.releaseInstance(
+                    instanceHandle = instanceHandle,
+                    objectRegistry = javaObjectRegistry
+            )
+        }
+
+        @JavascriptInterface
+        fun javaReleaseAllInstances(): String {
+            return JsJavaBridgeDelegates.releaseAllInstances(
+                    objectRegistry = javaObjectRegistry
+            )
+        }
+
+        @JavascriptInterface
         fun registerImageFromBase64(base64: String, mimeType: String): String {
             return try {
                 val finalMime = if (mimeType.isNotBlank()) mimeType else "image/png"
@@ -1818,7 +2116,6 @@ class JsEngine(private val context: Context) {
         @JavascriptInterface
         fun sendIntermediateResult(result: String) {
             try {
-                AppLogger.d(TAG, "Received intermediate result from JS: ${result.take(200)}")
                 ContextCompat.getMainExecutor(context).execute {
                     intermediateResultCallback?.invoke(result)
                 }
@@ -2195,7 +2492,7 @@ class JsEngine(private val context: Context) {
                 // 加入更详细的日志，帮助排查异步问题
                 AppLogger.d(
                         TAG,
-                        "Setting result from JavaScript: result=${result.take(500)}, length=${result.length}, callback=${callback != null}, isDone=${callback?.isDone}"
+                        "Setting result from JavaScript: length=${result.length}, callback=${callback != null}, isDone=${callback?.isDone}"
                 )
 
                 // 确保回调仍然有效
@@ -2214,7 +2511,6 @@ class JsEngine(private val context: Context) {
                     try {
                         // 返回成功结果
                         if (!callback.isDone) {
-                            AppLogger.d(TAG, "Actually completing the result callback")
                             callback.complete(result)
                         } else {
                             AppLogger.w(TAG, "Callback became complete between check and execution")
@@ -2239,7 +2535,7 @@ class JsEngine(private val context: Context) {
                 // 加入更详细的日志
                 AppLogger.d(
                         TAG,
-                        "Setting error from JavaScript: $error, callback=${callback != null}, isDone=${callback?.isDone}"
+                        "Setting error from JavaScript: length=${error.length}, callback=${callback != null}, isDone=${callback?.isDone}"
                 )
 
                 // 尝试解析错误信息，看是否是JSON格式
@@ -2354,6 +2650,7 @@ class JsEngine(private val context: Context) {
 
             // 清理二进制数据注册表
             binaryDataRegistry.clear()
+            javaObjectRegistry.clear()
 
             // 在主线程中销毁 WebView
             ContextCompat.getMainExecutor(context).execute {

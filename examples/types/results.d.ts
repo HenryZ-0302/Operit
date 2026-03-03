@@ -967,6 +967,189 @@ export interface StringResultData {
 }
 
 // ============================================================================
+// Software Settings Types
+// ============================================================================
+
+export interface SpeechTtsHttpConfigResultItem {
+    urlTemplate: string;
+    apiKeySet: boolean;
+    apiKeyPreview: string;
+    headers: Record<string, string>;
+    httpMethod: string;
+    requestBody: string;
+    contentType: string;
+    voiceId: string;
+    modelName: string;
+}
+
+export interface SpeechSttHttpConfigResultItem {
+    endpointUrl: string;
+    apiKeySet: boolean;
+    apiKeyPreview: string;
+    modelName: string;
+}
+
+export interface SpeechServicesConfigResultData {
+    ttsServiceType: string;
+    ttsHttpConfig: SpeechTtsHttpConfigResultItem;
+    ttsCleanerRegexs: string[];
+    ttsSpeechRate: number;
+    ttsPitch: number;
+    sttServiceType: string;
+    sttHttpConfig: SpeechSttHttpConfigResultItem;
+    toString(): string;
+}
+
+export interface SpeechServicesUpdateResultData {
+    updated: boolean;
+    changedFields: string[];
+    ttsServiceType: string;
+    sttServiceType: string;
+    ttsApiKeySet: boolean;
+    sttApiKeySet: boolean;
+    toString(): string;
+}
+
+export interface ModelConfigResultItem {
+    id: string;
+    name: string;
+    apiProviderType: string;
+    apiEndpoint: string;
+    modelName: string;
+    modelList: string[];
+    apiKeySet: boolean;
+    apiKeyPreview: string;
+    maxTokensEnabled: boolean;
+    maxTokens: number;
+    temperatureEnabled: boolean;
+    temperature: number;
+    topPEnabled: boolean;
+    topP: number;
+    topKEnabled: boolean;
+    topK: number;
+    presencePenaltyEnabled: boolean;
+    presencePenalty: number;
+    frequencyPenaltyEnabled: boolean;
+    frequencyPenalty: number;
+    repetitionPenaltyEnabled: boolean;
+    repetitionPenalty: number;
+    hasCustomParameters: boolean;
+    customParameters: string;
+    contextLength: number;
+    maxContextLength: number;
+    enableMaxContextMode: boolean;
+    summaryTokenThreshold: number;
+    enableSummary: boolean;
+    enableSummaryByMessageCount: boolean;
+    summaryMessageCountThreshold: number;
+    mnnForwardType: number;
+    mnnThreadCount: number;
+    llamaThreadCount: number;
+    llamaContextSize: number;
+    enableDirectImageProcessing: boolean;
+    enableDirectAudioProcessing: boolean;
+    enableDirectVideoProcessing: boolean;
+    enableGoogleSearch: boolean;
+    enableToolCall: boolean;
+    strictToolCall: boolean;
+    requestLimitPerMinute: number;
+    maxConcurrentRequests: number;
+    useMultipleApiKeys: boolean;
+    apiKeyPoolCount: number;
+    toString(): string;
+}
+
+export interface FunctionModelMappingResultItem {
+    functionType: string;
+    configId: string;
+    configName?: string | null;
+    modelIndex: number;
+    actualModelIndex?: number | null;
+    selectedModel?: string | null;
+}
+
+export interface ModelConfigsResultData {
+    totalConfigCount: number;
+    defaultConfigId: string;
+    configs: ModelConfigResultItem[];
+    functionMappings: FunctionModelMappingResultItem[];
+    toString(): string;
+}
+
+export interface ModelConfigCreateResultData {
+    created: boolean;
+    config: ModelConfigResultItem;
+    changedFields: string[];
+    toString(): string;
+}
+
+export interface ModelConfigUpdateResultData {
+    updated: boolean;
+    config: ModelConfigResultItem;
+    changedFields: string[];
+    affectedFunctions: string[];
+    toString(): string;
+}
+
+export interface ModelConfigDeleteResultData {
+    deleted: boolean;
+    configId: string;
+    affectedFunctions: string[];
+    fallbackConfigId: string;
+    toString(): string;
+}
+
+export interface FunctionModelConfigsResultData {
+    defaultConfigId: string;
+    mappings: FunctionModelMappingResultItem[];
+    toString(): string;
+}
+
+export interface FunctionModelConfigResultData {
+    defaultConfigId: string;
+    functionType: string;
+    configId: string;
+    configName: string;
+    modelIndex: number;
+    actualModelIndex: number;
+    selectedModel: string;
+    config: ModelConfigResultItem;
+    toString(): string;
+}
+
+export interface FunctionModelBindingResultData {
+    functionType: string;
+    configId: string;
+    configName: string;
+    requestedModelIndex: number;
+    actualModelIndex: number;
+    selectedModel: string;
+    toString(): string;
+}
+
+export interface ModelConfigConnectionTestItemResultData {
+    type: string;
+    success: boolean;
+    error?: string | null;
+}
+
+export interface ModelConfigConnectionTestResultData {
+    configId: string;
+    configName: string;
+    providerType: string;
+    requestedModelIndex: number;
+    actualModelIndex: number;
+    testedModelName: string;
+    strictToolCallFallbackUsed: boolean;
+    success: boolean;
+    totalTests: number;
+    passedTests: number;
+    failedTests: number;
+    tests: ModelConfigConnectionTestItemResultData[];
+    toString(): string;
+}
+
+// ============================================================================
 // Chat Manager Types
 // ============================================================================
 
@@ -1042,6 +1225,32 @@ export interface ChatSwitchResultData {
     chatTitle: string;
     /** Switch timestamp */
     switchedAt: number;
+    /** Returns a formatted string representation */
+    toString(): string;
+}
+
+/**
+ * Chat title update result data
+ */
+export interface ChatTitleUpdateResultData {
+    /** Target chat ID */
+    chatId: string;
+    /** Updated title */
+    title: string;
+    /** Update timestamp */
+    updatedAt: number;
+    /** Returns a formatted string representation */
+    toString(): string;
+}
+
+/**
+ * Chat delete result data
+ */
+export interface ChatDeleteResultData {
+    /** Deleted chat ID */
+    chatId: string;
+    /** Delete timestamp */
+    deletedAt: number;
     /** Returns a formatted string representation */
     toString(): string;
 }
@@ -1159,6 +1368,14 @@ export interface AgentStatusResult extends BaseResult {
 
 export interface ChatSwitchResult extends BaseResult {
     data: ChatSwitchResultData;
+}
+
+export interface ChatTitleUpdateResult extends BaseResult {
+    data: ChatTitleUpdateResultData;
+}
+
+export interface ChatDeleteResult extends BaseResult {
+    data: ChatDeleteResultData;
 }
 
 export interface MessageSendResult extends BaseResult {

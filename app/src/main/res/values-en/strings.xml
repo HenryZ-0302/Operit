@@ -195,6 +195,9 @@
     <string name="workflow_confirm_delete_title">Confirm deletion</string>
     <string name="workflow_confirm_delete_workflow_message">Are you sure you want to delete workflow "%1$s"? This action cannot be undone.</string>
     <string name="workflow_confirm_delete_node_message">Are you sure you want to delete node "%1$s"?</string>
+    <string name="workflow_confirm_delete_selected_workflows_message">Are you sure you want to delete the selected %1$d workflows? This action cannot be undone.</string>
+    <string name="workflow_delete_selected_with_count">Delete Selected (%1$d)</string>
+    <string name="workflow_selected_count">Selected %1$d workflows</string>
     <string name="workflow_execution_result_title">Execution Result</string>
     <string name="workflow_view_logs">View logs</string>
     <string name="workflow_execution_log_title">Latest execution logs</string>
@@ -1386,7 +1389,7 @@
     <string name="update_check">Update Check</string>
     <string name="unknown_value">Unknown</string>
     <string name="current_version">Current version: %1$s</string>
-    <string name="new_version">Current version: %1$s\nNew version: %2$s</string>
+    <string name="new_version">Current version: %1$s -> New version: %2$s</string>
     <string name="update_content">Update Content:</string>
     <string name="already_latest_version">Already on the latest version: %1$s</string>
     <string name="download">Download</string>
@@ -1398,6 +1401,18 @@
     <string name="floating_window_permission_denied">Floating window permission not granted, floating window mode closed</string>
     <string name="select_download_source">Select Download Source</string>
     <string name="select_download_source_desc">Please select a download source suitable for your network:</string>
+    <string name="select_update_method">Choose Update Method</string>
+    <string name="select_update_method_desc">Please choose how to update:</string>
+    <string name="update_via_browser">Update via Browser</string>
+    <string name="update_via_browser_desc">Open browser download (same as current flow)</string>
+    <string name="update_in_app">Update In-App</string>
+    <string name="update_in_app_desc">Download APK inside app and open installer when done</string>
+    <string name="full_update">Full Update</string>
+    <string name="full_update_preparing">Preparing update to %1$s, downloading package...</string>
+    <string name="full_update_downloading">Downloading package...</string>
+    <string name="full_update_ready_to_install">Ready to install</string>
+    <string name="full_update_failed">Full update failed: %1$s</string>
+    <string name="auto_select">Auto Select</string>
     <string name="mirror_download">%1$s Mirror Download</string>
     <string name="china_mirror">China Accelerated Mirror</string>
     <string name="china_mirror_desc">Accelerated download for mainland China</string>
@@ -2540,6 +2555,7 @@
     <string name="function_type_file_binding">File Binding Processing</string>
     <string name="function_type_ui_controller">UI Controller</string>
     <string name="function_type_grep">Grep Retrieval</string>
+    <string name="function_type_role_response_planner">Group Planner</string>
 
     <!-- Function Descriptions -->
     <string name="function_desc_chat">Main chat function for daily conversation interaction with users</string>
@@ -2548,6 +2564,7 @@
     <string name="function_desc_file_binding">Process intelligent binding and mixing of file content, providing more precise code processing capabilities. Recommend using fast, inexpensive models like Gemini Flash, not recommended to use DeepSeek R1</string>
     <string name="function_desc_ui_controller">Used for automatic traversal and operation of UI interfaces. The corresponding UI controller model is only activated when the user explicitly requests to use an "agent" for control, for example by choosing dedicated models such as autoglm-phone-9b.</string>
     <string name="function_desc_grep">Used for grep_context planning and result filtering (multi-round grep_code)</string>
+    <string name="function_desc_role_response_planner">Dynamically plans speaking order and skip decisions in groups, supports multi-turn discussions</string>
 
     <!-- Functional Prompt Config Screen -->
     <string name="advanced_config_notice">For advanced configurations like modifying system prompt templates, please go to the \"Manage All Prompts\" page.</string>
@@ -2836,6 +2853,9 @@
     <string name="merge_config">Merge Config</string>
     <string name="character">Char</string>
     <string name="config_bound_to_character_card">Config bound to character card</string>
+    <string name="character_card_model_switch_confirm_title">Change Character Card Bound Model</string>
+    <string name="character_card_model_switch_confirm_message">This character card currently has a bound chat model. Continuing will update the model binding of this character card and will not modify the global chat model configuration.</string>
+    <string name="character_card_model_switch_confirm_action">Confirm Change</string>
     <string name="import_key_suffix">Import key %1$s</string>
     <string name="custom_parameters">Custom Parameters</string>
     <string name="filediff_tool_result">Tool execution result</string>
@@ -3480,10 +3500,12 @@
     <string name="provider_deepseek">Deepseek Models</string>
     <string name="provider_mistral">Mistral AI (Codestral)</string>
     <string name="provider_siliconflow">SiliconFlow</string>
+    <string name="provider_iflow">iFlow</string>
     <string name="provider_openrouter">OpenRouter (Multi-model Hub)</string>
     <string name="provider_infiniai">InfiniAI</string>
     <string name="provider_alipay_bailing">Alipay Bailing Model</string>
     <string name="provider_lmstudio">LM Studio</string>
+    <string name="provider_ollama">Ollama</string>
     <string name="provider_ppinfra">PPInfra Cloud</string>
     <string name="provider_openai_generic">OpenAI (Generic)</string>
     <string name="provider_other">Other Providers</string>
@@ -3648,12 +3670,18 @@
     <string name="delete">Delete</string>
     <string name="character_setting_preview">Character Setting: %1$s...</string>
     <string name="other_content_preview">Other Content: %1$s...</string>
+    <string name="other_content_chat_preview">Other Content (Chat): %1$s...</string>
     <string name="advanced_custom_preview">Advanced Custom: %1$s...</string>
     <string name="tag_management">Tag Management</string>
     <string name="create_new_tag">Create Tag</string>
     <string name="tag_market">Tag Market</string>
-    <string name="system_tags">System Tags</string>
-    <string name="custom_tags">Custom Tags</string>
+    <string name="tag_export_no_custom_tags">No tags available for export</string>
+    <string name="tag_export_select_title">Select tags to export</string>
+    <string name="tag_export_select_all">Select All</string>
+    <string name="tag_export_clear_all">Clear All</string>
+    <string name="tag_export_select_at_least_one">Please select at least one tag</string>
+    <string name="tag_import_invalid_format">Invalid tag file format</string>
+    <string name="tag_import_summary">Tag import completed: created %1$d, updated %2$d, skipped %3$d</string>
     <string name="content_preview">Content: %1$s...</string>
     <string name="old_prompt_config">Legacy Prompt Configuration</string>
     <string name="old_prompt_config_desc">These are prompt configurations from the legacy system. You can view and copy content to the new character card system.</string>
@@ -3665,7 +3693,6 @@
     <string name="character_setting_prompt">Character Setting (Prompt)</string>
     <string name="other_content_prompt">Other Content (Prompt)</string>
     <string name="select_tags">Select Tags</string>
-    <string name="system_tags_auto_added">System Tags (Auto-added)</string>
     <string name="notes_info_not_appended">Notes (Not appended to prompts)</string>
     <string name="notes_placeholder">Record character card source, author info, etc.</string>
     <string name="save">Save</string>
@@ -3737,10 +3764,31 @@
     <string name="character_card_opening_statement_placeholder">Character\'s opening statement or greeting...</string>
     <string name="character_card_translate_opening_statement">Translate Opening Statement</string>
     <string name="character_card_other_content">Other Content</string>
+    <string name="character_card_other_content_chat">Other Content (Chat)</string>
+    <string name="character_card_other_content_voice">Other Content (Voice)</string>
+    <string name="character_card_other_content_chat_placeholder">Character background, experiences, etc...</string>
+    <string name="character_card_other_content_voice_placeholder">Put voice-specific additions here...</string>
     <string name="character_card_other_content_placeholder">Character background, experiences, etc...</string>
     <string name="character_card_tags">Tags</string>
-    <string name="character_card_no_custom_tags">No custom tags available. Please create them in settings.</string>
+    <string name="character_card_no_custom_tags">No tags available. Please create them in settings.</string>
+    <string name="character_groups">Groups</string>
+    <string name="character_group_tab_placeholder">Configure groups to let the system dynamically plan speaking order and support multi-turn discussions.</string>
+    <string name="character_group_empty_state">No groups yet</string>
+    <string name="character_group_member_count">Members: %1$d</string>
+    <string name="create_character_group">Create Group</string>
+    <string name="edit_character_group">Edit Group</string>
+    <string name="delete_character_group">Delete Group</string>
+    <string name="delete_character_group_confirm">Delete group \"%1$s\"?</string>
+    <string name="role_response_planner_planning">Planning group speaking order…</string>
+    <string name="role_response_planner_member_replying">Generating a reply from \"%1$s\"…</string>
+    <string name="role_response_planner_failed">Group planning failed</string>
+    <string name="group_members">Members</string>
+    <string name="group_add_member">Add member</string>
+    <string name="group_member_empty_hint">Add at least one character member</string>
     <string name="character_card_advanced_options">Advanced Options</string>
+    <string name="character_card_chat_model_binding">Chat Model Binding</string>
+    <string name="character_card_chat_model_follow_global">Follow Global</string>
+    <string name="character_card_chat_model_fixed_config">Fixed Config</string>
     <string name="character_card_custom_prompt">Custom Prompt</string>
     <string name="character_card_custom_prompt_placeholder">Advanced custom prompt...</string>
     <string name="character_card_marks">Notes</string>
@@ -3750,6 +3798,8 @@
     <string name="character_card_edit_character_setting">Edit Character Setting</string>
     <string name="character_card_edit_opening_statement">Edit Opening Statement</string>
     <string name="character_card_edit_other_content">Edit Other Content</string>
+    <string name="character_card_edit_other_content_chat">Edit Other Content (Chat)</string>
+    <string name="character_card_edit_other_content_voice">Edit Other Content (Voice)</string>
     <string name="character_card_edit_custom_prompt">Edit Custom Prompt</string>
     <string name="character_card_edit_marks">Edit Notes</string>
     <string name="character_card_fullscreen_edit_placeholder">Enter content here...</string>
@@ -4138,6 +4188,8 @@
     <string name="character_setting">Character Setting</string>
     <string name="opening_statement">Opening Statement</string>
     <string name="other_content">Other Content</string>
+    <string name="other_content_chat">Other Content (Chat)</string>
+    <string name="other_content_voice">Other Content (Voice)</string>
     <string name="advanced_custom_prompt">Advanced Custom Prompt</string>
     <string name="character_marks">Notes (Not included in prompts)</string>
     <string name="please_select_or_create_card">Please select or create a character card from the sidebar to begin.</string>
@@ -4403,7 +4455,9 @@
     <string name="font_file_save_failed">Failed to save font file</string>
     <string name="unsupported_font_format">Unsupported file format, please select .ttf, .otf or .ttc font file</string>
     <string name="current_character">Current Character: %1$s</string>
+    <string name="current_character_group">Current Role Group: %1$s</string>
     <string name="theme_auto_bind_character_card">Theme settings will be automatically bound to this character card</string>
+    <string name="theme_auto_bind_character_group">Theme settings will be automatically bound to this role group</string>
     <string name="enable_custom_font">Enable Custom Font</string>
     <string name="use_system_or_custom_font">Use system font or custom font file</string>
     <string name="font_type_label">Font Type</string>
@@ -4505,6 +4559,12 @@
     <string name="enable_reply_notification_description">Send system notification when AI replies</string>
     <string name="keep_screen_on">Keep Screen On</string>
     <string name="keep_screen_on_description">Keep screen awake to prevent auto-lock during conversations</string>
+    <string name="app_icon_switch_title">App Icon</string>
+    <string name="app_icon_switch_description">Switch the launcher icon shown on your home screen (some launchers refresh with delay).</string>
+    <string name="app_icon_option_default">Default Icon</string>
+    <string name="app_icon_option_simple">Simple Icon</string>
+    <string name="app_icon_switch_applied_tip">Icon switched. Check it on your home screen.</string>
+    <string name="app_icon_switch_failed">Failed to switch app icon</string>
     <string name="reset_all_display_settings">Reset All Display Settings</string>
     
     <!-- Chat History Management -->
@@ -4933,6 +4993,8 @@
     <string name="toolreg_find_chat_desc">Find chat: %1$s</string>
     <string name="toolreg_agent_status_desc">Check chat status: %1$s</string>
     <string name="toolreg_switch_chat_desc">Switch to chat: %1$s</string>
+    <string name="toolreg_update_chat_title_desc">Update chat title: %1$s</string>
+    <string name="toolreg_delete_chat_desc">Delete chat: %1$s</string>
     <string name="toolreg_send_message_to_ai_desc">Send message to AI: %1$s</string>
     <string name="toolreg_list_character_cards_desc">List all character cards</string>
     <string name="toolreg_get_chat_messages_desc">Get chat messages: %1$s%2$s%3$s</string>
@@ -4954,8 +5016,6 @@
     <string name="toolreg_move_file_desc">Move file: %1$s -&gt; %2$s%3$s</string>
     <string name="toolreg_copy_file_desc">Copy file: %1$s -&gt; %2$s%3$s</string>
     <string name="toolreg_make_directory_desc">Create directory: %1$s%2$s</string>
-    <string name="toolreg_ssh_login_desc">SSH login: %1$s@%2$s:%3$s</string>
-    <string name="toolreg_ssh_exit_desc">Exit SSH</string>
     <string name="toolreg_find_files_desc">Find files: search %2$s in %1$s%3$s</string>
     <string name="toolreg_file_info_desc">Get file info: %1$s%2$s</string>
     <string name="toolreg_apply_file_desc">Apply AI code merge to file: %1$s%2$s</string>
@@ -5988,10 +6048,11 @@
     <string name="global_display_image_format">Image Format</string>
     <string name="global_display_image_quality">Quality (JPG only)</string>
     <string name="global_display_resolution_scale">Resolution Scale (downscale before sending)</string>
-    <string name="tool_collapse_mode_title">Tool Collapse</string>
+    <string name="tool_collapse_mode_title">Collapse Tools</string>
     <string name="tool_collapse_mode_desc">Set the default collapse scope for tool-call groups in messages</string>
-    <string name="tool_collapse_mode_read_only">Collapse Read-only Tools</string>
-    <string name="tool_collapse_mode_all">Collapse All Tools</string>
+    <string name="tool_collapse_mode_read_only">Collapse Multiple Read-only Tools</string>
+    <string name="tool_collapse_mode_all">Collapse Multiple Tool Calls</string>
+    <string name="tool_collapse_mode_full">Collapse All Tool Calls</string>
 
     <!-- ANR Monitor -->
     <string name="anr_main_thread_not_responding">Main thread not responding: %1$dms</string>
@@ -6591,14 +6652,7 @@
     <string name="default_character_card">Default Character Card</string>
 
     <!-- PromptTagManager -->
-    <string name="prompt_tag_system_chat_prompt"></string>
     <string name="prompt_tag_unnamed">Unnamed Tag</string>
-    <string name="prompt_tag_general_chat">General Chat</string>
-    <string name="prompt_tag_general_chat_desc">General prompt for chat functionality</string>
-    <string name="prompt_tag_general_voice">General Voice</string>
-    <string name="prompt_tag_general_voice_desc">General prompt for voice functionality</string>
-    <string name="prompt_tag_general_desktop_pet">General Desktop Pet</string>
-    <string name="prompt_tag_general_desktop_pet_desc">General prompt for desktop pet functionality</string>
 
     <!-- MessageProcessingDelegate -->
     <string name="message_processing">Processing message...</string>

@@ -49,6 +49,7 @@ import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.AttachmentInfo
+import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.preferences.ApiPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
@@ -75,6 +76,7 @@ import java.io.File
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.flow.flowOf
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
 import com.ai.assistance.operit.ui.main.components.LocalIsCurrentScreen
 import kotlinx.coroutines.launch
@@ -84,6 +86,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
+import com.ai.assistance.operit.data.preferences.ActivePromptManager
+import com.ai.assistance.operit.data.model.ActivePrompt
 
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -170,6 +174,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val chatHeaderPipIconColor by preferencesManager.chatHeaderPipIconColor.collectAsState(initial = null)
     val chatHeaderOverlayMode by preferencesManager.chatHeaderOverlayMode.collectAsState(initial = false)
     val showInputProcessingStatus by preferencesManager.showInputProcessingStatus.collectAsState(initial = true)
+    val showChatFloatingDotsAnimation by
+        preferencesManager.showChatFloatingDotsAnimation.collectAsState(initial = true)
     val hasBackgroundImage = useBackgroundImage && backgroundImageUri != null
 
     // Collect chat style from preferences
@@ -299,6 +305,27 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val historyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
+    val activePromptManager = remember { ActivePromptManager.getInstance(context) }
+    val activePrompt by activePromptManager.activePromptFlow.collectAsState(
+        initial = ActivePrompt.CharacterCard(CharacterCardManager.DEFAULT_CHARACTER_CARD_ID)
+    )
+    val activeCharacterCard by remember(activePrompt) {
+        when (val prompt = activePrompt) {
+            is ActivePrompt.CharacterCard -> characterCardManager.getCharacterCardFlow(prompt.id)
+            is ActivePrompt.CharacterGroup -> flowOf(null)
+        }
+    }.collectAsState(initial = null)
+    val characterCardBoundChatModelConfigId =
+        activeCharacterCard
+            ?.takeIf {
+                activePrompt is ActivePrompt.CharacterCard &&
+                    CharacterCardChatModelBindingMode.normalize(it.chatModelBindingMode) ==
+                    CharacterCardChatModelBindingMode.FIXED_CONFIG &&
+                    !it.chatModelConfigId.isNullOrBlank()
+            }
+            ?.chatModelConfigId
+    val characterCardBoundChatModelIndex =
+        activeCharacterCard?.chatModelIndex?.coerceAtLeast(0) ?: 0
     
 
 
@@ -651,6 +678,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                             actualViewModel.manuallyUpdateMemory()
                                         },
                                         onNavigateToModelConfig = onNavigateToModelConfig,
+                                        characterCardBoundChatModelConfigId = characterCardBoundChatModelConfigId,
+                                        characterCardBoundChatModelIndex = characterCardBoundChatModelIndex,
                                 )
                             } else {
                                 ClassicChatInputSection(
@@ -813,12 +842,11 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 chatHeaderOverlayMode = chatHeaderOverlayMode,
                                 chatStyle = chatStyle, // Pass chat style
                                 historyListState = historyListState,
-                                onSwitchCharacter = { characterId ->
-                                    coroutineScope.launch {
-                                        characterCardManager.setActiveCharacterCard(characterId)
-                                    }
+                                onSwitchCharacter = { target ->
+                                    actualViewModel.switchActiveCharacterTarget(target)
                                 },
-                                chatAreaHorizontalPadding = chatAreaHorizontalPadding
+                                chatAreaHorizontalPadding = chatAreaHorizontalPadding,
+                                showChatFloatingDotsAnimation = showChatFloatingDotsAnimation,
                         )
 
                         if (inputStyle == UserPreferencesManager.INPUT_STYLE_CLASSIC) {
@@ -892,7 +920,9 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                     },
                                     onManualSummarizeConversation = {
                                         actualViewModel.manuallySummarizeConversation()
-                                    }
+                                    },
+                                    characterCardBoundChatModelConfigId = characterCardBoundChatModelConfigId,
+                                    characterCardBoundChatModelIndex = characterCardBoundChatModelIndex
                             )
                         }
                     }

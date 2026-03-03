@@ -383,7 +383,28 @@ class EnhancedAIService private constructor(private val context: Context) {
      */
     suspend fun getAIServiceForFunction(functionType: FunctionType): AIService {
         ensureInitialized()
-        return multiServiceManager.getServiceForFunction(functionType)
+        return getAIServiceForFunction(
+            functionType = functionType,
+            chatModelConfigIdOverride = null,
+            chatModelIndexOverride = null
+        )
+    }
+
+    suspend fun getAIServiceForFunction(
+        functionType: FunctionType,
+        chatModelConfigIdOverride: String?,
+        chatModelIndexOverride: Int?
+    ): AIService {
+        ensureInitialized()
+        val overrideConfigId = chatModelConfigIdOverride?.takeIf { it.isNotBlank() }
+        return if (functionType == FunctionType.CHAT && overrideConfigId != null) {
+            multiServiceManager.getServiceForConfig(
+                configId = overrideConfigId,
+                modelIndex = (chatModelIndexOverride ?: 0).coerceAtLeast(0)
+            )
+        } else {
+            multiServiceManager.getServiceForFunction(functionType)
+        }
     }
 
     /**
@@ -392,7 +413,23 @@ class EnhancedAIService private constructor(private val context: Context) {
      * @return Pair<provider, modelName>，例如 Pair("DEEPSEEK", "deepseek-chat")
      */
     suspend fun getProviderAndModelForFunction(functionType: FunctionType): Pair<String, String> {
-        val service = getAIServiceForFunction(functionType)
+        return getProviderAndModelForFunction(
+            functionType = functionType,
+            chatModelConfigIdOverride = null,
+            chatModelIndexOverride = null
+        )
+    }
+
+    suspend fun getProviderAndModelForFunction(
+        functionType: FunctionType,
+        chatModelConfigIdOverride: String?,
+        chatModelIndexOverride: Int?
+    ): Pair<String, String> {
+        val service = getAIServiceForFunction(
+            functionType = functionType,
+            chatModelConfigIdOverride = chatModelConfigIdOverride,
+            chatModelIndexOverride = chatModelIndexOverride
+        )
         val providerModel = service.providerModel
         // providerModel格式为"PROVIDER:modelName"，使用第一个冒号分割
         val colonIndex = providerModel.indexOf(":")
@@ -403,6 +440,20 @@ class EnhancedAIService private constructor(private val context: Context) {
         } else {
             // 如果没有冒号，整个字符串作为provider，modelName为空
             Pair(providerModel, "")
+        }
+    }
+
+    suspend fun getModelConfigForFunction(
+        functionType: FunctionType,
+        chatModelConfigIdOverride: String? = null,
+        chatModelIndexOverride: Int? = null
+    ): ModelConfigData {
+        ensureInitialized()
+        val overrideConfigId = chatModelConfigIdOverride?.takeIf { it.isNotBlank() }
+        return if (functionType == FunctionType.CHAT && overrideConfigId != null) {
+            multiServiceManager.getModelConfigForConfig(overrideConfigId)
+        } else {
+            multiServiceManager.getModelConfigForFunction(functionType)
         }
     }
 
@@ -427,6 +478,20 @@ class EnhancedAIService private constructor(private val context: Context) {
         return InputProcessor.processUserInput(input)
     }
 
+    private suspend fun getModelParametersForFunction(
+        functionType: FunctionType,
+        chatModelConfigIdOverride: String? = null,
+        chatModelIndexOverride: Int? = null
+    ): List<com.ai.assistance.operit.data.model.ModelParameter<*>> {
+        ensureInitialized()
+        val overrideConfigId = chatModelConfigIdOverride?.takeIf { it.isNotBlank() }
+        return if (functionType == FunctionType.CHAT && overrideConfigId != null) {
+            multiServiceManager.getModelParametersForConfig(overrideConfigId)
+        } else {
+            multiServiceManager.getModelParametersForFunction(functionType)
+        }
+    }
+
     /** Send a message to the AI service */
     suspend fun sendMessage(
         message: String,
@@ -448,8 +513,11 @@ class EnhancedAIService private constructor(private val context: Context) {
         characterName: String? = null,
         avatarUri: String? = null,
         roleCardId: String? = null,
+        enableGroupOrchestrationHint: Boolean = false,
         proxySenderName: String? = null,
         onToolInvocation: (suspend (String) -> Unit)? = null,
+        chatModelConfigIdOverride: String? = null,
+        chatModelIndexOverride: Int? = null,
         stream: Boolean = true
     ): Stream<String> {
         AppLogger.d(
@@ -496,9 +564,12 @@ class EnhancedAIService private constructor(private val context: Context) {
                                     customSystemPromptTemplate,
                                     enableMemoryQuery,
                                     roleCardId,
+                                    enableGroupOrchestrationHint,
                                     proxySenderName,
                                     isSubTask,
-                                    functionType
+                                    functionType,
+                                    chatModelConfigIdOverride,
+                                    chatModelIndexOverride
                             )
                     val tAfterPrepareHistory = System.currentTimeMillis()
                     AppLogger.d(TAG, "sendMessage本地耗时: prepareConversationHistory=${tAfterPrepareHistory - tAfterProcessInput}ms")
@@ -515,12 +586,20 @@ class EnhancedAIService private constructor(private val context: Context) {
                     }
 
                     // Get all model parameters from preferences (with enabled state)
-                    val modelParameters = multiServiceManager.getModelParametersForFunction(functionType)
+                    val modelParameters = getModelParametersForFunction(
+                        functionType = functionType,
+                        chatModelConfigIdOverride = chatModelConfigIdOverride,
+                        chatModelIndexOverride = chatModelIndexOverride
+                    )
                     val tAfterModelParams = System.currentTimeMillis()
                     AppLogger.d(TAG, "sendMessage本地耗时: getModelParametersForFunction=${tAfterModelParams - tAfterPrepareHistory}ms")
 
                     // 获取对应功能类型的AIService实例
-                    val serviceForFunction = getAIServiceForFunction(functionType)
+                    val serviceForFunction = getAIServiceForFunction(
+                        functionType = functionType,
+                        chatModelConfigIdOverride = chatModelConfigIdOverride,
+                        chatModelIndexOverride = chatModelIndexOverride
+                    )
                     val tAfterGetService = System.currentTimeMillis()
                     AppLogger.d(TAG, "sendMessage本地耗时: getAIServiceForFunction=${tAfterGetService - tAfterModelParams}ms")
 
@@ -528,7 +607,11 @@ class EnhancedAIService private constructor(private val context: Context) {
                     _perRequestTokenCounts.value = null
 
                     // 获取工具列表（如果启用Tool Call）
-                    val availableTools = getAvailableToolsForFunction(functionType)
+                    val availableTools = getAvailableToolsForFunction(
+                        functionType = functionType,
+                        chatModelConfigIdOverride = chatModelConfigIdOverride,
+                        chatModelIndexOverride = chatModelIndexOverride
+                    )
                     val tAfterGetTools = System.currentTimeMillis()
                     AppLogger.d(TAG, "sendMessage本地耗时: getAvailableToolsForFunction=${tAfterGetTools - tAfterGetService}ms")
                     
@@ -665,7 +748,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                             roleCardId,
                             chatId,
                             onToolInvocation,
-                            stream
+                            chatModelConfigIdOverride,
+                            chatModelIndexOverride,
+                            stream,
+                            enableGroupOrchestrationHint
                         )
                     }
                 }
@@ -782,7 +868,10 @@ class EnhancedAIService private constructor(private val context: Context) {
             roleCardId: String? = null,
             chatId: String? = null,
             onToolInvocation: (suspend (String) -> Unit)? = null,
-            stream: Boolean = true
+            chatModelConfigIdOverride: String? = null,
+            chatModelIndexOverride: Int? = null,
+            stream: Boolean = true,
+            enableGroupOrchestrationHint: Boolean = false
     ) {
         try {
             val startTime = System.currentTimeMillis()
@@ -844,7 +933,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                         roleCardId = roleCardId,
                         chatId = chatId,
                         onToolInvocation = onToolInvocation,
+                        chatModelConfigIdOverride = chatModelConfigIdOverride,
+                        chatModelIndexOverride = chatModelIndexOverride,
                         stream = stream,
+                        enableGroupOrchestrationHint = enableGroupOrchestrationHint,
                         toolResultOverrideMessage = pureThinkingWarning
                 )
                 return
@@ -943,14 +1035,16 @@ class EnhancedAIService private constructor(private val context: Context) {
                         roleCardId,
                         chatId,
                         onToolInvocation,
-                        stream = stream
+                        chatModelConfigIdOverride,
+                        chatModelIndexOverride,
+                        stream = stream,
+                        enableGroupOrchestrationHint = enableGroupOrchestrationHint
                 )
                 return
             }
 
             // 修改默认行为：如果没有特殊标记或工具调用，默认等待用户输入
             // 而不是直接标记为完成
-
             // 创建等待用户输入的内容
             val userNeedContent =
                     ConversationMarkupManager.createWaitForUserNeedContent(
@@ -1049,7 +1143,10 @@ class EnhancedAIService private constructor(private val context: Context) {
         roleCardId: String? = null,
         chatId: String? = null,
         onToolInvocation: (suspend (String) -> Unit)? = null,
+        chatModelConfigIdOverride: String? = null,
+        chatModelIndexOverride: Int? = null,
         stream: Boolean = true,
+        enableGroupOrchestrationHint: Boolean = false,
         toolResultOverrideMessage: String? = null
     ) {
         val startTime = System.currentTimeMillis()
@@ -1081,7 +1178,8 @@ class EnhancedAIService private constructor(private val context: Context) {
                 processToolResults(
                     allToolResults, context, functionType, collector, enableThinking,
                     enableMemoryQuery, onNonFatalError, onTokenLimitExceeded, maxTokens, tokenUsageThreshold, isSubTask,
-                    characterName, avatarUri, roleCardId, chatId, onToolInvocation, stream
+                    characterName, avatarUri, roleCardId, chatId, onToolInvocation,
+                    chatModelConfigIdOverride, chatModelIndexOverride, stream, enableGroupOrchestrationHint
                 )
             } else if (!toolResultOverrideMessage.isNullOrEmpty()) {
                 AppLogger.d(TAG, "0工具路由命中，使用覆盖消息继续请求AI。")
@@ -1102,7 +1200,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                     roleCardId = roleCardId,
                     chatId = chatId,
                     onToolInvocation = onToolInvocation,
+                    chatModelConfigIdOverride = chatModelConfigIdOverride,
+                    chatModelIndexOverride = chatModelIndexOverride,
                     stream = stream,
+                    enableGroupOrchestrationHint = enableGroupOrchestrationHint,
                     toolResultMessageOverride = toolResultOverrideMessage
                 )
             }
@@ -1137,7 +1238,10 @@ class EnhancedAIService private constructor(private val context: Context) {
             roleCardId: String? = null,
             chatId: String? = null,
             onToolInvocation: (suspend (String) -> Unit)? = null,
+            chatModelConfigIdOverride: String? = null,
+            chatModelIndexOverride: Int? = null,
             stream: Boolean = true,
+            enableGroupOrchestrationHint: Boolean = false,
             toolResultMessageOverride: String? = null
     ) {
         val startTime = System.currentTimeMillis()
@@ -1195,13 +1299,25 @@ class EnhancedAIService private constructor(private val context: Context) {
         delay(300)
 
         // Get all model parameters from preferences (with enabled state)
-        val modelParameters = multiServiceManager.getModelParametersForFunction(functionType)
+        val modelParameters = getModelParametersForFunction(
+            functionType = functionType,
+            chatModelConfigIdOverride = chatModelConfigIdOverride,
+            chatModelIndexOverride = chatModelIndexOverride
+        )
 
         // 获取对应功能类型的AIService实例
-        val serviceForFunction = getAIServiceForFunction(functionType)
+        val serviceForFunction = getAIServiceForFunction(
+            functionType = functionType,
+            chatModelConfigIdOverride = chatModelConfigIdOverride,
+            chatModelIndexOverride = chatModelIndexOverride
+        )
         
         // 获取工具列表（如果启用Tool Call）- 提前获取，以便在token计算中使用
-        val availableTools = getAvailableToolsForFunction(functionType)
+        val availableTools = getAvailableToolsForFunction(
+            functionType = functionType,
+            chatModelConfigIdOverride = chatModelConfigIdOverride,
+            chatModelIndexOverride = chatModelIndexOverride
+        )
  
         // After a tool call, check if token usage exceeds the threshold
         if (maxTokens > 0) {
@@ -1313,7 +1429,10 @@ class EnhancedAIService private constructor(private val context: Context) {
                     roleCardId,
                     chatId,
                     onToolInvocation,
-                    stream
+                    chatModelConfigIdOverride,
+                    chatModelIndexOverride,
+                    stream,
+                    enableGroupOrchestrationHint
                 )
             } catch (e: Exception) {
                 AppLogger.e(TAG, "处理工具执行结果时出错", e)
@@ -1417,9 +1536,12 @@ class EnhancedAIService private constructor(private val context: Context) {
             customSystemPromptTemplate: String? = null,
             enableMemoryQuery: Boolean,
             roleCardId: String?,
+            enableGroupOrchestrationHint: Boolean,
             proxySenderName: String? = null,
             isSubTask: Boolean = false,
-            functionType: FunctionType = FunctionType.CHAT
+            functionType: FunctionType = FunctionType.CHAT,
+            chatModelConfigIdOverride: String? = null,
+            chatModelIndexOverride: Int? = null
     ): List<Pair<String, String>> {
         // Check if backend image recognition service is configured (for intent-based vision)
         // For subtasks, always disable backend image recognition (only support OCR)
@@ -1428,7 +1550,11 @@ class EnhancedAIService private constructor(private val context: Context) {
         val hasVideoRecognition = if (isSubTask) false else multiServiceManager.hasVideoRecognitionConfigured()
 
         // 获取当前功能类型（通常是聊天模型）的模型配置，用于判断聊天模型是否自带识图能力
-        val config = multiServiceManager.getModelConfigForFunction(functionType)
+        val config = getModelConfigForFunction(
+            functionType = functionType,
+            chatModelConfigIdOverride = chatModelConfigIdOverride,
+            chatModelIndexOverride = chatModelIndexOverride
+        )
         val useToolCallApi = config.enableToolCall
         val strictToolCall = config.strictToolCall
         val chatModelHasDirectImage = config.enableDirectImageProcessing
@@ -1446,6 +1572,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 customSystemPromptTemplate,
                 enableMemoryQuery,
                 roleCardId,
+                enableGroupOrchestrationHint,
                 proxySenderName,
                 hasImageRecognition,
                 hasAudioRecognition,
@@ -1504,7 +1631,11 @@ class EnhancedAIService private constructor(private val context: Context) {
      * 获取可用工具列表（用于Tool Call API）
      * 如果模型配置启用了Tool Call，返回工具列表；否则返回null
      */
-    private suspend fun getAvailableToolsForFunction(functionType: FunctionType): List<ToolPrompt>? {
+    private suspend fun getAvailableToolsForFunction(
+        functionType: FunctionType,
+        chatModelConfigIdOverride: String? = null,
+        chatModelIndexOverride: Int? = null
+    ): List<ToolPrompt>? {
         return try {
             // 先读取全局工具和记忆开关
             val enableTools = apiPreferences.enableToolsFlow.first()
@@ -1517,7 +1648,11 @@ class EnhancedAIService private constructor(private val context: Context) {
             }
 
             // 获取对应功能类型的模型配置
-            val config = multiServiceManager.getModelConfigForFunction(functionType)
+            val config = getModelConfigForFunction(
+                functionType = functionType,
+                chatModelConfigIdOverride = chatModelConfigIdOverride,
+                chatModelIndexOverride = chatModelIndexOverride
+            )
             
             // 检查是否启用Tool Call
             if (!config.enableToolCall) {

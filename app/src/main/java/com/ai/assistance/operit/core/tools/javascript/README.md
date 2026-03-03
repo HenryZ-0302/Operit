@@ -11,6 +11,7 @@ JavaScript 工具调用是一种功能强大的脚本机制，允许在 Android 
 - **结果返回**：使用 `complete()` 函数返回执行结果
 - **错误处理**：支持 JavaScript 标准的 try-catch 错误处理
 - **异步操作**：支持 Promise 和异步/等待模式
+- **Java/Kotlin 类桥接**：支持 `Java.type(...)` 直接调用 Java/Kotlin 类（Rhino 风格）
 
 ## 使用指南
 
@@ -70,6 +71,176 @@ if (toolCall("default", "file_exists", { path: "/sdcard/my_file.txt" })) {
     const fileContent = toolCall("default", "read_file", { path: "/sdcard/my_file.txt" });
     // 处理文件内容
 }
+```
+
+### Java/Kotlin 类桥接
+
+新模式提供两层 bridge：
+
+1. 高层 API：`Java` / `Kotlin`（推荐，Rhino 风格）  
+2. 底层 API：`NativeInterface.java*`（调试/底层控制）
+
+#### 高层 API（推荐）
+
+- `Java.type(className)`：获取类代理
+- `Java.use(className)` / `Java.importClass(className)`：`type` 的别名
+- `Java.package(packageName)`：获取包命名空间代理
+- `Java.implement(interfaceNameOrNames, impl)`：创建 Java 接口实现标记（支持 `string` 或 `string[]`）
+- `Java.implement(impl)`：省略接口名，交给目标参数类型推断（适合入参本身就是 interface）
+- `Java.proxy(...)`：`implement(...)` 的别名
+- `Java.releaseJs(markerOrId)`：释放 `implement` 注册的 JS 回调对象
+- `Java.classExists(className)`：判断类是否存在
+- `Java.callStatic(className, methodName, ...args)`：直接调用静态方法
+- `Java.newInstance(className, ...args)`：直接创建实例
+- `Java.release(instanceOrHandle)`：释放单个实例句柄
+- `Java.releaseAll()`：释放当前引擎下全部实例句柄（返回释放数量）
+
+`Kotlin` 是 `Java` 的同义别名，API 完全一致。
+另外还支持包路径链式访问：`Java.java.lang.System.currentTimeMillis()`。
+
+#### 类代理（`Java.type(...)` 返回值）
+
+- `Cls.exists()`：类是否存在
+- `Cls.newInstance(...args)`：创建实例
+- `new Cls(...args)`：语法糖，等价于 `Cls.newInstance(...)`
+- `Cls(...args)`：语法糖，等价于 `Cls.newInstance(...)`
+- `Cls.callStatic(methodName, ...args)`：调用静态方法
+- `Cls.getStatic(fieldName)`：读取静态字段/属性
+- `Cls.setStatic(fieldName, value)`：写入静态字段/属性
+- `Cls.someStaticMethod(...)`：动态静态方法调用（语法糖）
+- `Cls.someStaticField` / `Cls.someStaticField = x`：动态静态字段访问（语法糖）
+
+#### 实例代理（`newInstance` 返回值）
+
+- `obj.call(methodName, ...args)`：调用实例方法
+- `obj.get(fieldName)`：读取字段/属性
+- `obj.set(fieldName, value)`：写入字段/属性
+- `obj.release()`：释放该实例句柄
+- `obj.someMethod(...)`：动态实例方法调用（语法糖）
+- `obj.someField` / `obj.someField = x`：动态字段访问（语法糖）
+
+#### 接口实现代理（Java interface / implements）
+
+- `Java.implement("java.lang.Runnable", () => { ... })`：函数式实现（单方法接口最常见）
+- `Java.implement("com.xxx.Listener", { onStart(){}, onStop(){} })`：对象式实现（多方法）
+- `Java.implement(["a.InterfaceA", "b.InterfaceB"], impl)`：一次声明多接口（目标参数为 `Object` 时尤其有用）
+- JS 里直接传函数参数给 Java（例如 `new Thread(() => {})`）也支持，会自动桥接为接口回调对象
+- 回调对象不再使用时请调用 `Java.releaseJs(markerOrId)` 释放，避免持有多余引用
+
+示例 1：`Runnable`
+
+```javascript
+const Thread = Java.type("java.lang.Thread");
+const task = Java.implement("java.lang.Runnable", () => {
+  console.log("run!");
+});
+new Thread(task).start();
+Java.releaseJs(task);
+```
+
+示例 2：对象式 listener
+
+```javascript
+const listener = Java.implement("com.example.Listener", {
+  onStart() {
+    console.log("start");
+  },
+  onData(value) {
+    return value + 1;
+  }
+});
+```
+
+#### 底层 NativeInterface bridge 函数（完整）
+
+- `NativeInterface.javaClassExists(className): boolean`
+- `NativeInterface.javaNewInstance(className, argsJson): string`
+- `NativeInterface.javaCallStatic(className, methodName, argsJson): string`
+- `NativeInterface.javaCallInstance(instanceHandle, methodName, argsJson): string`
+- `NativeInterface.javaGetStaticField(className, fieldName): string`
+- `NativeInterface.javaSetStaticField(className, fieldName, valueJson): string`
+- `NativeInterface.javaGetInstanceField(instanceHandle, fieldName): string`
+- `NativeInterface.javaSetInstanceField(instanceHandle, fieldName, valueJson): string`
+- `NativeInterface.javaReleaseInstance(instanceHandle): string`
+- `NativeInterface.javaReleaseAllInstances(): string`
+
+#### 内部 runtime hooks（通常无需手动调用）
+
+- `globalThis.__operitJavaBridgeInvokeJsObject(jsObjectId, methodName, args)`：供原生动态代理回调 JS 对象
+- `globalThis.__operitJavaBridgeReleaseJsObject(jsObjectId)`：释放 JS 回调对象注册项
+
+除 `javaClassExists` 外，其余 `java*` 方法返回统一 JSON：
+
+```json
+{ "success": true, "data": ... }
+```
+
+或
+
+```json
+{ "success": false, "error": "..." }
+```
+
+当 `data` 无法被 JSON 直接表示时，会返回句柄对象：
+
+```json
+{ "__javaHandle": "...", "__javaClass": "fully.qualified.ClassName" }
+```
+
+高层 API 会自动把这个句柄包装成实例代理对象。
+
+#### 参数/返回转换规则（关键）
+
+- JS `number/string/boolean/null/array/object` 会尽量映射到 Java 参数类型。
+- 复杂 Java 对象默认通过句柄跨桥接传递，不做深拷贝。
+- 字段访问优先字段，再 fallback 到 getter/setter（`getX/isX/setX`）。
+- 接口回调是同步桥接；若 Java 在主线程触发且该接口方法需要返回值，会报错（`void` 回调会记录日志并返回 `null`）。
+- 出错会抛 JS `Error`（高层 API）或返回 `success:false`（底层 API）。
+
+#### 示例
+
+可以通过 `Java.type("全限定类名")` 直接访问类的静态方法/字段，或创建实例后调用实例方法：
+
+```javascript
+const System = Java.type("java.lang.System");
+const now = System.currentTimeMillis();
+
+const StringBuilder = Java.type("java.lang.StringBuilder");
+const sb = StringBuilder.newInstance();
+sb.append("hello ");
+sb.append("operit");
+
+complete({
+    now,
+    text: sb.toString()
+});
+```
+
+包路径链式语法糖：
+
+```javascript
+const now = Java.java.lang.System.currentTimeMillis();
+const ArrayList = Java.java.util.ArrayList;
+const list = new ArrayList();
+list.add("a");
+list.add("b");
+complete({
+  now,
+  size: list.size()
+});
+```
+
+底层调用（不推荐常规使用）：
+
+```javascript
+const raw = NativeInterface.javaCallStatic(
+  "java.lang.System",
+  "currentTimeMillis",
+  "[]"
+);
+const parsed = JSON.parse(raw);
+if (!parsed.success) throw new Error(parsed.error);
+complete(parsed.data);
 ```
 
 ### 返回结果

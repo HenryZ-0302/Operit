@@ -68,7 +68,7 @@ import com.ai.assistance.operit.ui.features.toolbox.screens.StreamMarkdownDemoSc
 import com.ai.assistance.operit.ui.features.toolbox.screens.TerminalAutoConfigToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.TerminalToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.ToolboxScreen
-import com.ai.assistance.operit.ui.features.toolbox.screens.ToolPkgComposeDslToolScreen
+import com.ai.assistance.operit.ui.common.composedsl.ToolPkgComposeDslToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.UIDebuggerToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.DefaultAssistantGuideToolScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.ProcessLimitRemoverToolScreen

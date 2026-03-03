@@ -4,10 +4,12 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import com.ai.assistance.operit.util.AppLogger
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
@@ -103,9 +105,13 @@ class FloatingWindowManager(
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var composeView: ComposeView? = null
     private var statusIndicatorView: ComposeView? = null
+    private var focusDismissView: View? = null
     private var isViewAdded = false
     private var isIndicatorAdded = false
     private var sizeAnimator: ValueAnimator? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingImeFocusRunnable: Runnable? = null
+    private var focusDismissOverlayRequested: Boolean = false
     private var windowDisplayEnabled: Boolean = true
     private var windowPersistentHidden: Boolean = false
     private var indicatorDisplayEnabled: Boolean = true
@@ -126,6 +132,10 @@ class FloatingWindowManager(
             params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
         }
+        pendingImeFocusRunnable?.let { mainHandler.removeCallbacks(it) }
+        pendingImeFocusRunnable = null
+        focusDismissOverlayRequested = false
+        setFocusDismissOverlayEnabled(false)
     }
 
     fun prepareForExit() {
@@ -135,6 +145,7 @@ class FloatingWindowManager(
     companion object {
         // Private flag to disable window move animations
         private const val PRIVATE_FLAG_NO_MOVE_ANIMATION = 0x00000040
+        private const val FULLSCREEN_BLUR_RADIUS_DP = 48
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -142,6 +153,8 @@ class FloatingWindowManager(
         if (isViewAdded) return
 
         try {
+            ensureFocusDismissView()
+
             composeView =
                     ComposeView(context).apply {
                         setViewTreeLifecycleOwner(lifecycleOwner)
@@ -179,6 +192,62 @@ class FloatingWindowManager(
                 isViewAdded = false
             }
         }
+
+        focusDismissView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error removing focus dismiss view", e)
+            }
+        }
+        focusDismissView = null
+    }
+
+    private fun ensureFocusDismissView() {
+        if (focusDismissView != null) return
+
+        val dismissView = View(context).apply {
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            visibility = View.GONE
+            isClickable = true
+            setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_DOWN) {
+                    AppLogger.d(
+                        TAG,
+                        "Focus dismiss overlay tapped: x=${event.rawX}, y=${event.rawY}, mode=${state.currentMode.value}"
+                    )
+                    this@FloatingWindowManager.setFocusable(false)
+                }
+                true
+            }
+        }
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+        }
+
+        try {
+            windowManager.addView(dismissView, params)
+            focusDismissView = dismissView
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Error creating focus dismiss view", e)
+        }
+    }
+
+    private fun setFocusDismissOverlayEnabled(enabled: Boolean) {
+        val view = focusDismissView ?: return
+        val canShow =
+            enabled &&
+                state.currentMode.value == FloatingMode.WINDOW &&
+                !windowPersistentHidden &&
+                windowDisplayEnabled
+        view.visibility = if (canShow) View.VISIBLE else View.GONE
     }
 
     @Composable
@@ -261,6 +330,8 @@ class FloatingWindowManager(
                 }
             }
         }
+
+        setFocusDismissOverlayEnabled(focusDismissOverlayRequested)
 
         val indicatorShouldShow = when {
             !indicatorDisplayEnabled && !indicatorPersistentEnabled -> false
@@ -584,6 +655,8 @@ class FloatingWindowManager(
         params.x = state.x
         params.y = state.y
 
+        applyFullscreenBlur(params, state.currentMode.value == FloatingMode.FULLSCREEN)
+
         state.isAtEdge.value = isAtEdge(params.x, params.width)
 
         return params
@@ -596,6 +669,33 @@ class FloatingWindowManager(
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to set privateFlags", e)
         }
+    }
+
+    private fun applyFullscreenBlur(params: WindowManager.LayoutParams, enabled: Boolean) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            AppLogger.d(TAG, "Fullscreen blur skipped: API < 31")
+            state.fullscreenSystemBlurActive.value = false
+            return
+        }
+        val crossWindowBlurEnabled = windowManager.isCrossWindowBlurEnabled
+        if (enabled) {
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+            val density = context.resources.displayMetrics.density
+            val blurRadiusPx = (FULLSCREEN_BLUR_RADIUS_DP * density).toInt()
+            params.setBlurBehindRadius(blurRadiusPx)
+            AppLogger.d(
+                TAG,
+                "Fullscreen blur enabled: radiusPx=$blurRadiusPx, crossWindowBlurEnabled=$crossWindowBlurEnabled"
+            )
+        } else {
+            params.flags = params.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND.inv()
+            params.setBlurBehindRadius(0)
+            AppLogger.d(
+                TAG,
+                "Fullscreen blur disabled: crossWindowBlurEnabled=$crossWindowBlurEnabled"
+            )
+        }
+        state.fullscreenSystemBlurActive.value = enabled && crossWindowBlurEnabled
     }
 
     private fun isAtEdge(x: Int, width: Int): Boolean {
@@ -697,6 +797,12 @@ class FloatingWindowManager(
         }
 
         state.currentMode.value = newMode
+        if (newMode != FloatingMode.WINDOW) {
+            pendingImeFocusRunnable?.let { mainHandler.removeCallbacks(it) }
+            pendingImeFocusRunnable = null
+            focusDismissOverlayRequested = false
+            setFocusDismissOverlayEnabled(false)
+        }
         callback.saveState()
 
         if (wasFullscreen != willFullscreen) {
@@ -716,7 +822,8 @@ class FloatingWindowManager(
             val x: Int,
             val y: Int,
             val flags: Int,
-            val gravity: Int = Gravity.TOP or Gravity.START
+            val gravity: Int = Gravity.TOP or Gravity.START,
+            val blurEnabled: Boolean = false
         )
 
         val target = when (newMode) {
@@ -805,7 +912,14 @@ class FloatingWindowManager(
                 }
                 FloatingMode.FULLSCREEN, FloatingMode.SCREEN_OCR -> {
                 val flags = 0 // Remove all flags, making it focusable
-                TargetParams(screenWidth, screenHeight, 0, 0, flags)
+                TargetParams(
+                    screenWidth,
+                    screenHeight,
+                    0,
+                    0,
+                    flags,
+                    blurEnabled = newMode == FloatingMode.FULLSCREEN
+                )
             }
             FloatingMode.RESULT_DISPLAY -> {
                 val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -861,6 +975,7 @@ class FloatingWindowManager(
                         params.y = target.y
                         params.flags = target.flags
                         params.gravity = target.gravity
+                        applyFullscreenBlur(params, target.blurEnabled)
                         
                         // Sync state with params
                         state.x = params.x
@@ -882,6 +997,7 @@ class FloatingWindowManager(
                         params.y = target.y
                         params.flags = target.flags
                         params.gravity = target.gravity
+                        applyFullscreenBlur(params, target.blurEnabled)
                         
                         // Sync state with params
                         state.x = params.x
@@ -900,6 +1016,7 @@ class FloatingWindowManager(
                     params.y = target.y
                     params.flags = target.flags
                     params.gravity = target.gravity
+                    applyFullscreenBlur(params, target.blurEnabled)
                     
                     // Sync state with params
                     state.x = params.x
@@ -920,6 +1037,7 @@ class FloatingWindowManager(
                 params.y = target.y
                 params.flags = target.flags
                 params.gravity = target.gravity
+                applyFullscreenBlur(params, target.blurEnabled)
 
                 // Sync state with params
                 state.x = params.x
@@ -978,11 +1096,25 @@ class FloatingWindowManager(
     private fun setFocusable(needsFocus: Boolean) {
         val view = composeView ?: return
         val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        AppLogger.d(TAG, "setFocusable(needsFocus=$needsFocus, mode=${state.currentMode.value})")
 
         if (needsFocus) {
+            pendingImeFocusRunnable?.let { mainHandler.removeCallbacks(it) }
+            pendingImeFocusRunnable = null
+            focusDismissOverlayRequested = true
+            setFocusDismissOverlayEnabled(true)
+
             // Step 1: 更新窗口参数使其可获取焦点
             updateViewLayout { params ->
                 params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+
+                // Keep background tappable while IME is active.
+                if (state.currentMode.value == FloatingMode.WINDOW) {
+                    params.flags =
+                            params.flags or
+                                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                }
 
                 // 为全屏模式特殊处理软键盘，以避免遮挡UI
                 if (state.currentMode.value == FloatingMode.FULLSCREEN) {
@@ -995,33 +1127,48 @@ class FloatingWindowManager(
 
             // Step 2: 延迟请求焦点并显示键盘
             // 延迟是必要的，以确保WindowManager有足够的时间处理窗口标志的变更
-            view.postDelayed(
-                    {
-                        view.requestFocus()
-                        imm.showSoftInput(view.findFocus(), InputMethodManager.SHOW_IMPLICIT)
-                    },
-                    200
-            )
+            pendingImeFocusRunnable = Runnable {
+                view.requestFocus()
+                imm.showSoftInput(view.findFocus(), InputMethodManager.SHOW_IMPLICIT)
+            }
+            mainHandler.postDelayed(pendingImeFocusRunnable!!, 200)
         } else {
-            // Step 1: 立即隐藏键盘
+            pendingImeFocusRunnable?.let { mainHandler.removeCallbacks(it) }
+            pendingImeFocusRunnable = null
+            focusDismissOverlayRequested = false
+            setFocusDismissOverlayEnabled(false)
+
+            // Step 1: 立即清理悬浮窗焦点并隐藏键盘，避免阻塞外部输入框抢焦点
+            try {
+                view.findFocus()?.clearFocus()
+            } catch (_: Exception) {
+            }
+            try {
+                view.clearFocus()
+            } catch (_: Exception) {
+            }
             imm.hideSoftInputFromWindow(view.windowToken, 0)
 
-            // Step 2: 延迟恢复窗口的不可聚焦状态（全屏模式除外）
-            view.postDelayed(
-                    {
-                        updateViewLayout { params ->
-                            // 在非全屏模式下，恢复FLAG_NOT_FOCUSABLE，以便与窗口下的内容交互
-                            if (state.currentMode.value != FloatingMode.FULLSCREEN && state.currentMode.value != FloatingMode.SCREEN_OCR) {
-                                params.flags =
-                                        params.flags or
-                                                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                            }
-                            // 重置软键盘模式
-                            params.softInputMode =
-                                    WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
-                        }
-                    },
-                    100
+            // Step 2: 立即恢复窗口不可聚焦状态（全屏模式除外）
+            updateViewLayout { params ->
+                if (state.currentMode.value != FloatingMode.FULLSCREEN && state.currentMode.value != FloatingMode.SCREEN_OCR) {
+                    params.flags =
+                            params.flags or
+                                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    params.flags =
+                            params.flags and
+                                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL.inv()
+                    params.flags =
+                            params.flags and
+                                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH.inv()
+                }
+                params.softInputMode =
+                        WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+            }
+            val lp = view.layoutParams as? WindowManager.LayoutParams
+            AppLogger.d(
+                TAG,
+                "setFocusable(false) applied: hasFocus=${view.hasFocus()}, findFocus=${view.findFocus() != null}, flags=${lp?.flags}"
             )
         }
     }

@@ -191,10 +191,6 @@
             android:windowSoftInputMode="adjustPan"
             android:theme="@style/Theme.Operit"
             android:launchMode="singleTask">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <!-- GitHub OAuth Callback -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -234,6 +230,49 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
+
+        <activity-alias
+            android:name=".ui.main.MainActivityDefaultAlias"
+            android:targetActivity=".ui.main.MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name" />
+
+        <activity-alias
+            android:name=".ui.main.MainActivityDefaultLauncherAlias"
+            android:targetActivity=".ui.main.MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ui.main.MainActivitySimpleAlias"
+            android:targetActivity=".ui.main.MainActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_simple"
+            android:roundIcon="@mipmap/ic_launcher_simple_round"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity-alias>
 
         <!-- Standard ASSIST entry for system assistant pickers -->
         <activity
@@ -324,14 +363,6 @@
             </intent-filter>
         </receiver>
 
-        <receiver
-            android:name=".data.updates.PatchInstallReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.ai.assistance.operit.action.INSTALL_PATCH_APK" />
-            </intent-filter>
-        </receiver>
-        
         <service
             android:name=".services.UIDebuggerService"
             android:enabled="true"

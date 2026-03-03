@@ -66,7 +66,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,6 +109,7 @@ import com.ai.assistance.operit.api.chat.EnhancedAIService
 import com.ai.assistance.operit.core.tools.ToolProgressBus
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.ChatMessage
+import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
 import com.ai.assistance.operit.data.model.FunctionType
 import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.ModelConfigSummary
@@ -114,6 +117,9 @@ import com.ai.assistance.operit.data.model.PreferenceProfile
 import com.ai.assistance.operit.data.model.getModelByIndex
 import com.ai.assistance.operit.data.model.getModelList
 import com.ai.assistance.operit.data.model.getValidModelIndex
+import com.ai.assistance.operit.data.preferences.CharacterCardManager
+import com.ai.assistance.operit.data.preferences.ActivePromptManager
+import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.preferences.FunctionConfigMapping
 import com.ai.assistance.operit.data.preferences.FunctionalConfigManager
 import com.ai.assistance.operit.data.preferences.ModelConfigManager
@@ -122,6 +128,7 @@ import com.ai.assistance.operit.ui.common.animations.SimpleAnimatedVisibility
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentSelectorPopupPanel
 import com.ai.assistance.operit.ui.features.chat.components.FullscreenInputDialog
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.CharacterCardModelBindingSwitchConfirmDialog
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.ToolPromptManagerDialog
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.floating.FloatingMode
@@ -186,37 +193,108 @@ fun AgentChatInputSection(
     onSaveToolPromptVisibilityMap: (Map<String, Boolean>) -> Unit = {},
     onManualMemoryUpdate: () -> Unit = {},
     onNavigateToModelConfig: () -> Unit = {},
+    characterCardBoundChatModelConfigId: String? = null,
+    characterCardBoundChatModelIndex: Int = 0,
 ) {
     val showTokenLimitDialog = remember { mutableStateOf(false) }
     val showFullscreenInput = remember { mutableStateOf(false) }
     val showModelSelectorPopup = remember { mutableStateOf(false) }
     val showExtraSettingsPopup = remember { mutableStateOf(false) }
+    var showCharacterCardBindingSwitchConfirm by remember { mutableStateOf(false) }
+    var pendingInterruptSend by remember { mutableStateOf(false) }
+    var pendingCharacterCardModelSelection by remember { mutableStateOf<Pair<String, Int>?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val characterCardManager = remember(context) { CharacterCardManager.getInstance(context) }
+    val activePromptManager = remember(context) { ActivePromptManager.getInstance(context) }
     val functionalConfigManager = remember(context) { FunctionalConfigManager(context) }
     val modelConfigManager = remember(context) { ModelConfigManager(context) }
     val userPreferencesManager = remember(context) { UserPreferencesManager.getInstance(context) }
+    val isProcessing =
+        isLoading ||
+            inputState is InputProcessingState.Connecting ||
+            inputState is InputProcessingState.ExecutingTool ||
+            inputState is InputProcessingState.ToolProgress ||
+            inputState is InputProcessingState.Processing ||
+            inputState is InputProcessingState.ProcessingToolResult ||
+            inputState is InputProcessingState.Summarizing ||
+            inputState is InputProcessingState.Receiving
+    val isProcessingState = rememberUpdatedState(isProcessing)
 
     if (showTokenLimitDialog.value) {
         AlertDialog(
-            onDismissRequest = { showTokenLimitDialog.value = false },
+            onDismissRequest = {
+                showTokenLimitDialog.value = false
+                pendingInterruptSend = false
+            },
             title = { Text(context.getString(R.string.token_limit_warning)) },
             text = { Text(context.getString(R.string.token_limit_warning_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showTokenLimitDialog.value = false
-                        onSendMessage()
+                        val shouldInterrupt = pendingInterruptSend
+                        pendingInterruptSend = false
+                        if (shouldInterrupt) {
+                            scope.launch {
+                                if (isProcessingState.value) {
+                                    onCancelMessage()
+                                    snapshotFlow { isProcessingState.value }.first { !it }
+                                }
+                                onSendMessage()
+                            }
+                        } else {
+                            onSendMessage()
+                        }
                     },
                 ) { Text(context.getString(R.string.continue_send)) }
             },
             dismissButton = {
-                TextButton(onClick = { showTokenLimitDialog.value = false }) {
+                TextButton(
+                    onClick = {
+                        showTokenLimitDialog.value = false
+                        pendingInterruptSend = false
+                    },
+                ) {
                     Text(context.getString(R.string.cancel))
                 }
             },
         )
     }
+
+    CharacterCardModelBindingSwitchConfirmDialog(
+        visible = showCharacterCardBindingSwitchConfirm,
+        onConfirm = {
+            val selection = pendingCharacterCardModelSelection
+            if (selection == null) {
+                showCharacterCardBindingSwitchConfirm = false
+                return@CharacterCardModelBindingSwitchConfirmDialog
+            }
+            scope.launch {
+                val activePrompt = activePromptManager.getActivePrompt()
+                val activeCard = when (activePrompt) {
+                    is ActivePrompt.CharacterCard -> characterCardManager.getCharacterCard(activePrompt.id)
+                    is ActivePrompt.CharacterGroup -> null
+                }
+                if (activeCard != null) {
+                    characterCardManager.updateCharacterCard(
+                        activeCard.copy(
+                            chatModelBindingMode = CharacterCardChatModelBindingMode.FIXED_CONFIG,
+                            chatModelConfigId = selection.first,
+                            chatModelIndex = selection.second.coerceAtLeast(0),
+                        ),
+                    )
+                }
+                showModelSelectorPopup.value = false
+                showCharacterCardBindingSwitchConfirm = false
+                pendingCharacterCardModelSelection = null
+            }
+        },
+        onDismiss = {
+            showCharacterCardBindingSwitchConfirm = false
+            pendingCharacterCardModelSelection = null
+        },
+    )
 
     val inputTextStyle = TextStyle(fontSize = 14.sp, lineHeight = 20.sp)
     val colorScheme = MaterialTheme.colorScheme
@@ -232,6 +310,16 @@ fun AgentChatInputSection(
     val currentConfigMapping =
         configMappingWithIndex[FunctionType.CHAT]
             ?: FunctionConfigMapping(FunctionalConfigManager.DEFAULT_CONFIG_ID, 0)
+    val isModelSelectionLockedByCharacterCard = !characterCardBoundChatModelConfigId.isNullOrBlank()
+    val effectiveConfigMapping =
+        if (isModelSelectionLockedByCharacterCard) {
+            FunctionConfigMapping(
+                characterCardBoundChatModelConfigId ?: FunctionalConfigManager.DEFAULT_CONFIG_ID,
+                characterCardBoundChatModelIndex.coerceAtLeast(0),
+            )
+        } else {
+            currentConfigMapping
+        }
 
     LaunchedEffect(Unit) {
         configSummaries = modelConfigManager.getAllConfigSummaries()
@@ -247,20 +335,16 @@ fun AgentChatInputSection(
     }
 
     val mappedModelName =
-        configSummaries.find { it.id == currentConfigMapping.configId }?.let { config ->
-            val validIndex = getValidModelIndex(config.modelName, currentConfigMapping.modelIndex)
+        configSummaries.find { it.id == effectiveConfigMapping.configId }?.let { config ->
+            val validIndex = getValidModelIndex(config.modelName, effectiveConfigMapping.modelIndex)
             getModelByIndex(config.modelName, validIndex)
         }
-    val displayModelName = mappedModelName?.takeIf { it.isNotBlank() } ?: currentModelName
-    val isProcessing =
-        isLoading ||
-            inputState is InputProcessingState.Connecting ||
-            inputState is InputProcessingState.ExecutingTool ||
-            inputState is InputProcessingState.ToolProgress ||
-            inputState is InputProcessingState.Processing ||
-            inputState is InputProcessingState.ProcessingToolResult ||
-            inputState is InputProcessingState.Summarizing ||
-            inputState is InputProcessingState.Receiving
+    val displayModelName =
+        if (isModelSelectionLockedByCharacterCard) {
+            mappedModelName?.takeIf { it.isNotBlank() } ?: stringResource(R.string.not_selected)
+        } else {
+            mappedModelName?.takeIf { it.isNotBlank() } ?: currentModelName
+        }
 
     val currentWindowSize by actualViewModel.currentWindowSize.collectAsState()
     val maxWindowSizeInK by actualViewModel.maxWindowSizeInK.collectAsState()
@@ -277,6 +361,8 @@ fun AgentChatInputSection(
         }
 
     val canSendMessage = userMessage.text.isNotBlank() || attachments.isNotEmpty()
+    val canInterruptSend = isProcessing && canSendMessage
+    val showCancelAction = isProcessing && !canSendMessage
     val sendButtonEnabled = true
 
     val voicePermissionLauncher =
@@ -335,15 +421,35 @@ fun AgentChatInputSection(
         }
 
     val onSelectModel: (String, Int) -> Unit = { selectedId, modelIndex ->
-        scope.launch {
-            functionalConfigManager.setConfigForFunction(
-                FunctionType.CHAT,
-                selectedId,
-                modelIndex,
-            )
-            EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
-            showModelSelectorPopup.value = false
+        if (isModelSelectionLockedByCharacterCard) {
+            val currentModelIndex = configSummaries.find { it.id == effectiveConfigMapping.configId }?.let { config ->
+                getValidModelIndex(config.modelName, effectiveConfigMapping.modelIndex)
+            } ?: effectiveConfigMapping.modelIndex.coerceAtLeast(0)
+            val isSameSelection =
+                selectedId == effectiveConfigMapping.configId && modelIndex == currentModelIndex
+            if (isSameSelection) {
+                showModelSelectorPopup.value = false
+            } else {
+                pendingCharacterCardModelSelection = selectedId to modelIndex
+                showModelSelectorPopup.value = false
+                showCharacterCardBindingSwitchConfirm = true
+            }
+        } else {
+            scope.launch {
+                functionalConfigManager.setConfigForFunction(
+                    FunctionType.CHAT,
+                    selectedId,
+                    modelIndex,
+                )
+                EnhancedAIService.refreshServiceForFunction(context, FunctionType.CHAT)
+                showModelSelectorPopup.value = false
+            }
         }
+    }
+
+    val onModelSelectorClick = {
+        showExtraSettingsPopup.value = false
+        showModelSelectorPopup.value = !showModelSelectorPopup.value
     }
 
     val onSelectMemory: (String) -> Unit = { selectedId ->
@@ -604,10 +710,7 @@ fun AgentChatInputSection(
                                             shape = RoundedCornerShape(12.dp),
                                         )
                                         .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            showExtraSettingsPopup.value = false
-                                            showModelSelectorPopup.value = !showModelSelectorPopup.value
-                                        },
+                                        .clickable(onClick = onModelSelectorClick),
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -643,7 +746,7 @@ fun AgentChatInputSection(
                                     .padding(start = 6.dp)
                                     .size(34.dp)
                                     .clickable(
-                                        enabled = !isProcessing,
+                                        enabled = true,
                                         onClick = {
                                             showModelSelectorPopup.value = false
                                             showExtraSettingsPopup.value = !showExtraSettingsPopup.value
@@ -670,7 +773,7 @@ fun AgentChatInputSection(
                                     .padding(start = 8.dp)
                                     .size(36.dp)
                                     .clickable(
-                                        enabled = !isProcessing,
+                                        enabled = true,
                                         onClick = {
                                             showModelSelectorPopup.value = false
                                             showExtraSettingsPopup.value = false
@@ -696,7 +799,7 @@ fun AgentChatInputSection(
 
                         val actionButtonBackground =
                             when {
-                                isProcessing -> MaterialTheme.colorScheme.error
+                                showCancelAction -> MaterialTheme.colorScheme.error
                                 canSendMessage ->
                                     if (isOverTokenLimit) {
                                         MaterialTheme.colorScheme.secondary
@@ -708,7 +811,7 @@ fun AgentChatInputSection(
 
                         val actionButtonIconTint =
                             when {
-                                isProcessing -> MaterialTheme.colorScheme.onError
+                                showCancelAction -> MaterialTheme.colorScheme.onError
                                 canSendMessage ->
                                     if (isOverTokenLimit) {
                                         MaterialTheme.colorScheme.onSecondary
@@ -741,13 +844,27 @@ fun AgentChatInputSection(
                                             enabled = sendButtonEnabled,
                                             onClick = {
                                                 when {
-                                                    isProcessing -> onCancelMessage()
+                                                    showCancelAction -> onCancelMessage()
                                                     canSendMessage -> {
                                                         if (isOverTokenLimit) {
+                                                            pendingInterruptSend = canInterruptSend
                                                             showTokenLimitDialog.value = true
                                                         } else {
-                                                            onSendMessage()
-                                                            setShowAttachmentPanel(false)
+                                                            pendingInterruptSend = false
+                                                            if (canInterruptSend) {
+                                                                scope.launch {
+                                                                    if (isProcessingState.value) {
+                                                                        onCancelMessage()
+                                                                        snapshotFlow { isProcessingState.value }
+                                                                            .first { !it }
+                                                                    }
+                                                                    onSendMessage()
+                                                                    setShowAttachmentPanel(false)
+                                                                }
+                                                            } else {
+                                                                onSendMessage()
+                                                                setShowAttachmentPanel(false)
+                                                            }
                                                         }
                                                     }
                                                     else -> {
@@ -766,13 +883,13 @@ fun AgentChatInputSection(
                                 Icon(
                                     imageVector =
                                         when {
-                                            isProcessing -> Icons.Default.Close
+                                            showCancelAction -> Icons.Default.Close
                                             canSendMessage -> Icons.AutoMirrored.Filled.Send
                                             else -> Icons.Default.Mic
                                         },
                                     contentDescription =
                                         when {
-                                            isProcessing -> context.getString(R.string.cancel)
+                                            showCancelAction -> context.getString(R.string.cancel)
                                             canSendMessage -> context.getString(R.string.send)
                                             else -> context.getString(R.string.voice_input)
                                         },
@@ -867,10 +984,7 @@ fun AgentChatInputSection(
                                                 shape = RoundedCornerShape(12.dp),
                                             )
                                             .clip(RoundedCornerShape(12.dp))
-                                            .clickable {
-                                                showExtraSettingsPopup.value = false
-                                                showModelSelectorPopup.value = !showModelSelectorPopup.value
-                                            },
+                                            .clickable(onClick = onModelSelectorClick),
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -900,18 +1014,18 @@ fun AgentChatInputSection(
                                 }
                             }
 
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .padding(start = 6.dp)
-                                        .size(34.dp)
-                                        .clickable(
-                                            enabled = !isProcessing,
-                                            onClick = {
-                                                showModelSelectorPopup.value = false
-                                                showExtraSettingsPopup.value = !showExtraSettingsPopup.value
-                                            },
-                                        ),
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .padding(start = 6.dp)
+                                            .size(34.dp)
+                                            .clickable(
+                                                enabled = true,
+                                                onClick = {
+                                                    showModelSelectorPopup.value = false
+                                                    showExtraSettingsPopup.value = !showExtraSettingsPopup.value
+                                                },
+                                            ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
@@ -927,19 +1041,19 @@ fun AgentChatInputSection(
                                 )
                             }
 
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .padding(start = 8.dp)
-                                        .size(36.dp)
-                                        .clickable(
-                                            enabled = !isProcessing,
-                                            onClick = {
-                                                showModelSelectorPopup.value = false
-                                                showExtraSettingsPopup.value = false
-                                                setShowAttachmentPanel(!showAttachmentPanel)
-                                            },
-                                        ),
+                                Box(
+                                    modifier =
+                                        Modifier
+                                            .padding(start = 8.dp)
+                                            .size(36.dp)
+                                            .clickable(
+                                                enabled = true,
+                                                onClick = {
+                                                    showModelSelectorPopup.value = false
+                                                    showExtraSettingsPopup.value = false
+                                                    setShowAttachmentPanel(!showAttachmentPanel)
+                                                },
+                                            ),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Icon(
@@ -959,26 +1073,26 @@ fun AgentChatInputSection(
 
                             val actionButtonBackground =
                                 when {
-                                    isProcessing -> MaterialTheme.colorScheme.error
+                                    showCancelAction -> MaterialTheme.colorScheme.error
                                     canSendMessage ->
                                         if (isOverTokenLimit) {
                                             MaterialTheme.colorScheme.secondary
                                         } else {
                                             MaterialTheme.colorScheme.primary
                                         }
-                                    else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                                    else -> MaterialTheme.colorScheme.primary
                                 }
 
                             val actionButtonIconTint =
                                 when {
-                                    isProcessing -> MaterialTheme.colorScheme.onError
+                                    showCancelAction -> MaterialTheme.colorScheme.onError
                                     canSendMessage ->
                                         if (isOverTokenLimit) {
                                             MaterialTheme.colorScheme.onSecondary
                                         } else {
                                             MaterialTheme.colorScheme.onPrimary
                                         }
-                                    else -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
+                                    else -> MaterialTheme.colorScheme.onPrimary
                                 }
 
                             Box(
@@ -1004,13 +1118,27 @@ fun AgentChatInputSection(
                                                 enabled = sendButtonEnabled,
                                                 onClick = {
                                                     when {
-                                                        isProcessing -> onCancelMessage()
+                                                        showCancelAction -> onCancelMessage()
                                                         canSendMessage -> {
                                                             if (isOverTokenLimit) {
+                                                                pendingInterruptSend = canInterruptSend
                                                                 showTokenLimitDialog.value = true
                                                             } else {
-                                                                onSendMessage()
-                                                                setShowAttachmentPanel(false)
+                                                                pendingInterruptSend = false
+                                                                if (canInterruptSend) {
+                                                                    scope.launch {
+                                                                        if (isProcessingState.value) {
+                                                                            onCancelMessage()
+                                                                            snapshotFlow { isProcessingState.value }
+                                                                                .first { !it }
+                                                                        }
+                                                                        onSendMessage()
+                                                                        setShowAttachmentPanel(false)
+                                                                    }
+                                                                } else {
+                                                                    onSendMessage()
+                                                                    setShowAttachmentPanel(false)
+                                                                }
                                                             }
                                                         }
                                                         else -> {
@@ -1029,13 +1157,13 @@ fun AgentChatInputSection(
                                     Icon(
                                         imageVector =
                                             when {
-                                                isProcessing -> Icons.Default.Close
+                                                showCancelAction -> Icons.Default.Close
                                                 canSendMessage -> Icons.AutoMirrored.Filled.Send
                                                 else -> Icons.Default.Mic
                                             },
                                         contentDescription =
                                             when {
-                                                isProcessing -> context.getString(R.string.cancel)
+                                                showCancelAction -> context.getString(R.string.cancel)
                                                 canSendMessage -> context.getString(R.string.send)
                                                 else -> context.getString(R.string.voice_input)
                                             },
@@ -1053,7 +1181,7 @@ fun AgentChatInputSection(
                 visible = showModelSelectorPopup.value,
                 popupContainerColor = popupContainerColor,
                 configSummaries = configSummaries,
-                currentConfigMapping = currentConfigMapping,
+                currentConfigMapping = effectiveConfigMapping,
                 enableThinkingMode = enableThinkingMode,
                 onToggleThinkingMode = onToggleThinkingMode,
                 enableThinkingGuidance = enableThinkingGuidance,

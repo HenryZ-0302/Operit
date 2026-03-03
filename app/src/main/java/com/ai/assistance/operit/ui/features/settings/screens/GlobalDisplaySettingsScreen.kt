@@ -1,6 +1,8 @@
 package com.ai.assistance.operit.ui.features.settings.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.system.AndroidPermissionLevel
@@ -27,6 +30,7 @@ import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.preferences.androidPermissionPreferences
 import com.ai.assistance.operit.services.floating.StatusIndicatorStyle
 import com.ai.assistance.operit.ui.components.CustomScaffold
+import com.ai.assistance.operit.util.AppIconManager
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -58,6 +62,7 @@ fun GlobalDisplaySettingsScreen(
     val screenshotScalePercent by displayPreferencesManager.screenshotScalePercent.collectAsState(initial = 100)
     val virtualDisplayBitrateKbps by displayPreferencesManager.virtualDisplayBitrateKbps.collectAsState(initial = 3000)
     val keepScreenOn by apiPreferences.keepScreenOnFlow.collectAsState(initial = true)
+    var currentAppIconType by remember { mutableStateOf(AppIconManager.getCurrentIconType(context)) }
 
     val hasBackgroundImage by userPreferences.useBackgroundImage.collectAsState(initial = false)
     val uiAccessibilityMode by userPreferences.uiAccessibilityMode.collectAsState(initial = false)
@@ -65,9 +70,19 @@ fun GlobalDisplaySettingsScreen(
     val rootExecutionMode by androidPermissionPreferences.rootExecutionModeFlow.collectAsState(initial = RootCommandExecutionMode.AUTO)
     val customSuCommand by androidPermissionPreferences.customSuCommandFlow.collectAsState(initial = AndroidPermissionPreferences.DEFAULT_SU_COMMAND)
 
-    var showSaveSuccessMessage by remember { mutableStateOf(false) }
     var userNameInput by remember { mutableStateOf(globalUserName ?: "") }
     var customSuCommandInput by remember { mutableStateOf(customSuCommand) }
+    val collapseModeOptions = remember {
+        listOf(ToolCollapseMode.READ_ONLY, ToolCollapseMode.ALL, ToolCollapseMode.FULL)
+    }
+    var collapseModeSliderValue by remember { mutableFloatStateOf(0f) }
+    val collapseModeLabelRes: (ToolCollapseMode) -> Int = { mode ->
+        when (mode) {
+            ToolCollapseMode.READ_ONLY -> R.string.tool_collapse_mode_read_only
+            ToolCollapseMode.ALL -> R.string.tool_collapse_mode_all
+            ToolCollapseMode.FULL -> R.string.tool_collapse_mode_full
+        }
+    }
 
     // 自动化状态指示样式（使用与 FloatingChatService 相同的 SharedPreferences）
     val statusIndicatorPrefs = remember {
@@ -94,6 +109,11 @@ fun GlobalDisplaySettingsScreen(
 
     LaunchedEffect(customSuCommand) {
         customSuCommandInput = customSuCommand
+    }
+
+    LaunchedEffect(toolCollapseMode) {
+        val index = collapseModeOptions.indexOf(toolCollapseMode).coerceAtLeast(0)
+        collapseModeSliderValue = index.toFloat()
     }
 
     val componentBackgroundColor = if (hasBackgroundImage) {
@@ -123,7 +143,6 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         displayPreferencesManager.saveDisplaySettings(showModelProvider = it)
-                        showSaveSuccessMessage = true
                     }
                 },
                 backgroundColor = componentBackgroundColor
@@ -136,7 +155,6 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         displayPreferencesManager.saveDisplaySettings(showModelName = it)
-                        showSaveSuccessMessage = true
                     }
                 },
                 backgroundColor = componentBackgroundColor
@@ -149,7 +167,6 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         displayPreferencesManager.saveDisplaySettings(showRoleName = it)
-                        showSaveSuccessMessage = true
                     }
                 },
                 backgroundColor = componentBackgroundColor
@@ -162,7 +179,6 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         displayPreferencesManager.saveDisplaySettings(showUserName = it)
-                        showSaveSuccessMessage = true
                     }
                 },
                 backgroundColor = componentBackgroundColor
@@ -188,30 +204,49 @@ fun GlobalDisplaySettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = toolCollapseMode == ToolCollapseMode.READ_ONLY,
-                        onClick = {
+                Text(
+                    text = stringResource(id = collapseModeLabelRes(toolCollapseMode)),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Slider(
+                    value = collapseModeSliderValue,
+                    onValueChange = { collapseModeSliderValue = it },
+                    valueRange = 0f..(collapseModeOptions.size - 1).toFloat(),
+                    steps = collapseModeOptions.size - 2,
+                    onValueChangeFinished = {
+                        val index = collapseModeSliderValue.roundToInt().coerceIn(0, collapseModeOptions.lastIndex)
+                        val selectedMode = collapseModeOptions[index]
+                        collapseModeSliderValue = index.toFloat()
+                        if (selectedMode != toolCollapseMode) {
                             scope.launch {
-                                displayPreferencesManager.saveDisplaySettings(toolCollapseMode = ToolCollapseMode.READ_ONLY)
-                                showSaveSuccessMessage = true
+                                displayPreferencesManager.saveDisplaySettings(toolCollapseMode = selectedMode)
                             }
-                        },
-                        label = { Text(stringResource(R.string.tool_collapse_mode_read_only)) }
-                    )
-                    FilterChip(
-                        selected = toolCollapseMode == ToolCollapseMode.ALL,
-                        onClick = {
-                            scope.launch {
-                                displayPreferencesManager.saveDisplaySettings(toolCollapseMode = ToolCollapseMode.ALL)
-                                showSaveSuccessMessage = true
-                            }
-                        },
-                        label = { Text(stringResource(R.string.tool_collapse_mode_all)) }
-                    )
+                        }
+                    }
+                )
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    collapseModeOptions.forEachIndexed { index, mode ->
+                        val selected = toolCollapseMode == mode
+                        Text(
+                            text = stringResource(id = collapseModeLabelRes(mode)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    collapseModeSliderValue = index.toFloat()
+                                    if (mode != toolCollapseMode) {
+                                        scope.launch {
+                                            displayPreferencesManager.saveDisplaySettings(toolCollapseMode = mode)
+                                        }
+                                    }
+                                }
+                                .padding(top = 2.dp)
+                        )
+                    }
                 }
             }
 
@@ -230,7 +265,6 @@ fun GlobalDisplaySettingsScreen(
                             IconButton(onClick = {
                                 scope.launch {
                                     displayPreferencesManager.saveDisplaySettings(globalUserName = userNameInput)
-                                    showSaveSuccessMessage = true
                                 }
                             }) {
                                 Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save))
@@ -255,7 +289,6 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         displayPreferencesManager.saveDisplaySettings(showFpsCounter = it)
-                        showSaveSuccessMessage = true
                     }
                 },
                 backgroundColor = componentBackgroundColor
@@ -268,7 +301,6 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         displayPreferencesManager.saveDisplaySettings(enableReplyNotification = it)
-                        showSaveSuccessMessage = true
                     }
                 },
                 backgroundColor = componentBackgroundColor
@@ -281,11 +313,67 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         apiPreferences.saveKeepScreenOn(it)
-                        showSaveSuccessMessage = true
                     }
                 },
                 backgroundColor = componentBackgroundColor
             )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(componentBackgroundColor)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = stringResource(id = R.string.app_icon_switch_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(id = R.string.app_icon_switch_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = currentAppIconType == AppIconManager.AppIconType.DEFAULT,
+                        onClick = {
+                            if (currentAppIconType != AppIconManager.AppIconType.DEFAULT) {
+                                val switched = AppIconManager.switchIcon(context, AppIconManager.AppIconType.DEFAULT)
+                                if (switched) {
+                                    currentAppIconType = AppIconManager.AppIconType.DEFAULT
+                                    Toast.makeText(context, context.getString(R.string.app_icon_switch_applied_tip), Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, context.getString(R.string.app_icon_switch_failed), Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        label = { Text(stringResource(id = R.string.app_icon_option_default)) }
+                    )
+                    FilterChip(
+                        selected = currentAppIconType == AppIconManager.AppIconType.SIMPLE,
+                        onClick = {
+                            if (currentAppIconType != AppIconManager.AppIconType.SIMPLE) {
+                                val switched = AppIconManager.switchIcon(context, AppIconManager.AppIconType.SIMPLE)
+                                if (switched) {
+                                    currentAppIconType = AppIconManager.AppIconType.SIMPLE
+                                    Toast.makeText(context, context.getString(R.string.app_icon_switch_applied_tip), Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, context.getString(R.string.app_icon_switch_failed), Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        label = { Text(stringResource(id = R.string.app_icon_option_simple)) }
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -302,7 +390,6 @@ fun GlobalDisplaySettingsScreen(
                 onCheckedChange = {
                     scope.launch {
                         userPreferences.saveUiAccessibilityMode(it)
-                        showSaveSuccessMessage = true
                     }
                 },
                 backgroundColor = componentBackgroundColor
@@ -317,7 +404,6 @@ fun GlobalDisplaySettingsScreen(
                         displayPreferencesManager.saveDisplaySettings(
                             enableExperimentalVirtualDisplay = it
                         )
-                        showSaveSuccessMessage = true
                     }
                 },
                 backgroundColor = componentBackgroundColor
@@ -346,7 +432,6 @@ fun GlobalDisplaySettingsScreen(
                         onClick = {
                             scope.launch {
                                 displayPreferencesManager.saveDisplaySettings(virtualDisplayBitrateKbps = 1500)
-                                showSaveSuccessMessage = true
                             }
                         },
                         label = { Text("1.5 Mbps") }
@@ -356,7 +441,6 @@ fun GlobalDisplaySettingsScreen(
                         onClick = {
                             scope.launch {
                                 displayPreferencesManager.saveDisplaySettings(virtualDisplayBitrateKbps = 3000)
-                                showSaveSuccessMessage = true
                             }
                         },
                         label = { Text("3 Mbps") }
@@ -366,7 +450,6 @@ fun GlobalDisplaySettingsScreen(
                         onClick = {
                             scope.launch {
                                 displayPreferencesManager.saveDisplaySettings(virtualDisplayBitrateKbps = 5000)
-                                showSaveSuccessMessage = true
                             }
                         },
                         label = { Text("5 Mbps") }
@@ -376,7 +459,6 @@ fun GlobalDisplaySettingsScreen(
                         onClick = {
                             scope.launch {
                                 displayPreferencesManager.saveDisplaySettings(virtualDisplayBitrateKbps = 10000)
-                                showSaveSuccessMessage = true
                             }
                         },
                         label = { Text("10 Mbps") }
@@ -386,7 +468,6 @@ fun GlobalDisplaySettingsScreen(
                         onClick = {
                             scope.launch {
                                 displayPreferencesManager.saveDisplaySettings(virtualDisplayBitrateKbps = 20000)
-                                showSaveSuccessMessage = true
                             }
                         },
                         label = { Text("20 Mbps") }
@@ -422,7 +503,6 @@ fun GlobalDisplaySettingsScreen(
                                     StatusIndicatorStyle.FULLSCREEN_RAINBOW.name
                                 )
                                 .apply()
-                            showSaveSuccessMessage = true
                         },
                         label = { Text(stringResource(R.string.display_rainbow_border)) }
                     )
@@ -436,7 +516,6 @@ fun GlobalDisplaySettingsScreen(
                                     StatusIndicatorStyle.TOP_BAR.name
                                 )
                                 .apply()
-                            showSaveSuccessMessage = true
                         },
                         label = { Text(stringResource(R.string.display_top_hint)) }
                     )
@@ -474,7 +553,6 @@ fun GlobalDisplaySettingsScreen(
                         onClick = {
                             scope.launch {
                                 displayPreferencesManager.saveDisplaySettings(screenshotFormat = "PNG")
-                                showSaveSuccessMessage = true
                             }
                         },
                         label = { Text(stringResource(R.string.display_png_default)) }
@@ -485,7 +563,6 @@ fun GlobalDisplaySettingsScreen(
                         onClick = {
                             scope.launch {
                                 displayPreferencesManager.saveDisplaySettings(screenshotFormat = "JPG")
-                                showSaveSuccessMessage = true
                             }
                         },
                         label = { Text(stringResource(R.string.display_jpg_smaller)) }
@@ -517,7 +594,6 @@ fun GlobalDisplaySettingsScreen(
                             val q = qualitySliderValue.roundToInt().coerceIn(50, 100)
                             scope.launch {
                                 displayPreferencesManager.saveDisplaySettings(screenshotQuality = q)
-                                showSaveSuccessMessage = true
                             }
                         }
                     )
@@ -553,7 +629,6 @@ fun GlobalDisplaySettingsScreen(
                             val s = scaleSliderValue.roundToInt().coerceIn(50, 100)
                             scope.launch {
                                 displayPreferencesManager.saveDisplaySettings(screenshotScalePercent = s)
-                                showSaveSuccessMessage = true
                             }
                         }
                     )
@@ -595,7 +670,6 @@ fun GlobalDisplaySettingsScreen(
                             onClick = {
                                 scope.launch {
                                     androidPermissionPreferences.saveRootExecutionMode(RootCommandExecutionMode.AUTO)
-                                    showSaveSuccessMessage = true
                                 }
                             },
                             label = { Text(stringResource(R.string.root_execution_mode_auto)) }
@@ -605,7 +679,6 @@ fun GlobalDisplaySettingsScreen(
                             onClick = {
                                 scope.launch {
                                     androidPermissionPreferences.saveRootExecutionMode(RootCommandExecutionMode.FORCE_LIBSU)
-                                    showSaveSuccessMessage = true
                                 }
                             },
                             label = { Text(stringResource(R.string.root_execution_mode_force_libsu)) }
@@ -615,7 +688,6 @@ fun GlobalDisplaySettingsScreen(
                             onClick = {
                                 scope.launch {
                                     androidPermissionPreferences.saveRootExecutionMode(RootCommandExecutionMode.FORCE_EXEC)
-                                    showSaveSuccessMessage = true
                                 }
                             },
                             label = { Text(stringResource(R.string.root_execution_mode_force_exec)) }
@@ -638,7 +710,6 @@ fun GlobalDisplaySettingsScreen(
                                     onClick = {
                                         scope.launch {
                                             androidPermissionPreferences.saveCustomSuCommand(customSuCommandInput)
-                                            showSaveSuccessMessage = true
                                         }
                                     }
                                 ) {
@@ -663,7 +734,9 @@ fun GlobalDisplaySettingsScreen(
                     scope.launch {
                         displayPreferencesManager.resetDisplaySettings()
                         androidPermissionPreferences.resetRootExecutionSettings()
-                        showSaveSuccessMessage = true
+                        if (AppIconManager.switchIcon(context, AppIconManager.AppIconType.DEFAULT)) {
+                            currentAppIconType = AppIconManager.AppIconType.DEFAULT
+                        }
                     }
                 },
                 modifier = Modifier
@@ -690,23 +763,6 @@ fun GlobalDisplaySettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // 保存成功提示
-        if (showSaveSuccessMessage) {
-            LaunchedEffect(Unit) {
-                kotlinx.coroutines.delay(1500)
-                showSaveSuccessMessage = false
-            }
-            Snackbar(
-                modifier = Modifier.padding(16.dp),
-                action = {
-                    TextButton(onClick = { showSaveSuccessMessage = false }) {
-                        Text(stringResource(id = android.R.string.ok))
-                    }
-                }
-            ) {
-                Text(stringResource(R.string.settings_saved))
-            }
-        }
     }
 }
 

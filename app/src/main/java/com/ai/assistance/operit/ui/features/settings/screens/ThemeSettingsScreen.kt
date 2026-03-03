@@ -37,10 +37,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.R
-import com.ai.assistance.operit.data.model.CharacterCard
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
+import com.ai.assistance.operit.data.preferences.CharacterGroupCardManager
 import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.data.preferences.ActivePromptManager
+import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.ui.features.settings.components.ColorPickerDialog
 import com.ai.assistance.operit.ui.features.settings.sections.ThemeSettingsAvatarSection
 import com.ai.assistance.operit.ui.features.settings.sections.ThemeSettingsBackgroundSection
@@ -60,6 +62,7 @@ import com.google.android.exoplayer2.ExoPlayer
 import com.google.android.exoplayer2.MediaItem
 import com.google.android.exoplayer2.Player
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flowOf
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,23 +74,24 @@ fun ThemeSettingsScreen() {
 
     // 添加角色卡管理器
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
+    val characterGroupCardManager = remember { CharacterGroupCardManager.getInstance(context) }
+    val activePromptManager = remember { ActivePromptManager.getInstance(context) }
 
-    // 获取当前活跃角色卡
-    val activeCharacterCard = characterCardManager.activeCharacterCardFlow.collectAsState(
-        initial = CharacterCard(
-            id = "default_character",
-            name = stringResource(R.string.theme_default_character_card),
-            description = "",
-            characterSetting = "",
-            otherContent = "",
-            attachedTagIds = emptyList(),
-            advancedCustomPrompt = "",
-            marks = "",
-            isDefault = true,
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis()
-        )
-    ).value
+    val activePrompt by activePromptManager.activePromptFlow.collectAsState(
+        initial = ActivePrompt.CharacterCard(CharacterCardManager.DEFAULT_CHARACTER_CARD_ID)
+    )
+    val activeCharacterCard by remember(activePrompt) {
+        when (val prompt = activePrompt) {
+            is ActivePrompt.CharacterCard -> characterCardManager.getCharacterCardFlow(prompt.id)
+            is ActivePrompt.CharacterGroup -> flowOf(null)
+        }
+    }.collectAsState(initial = null)
+    val activeCharacterGroup by remember(activePrompt) {
+        when (val prompt = activePrompt) {
+            is ActivePrompt.CharacterGroup -> characterGroupCardManager.getCharacterGroupCardFlow(prompt.id)
+            is ActivePrompt.CharacterCard -> flowOf(null)
+        }
+    }.collectAsState(initial = null)
 
     // Collect theme settings
     val themeMode =
@@ -183,10 +187,20 @@ fun ThemeSettingsScreen() {
     val showThinkingProcess = preferencesManager.showThinkingProcess.collectAsState(initial = true).value
     val showStatusTags = preferencesManager.showStatusTags.collectAsState(initial = true).value
     val showInputProcessingStatus = preferencesManager.showInputProcessingStatus.collectAsState(initial = true).value
+    val showChatFloatingDotsAnimation =
+        preferencesManager.showChatFloatingDotsAnimation.collectAsState(initial = true).value
 
     // Collect avatar settings
     val userAvatarUri = preferencesManager.customUserAvatarUri.collectAsState(initial = null).value
     val aiAvatarUri = preferencesManager.customAiAvatarUri.collectAsState(initial = null).value
+    val activeCardAvatarUri by remember(activeCharacterCard?.id) {
+        activeCharacterCard?.id?.let { preferencesManager.getAiAvatarForCharacterCardFlow(it) }
+            ?: flowOf(null)
+    }.collectAsState(initial = null)
+    val activeGroupAvatarUri by remember(activeCharacterGroup?.id) {
+        activeCharacterGroup?.id?.let { preferencesManager.getAiAvatarForCharacterGroupFlow(it) }
+            ?: flowOf(null)
+    }.collectAsState(initial = null)
     val avatarShape = preferencesManager.avatarShape.collectAsState(initial = UserPreferencesManager.AVATAR_SHAPE_CIRCLE).value
     val avatarCornerRadius = preferencesManager.avatarCornerRadius.collectAsState(initial = 8f).value
 
@@ -200,25 +214,35 @@ fun ThemeSettingsScreen() {
 
     var showSaveSuccessMessage by remember { mutableStateOf(false) }
 
-    // 自动保存主题到当前角色卡的函数
-    val saveThemeToActiveCharacterCard: () -> Unit = {
+    val activeThemeTargetName = activeCharacterGroup?.name ?: activeCharacterCard?.name
+    val activeThemeTargetAvatarUri = activeGroupAvatarUri ?: activeCardAvatarUri
+    val isGroupThemeTarget = activePrompt is ActivePrompt.CharacterGroup
+
+    // 自动保存主题到当前角色目标（角色卡或群聊）的函数
+    val saveThemeToActiveTarget: () -> Unit = {
         scope.launch {
-            preferencesManager.saveCurrentThemeToCharacterCard(activeCharacterCard.id)
+            when (activePrompt) {
+                is ActivePrompt.CharacterGroup -> {
+                    activeCharacterGroup?.id?.let { preferencesManager.saveCurrentThemeToCharacterGroup(it) }
+                }
+                is ActivePrompt.CharacterCard -> {
+                    activeCharacterCard?.id?.let { preferencesManager.saveCurrentThemeToCharacterCard(it) }
+                }
+            }
         }
     }
 
-    // 包装的保存函数，会同时保存设置和角色卡主题
+    // 包装的保存函数，会同时保存设置和当前角色目标主题
     fun saveThemeSettingsWithCharacterCard(saveAction: suspend () -> Unit) {
         scope.launch {
             saveAction()
-            saveThemeToActiveCharacterCard()
+            saveThemeToActiveTarget()
         }
     }
 
     // Default color definitions
     val defaultPrimaryColor = Color.Magenta.toArgb()
     val defaultSecondaryColor = Color.Blue.toArgb()
-
     // Mutable state
     var themeModeInput by remember { mutableStateOf(themeMode) }
     var useSystemThemeInput by remember { mutableStateOf(useSystemTheme) }
@@ -280,6 +304,9 @@ fun ThemeSettingsScreen() {
     var showThinkingProcessInput by remember { mutableStateOf(showThinkingProcess) }
     var showStatusTagsInput by remember { mutableStateOf(showStatusTags) }
     var showInputProcessingStatusInput by remember { mutableStateOf(showInputProcessingStatus) }
+    var showChatFloatingDotsAnimationInput by remember {
+        mutableStateOf(showChatFloatingDotsAnimation)
+    }
 
     // Avatar state
     var userAvatarUriInput by remember { mutableStateOf(userAvatarUri) }
@@ -853,8 +880,9 @@ fun ThemeSettingsScreen() {
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(scrollState)) {
         ThemeSettingsCharacterBindingInfoCard(
-            aiAvatarUri = aiAvatarUri,
-            activeCharacterName = activeCharacterCard.name,
+            aiAvatarUri = activeThemeTargetAvatarUri ?: aiAvatarUri,
+            activeCharacterName = activeThemeTargetName,
+            isGroupTarget = isGroupThemeTarget,
             cardColors = cardModifier,
         )
 
@@ -930,6 +958,10 @@ fun ThemeSettingsScreen() {
             onShowStatusTagsInputChange = { showStatusTagsInput = it },
             showInputProcessingStatusInput = showInputProcessingStatusInput,
             onShowInputProcessingStatusInputChange = { showInputProcessingStatusInput = it },
+            showChatFloatingDotsAnimationInput = showChatFloatingDotsAnimationInput,
+            onShowChatFloatingDotsAnimationInputChange = {
+                showChatFloatingDotsAnimationInput = it
+            },
             saveThemeSettingsWithCharacterCard = ::saveThemeSettingsWithCharacterCard,
             preferencesManager = preferencesManager,
         )
@@ -1004,8 +1036,12 @@ fun ThemeSettingsScreen() {
                 onClick = {
                     scope.launch {
                         preferencesManager.resetThemeSettings()
-                        // 同时删除当前角色卡的主题配置
-                        preferencesManager.deleteCharacterCardTheme(activeCharacterCard.id)
+                        // 同时删除当前角色目标的主题配置
+                        if (isGroupThemeTarget) {
+                            activeCharacterGroup?.id?.let { preferencesManager.deleteCharacterGroupTheme(it) }
+                        } else {
+                            activeCharacterCard?.id?.let { preferencesManager.deleteCharacterCardTheme(it) }
+                        }
                         // Reset local state after reset
                         themeModeInput = UserPreferencesManager.THEME_MODE_LIGHT
                         useSystemThemeInput = true
@@ -1040,6 +1076,7 @@ fun ThemeSettingsScreen() {
                         showThinkingProcessInput = true
                         showStatusTagsInput = true
                         showInputProcessingStatusInput = true
+                        showChatFloatingDotsAnimationInput = true
                         userAvatarUriInput = null
                         aiAvatarUriInput = null
                         avatarShapeInput = UserPreferencesManager.AVATAR_SHAPE_CIRCLE

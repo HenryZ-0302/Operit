@@ -588,10 +588,20 @@ private fun ColumnScope.ChatContentArea(
     floatContext: FloatContext,
     viewModel: FloatingChatWindowModeViewModel
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .weight(1f)
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    focusManager.clearFocus(force = true)
+                    keyboardController?.hide()
+                    floatContext.onInputFocusRequest?.invoke(false)
+                }
+            }
     ) {
         if (!floatContext.showInputDialog) {
             ChatMessagesView(floatContext, viewModel)

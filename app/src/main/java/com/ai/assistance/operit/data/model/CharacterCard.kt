@@ -14,14 +14,27 @@ data class CharacterCard(
     val description: String = "",
     val characterSetting: String = "", // 角色设定（引导词）
     val openingStatement: String = "", // 新增：开场白
-    val otherContent: String = "", // 其他乱七八糟的东西（引导词）
+    val otherContentChat: String = "", // 其他内容（聊天）
+    val otherContentVoice: String = "", // 其他内容（语音）
     val attachedTagIds: List<String> = emptyList(), // 附着的标签ID列表
     val advancedCustomPrompt: String = "", // 高级设置的自定义（引导词）
     val marks: String = "", // 备注信息（不会被拼接到提示词中）
+    val chatModelBindingMode: String = CharacterCardChatModelBindingMode.FOLLOW_GLOBAL, // 对话模型绑定模式
+    val chatModelConfigId: String? = null, // 固定绑定时使用的配置ID
+    val chatModelIndex: Int = 0, // 固定绑定时使用的模型索引
     val isDefault: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
+
+object CharacterCardChatModelBindingMode {
+    const val FOLLOW_GLOBAL = "FOLLOW_GLOBAL"
+    const val FIXED_CONFIG = "FIXED_CONFIG"
+
+    fun normalize(mode: String?): String {
+        return if (mode == FIXED_CONFIG) FIXED_CONFIG else FOLLOW_GLOBAL
+    }
+}
 
 /**
  * 酒馆角色卡格式数据模型
@@ -68,10 +81,15 @@ data class OperitCharacterCardPayload(
     val characterSetting: String = "",
     val openingStatement: String = "",
     val otherContent: String = "",
+    val otherContentChat: String = "",
+    val otherContentVoice: String = "",
     val attachedTagIds: List<String> = emptyList(),
     val attachedTags: List<OperitAttachedTagPayload> = emptyList(),
     val advancedCustomPrompt: String = "",
-    val marks: String = ""
+    val marks: String = "",
+    val chatModelBindingMode: String = CharacterCardChatModelBindingMode.FOLLOW_GLOBAL,
+    val chatModelConfigId: String? = null,
+    val chatModelIndex: Int = 0
 )
 
 data class OperitAttachedTagPayload(
@@ -79,8 +97,7 @@ data class OperitAttachedTagPayload(
     val name: String = "",
     val description: String = "",
     val promptContent: String = "",
-    val tagType: String = "CUSTOM",
-    val isSystemTag: Boolean = false
+    val tagType: String = "CUSTOM"
 )
 
 data class TavernChubExtension(

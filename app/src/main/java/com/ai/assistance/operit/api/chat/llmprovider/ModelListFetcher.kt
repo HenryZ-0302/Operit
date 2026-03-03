@@ -85,10 +85,12 @@ object ModelListFetcher {
                     ApiProviderType.OPENROUTER -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.MOONSHOT -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.SILICONFLOW -> "${extractBaseUrl(apiEndpoint)}/v1/models"
+                    ApiProviderType.IFLOW -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.BAICHUAN -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.INFINIAI -> "${extractBaseUrl(apiEndpoint)}/maas/v1/models"
                     ApiProviderType.ALIPAY_BAILING -> "${extractBaseUrl(apiEndpoint)}/llm/v1/models"
                     ApiProviderType.LMSTUDIO -> "${extractBaseUrl(apiEndpoint)}/v1/models"
+                    ApiProviderType.OLLAMA -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.PPINFRA -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     // 其他API提供商可能需要特殊处理
                     else -> "${extractBaseUrl(apiEndpoint)}/v1/models" // 默认尝试OpenAI兼容格式
@@ -189,6 +191,9 @@ object ModelListFetcher {
                             requestBuilder.addHeader("x-api-key", apiKey)
                             requestBuilder.addHeader("anthropic-version", ANTHROPIC_VERSION)
                         }
+                        ApiProviderType.OLLAMA -> {
+                            AppLogger.d(TAG, "Ollama模型列表请求不使用认证头")
+                        }
                         else -> {
                             // 大多数API使用Bearer认证
                             AppLogger.d(TAG, "使用Bearer认证方式")
@@ -205,7 +210,7 @@ object ModelListFetcher {
                         val errorBody = response.body?.string() ?: context.getString(R.string.model_fetch_no_error_details)
                         val responseCode = response.code
                         response.close()
-                        if ((apiProviderType == ApiProviderType.OPENAI || apiProviderType == ApiProviderType.OPENAI_RESPONSES || apiProviderType == ApiProviderType.OPENAI_GENERIC) &&
+                        if ((apiProviderType == ApiProviderType.OPENAI || apiProviderType == ApiProviderType.OPENAI_RESPONSES || apiProviderType == ApiProviderType.OPENAI_GENERIC || apiProviderType == ApiProviderType.IFLOW || apiProviderType == ApiProviderType.OLLAMA) &&
                                         modelsUrl.endsWith("/v1/models")) {
                             val fallbackUrl = modelsUrl.removeSuffix("/v1/models") + "/models"
                             AppLogger.w(TAG, "API请求失败，尝试兼容路径: $fallbackUrl")
@@ -262,11 +267,13 @@ object ModelListFetcher {
                                     ApiProviderType.DEEPSEEK,
                                     ApiProviderType.MOONSHOT,
                                     ApiProviderType.SILICONFLOW,
+                                    ApiProviderType.IFLOW,
                                     ApiProviderType.BAICHUAN,
                                     ApiProviderType.OPENROUTER,
                                     ApiProviderType.INFINIAI,
                                     ApiProviderType.ALIPAY_BAILING,
                                     ApiProviderType.LMSTUDIO,
+                                    ApiProviderType.OLLAMA,
                                     ApiProviderType.PPINFRA -> parseOpenAIModelResponse(context, responseBody)
                                     ApiProviderType.ANTHROPIC,
                                     ApiProviderType.ANTHROPIC_GENERIC -> parseAnthropicModelResponse(context, responseBody)

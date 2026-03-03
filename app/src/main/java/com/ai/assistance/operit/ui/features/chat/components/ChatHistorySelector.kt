@@ -1,6 +1,10 @@
 package com.ai.assistance.operit.ui.features.chat.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -33,6 +37,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Search
@@ -88,8 +93,11 @@ import androidx.compose.ui.window.Dialog
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.ChatHistory
 import com.ai.assistance.operit.data.model.CharacterCard
+import com.ai.assistance.operit.data.model.CharacterGroupCard
+import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.repository.ChatHistoryManager
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
+import com.ai.assistance.operit.data.preferences.CharacterGroupCardManager
 import com.ai.assistance.operit.ui.common.rememberLocal
 import me.saket.swipe.SwipeAction
 import me.saket.swipe.SwipeableActionsBox
@@ -110,14 +118,34 @@ import androidx.compose.ui.layout.ContentScale
 import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flowOf
 
 private data class GroupTarget(
     val groupName: String,
     val characterCardName: String?
 )
 
+private fun resolveBindingForCreate(
+    historyDisplayMode: ChatHistoryDisplayMode,
+    activePrompt: ActivePrompt,
+    activeCharacterCardName: String?
+): Pair<String?, String?> {
+    if (historyDisplayMode == ChatHistoryDisplayMode.BY_FOLDER) {
+        return Pair(null, null)
+    }
+    return when (val prompt = activePrompt) {
+        is ActivePrompt.CharacterGroup -> Pair(null, prompt.id)
+        is ActivePrompt.CharacterCard -> Pair(activeCharacterCardName, null)
+    }
+}
+
 private sealed interface HistoryListItem {
-    data class CharacterHeader(val key: String, val name: String) : HistoryListItem
+    data class CharacterHeader(
+        val key: String,
+        val name: String,
+        val characterCardName: String? = null,
+        val characterGroupId: String? = null
+    ) : HistoryListItem
     data class Header(
         val key: String, 
         val name: String, 
@@ -134,12 +162,12 @@ private sealed interface HistoryListItem {
 @Composable
 fun ChatHistorySelector(
         modifier: Modifier = Modifier,
-        onNewChat: (characterCardName: String?) -> Unit,
+        onNewChat: (characterCardName: String?, characterGroupId: String?) -> Unit,
         onSelectChat: (String) -> Unit,
         onDeleteChat: (String) -> Unit,
         onUpdateChatTitle: (chatId: String, newTitle: String) -> Unit,
-        onUpdateChatBinding: (chatId: String, characterCardName: String?) -> Unit,
-        onCreateGroup: (groupName: String, characterCardName: String?) -> Unit,
+        onUpdateChatBinding: (chatId: String, characterCardName: String?, characterGroupId: String?) -> Unit,
+        onCreateGroup: (groupName: String, characterCardName: String?, characterGroupId: String?) -> Unit,
         onUpdateChatOrderAndGroup: (reorderedHistories: List<ChatHistory>, movedItem: ChatHistory, targetGroup: String?) -> Unit,
         onUpdateGroupName: (oldName: String, newName: String, characterCardName: String?) -> Unit,
         onDeleteGroup: (groupName: String, deleteChats: Boolean, characterCardName: String?) -> Unit,
@@ -154,7 +182,7 @@ fun ChatHistorySelector(
         onDisplayModeChange: (ChatHistoryDisplayMode) -> Unit,
         autoSwitchCharacterCard: Boolean,
         onAutoSwitchCharacterCardChange: (Boolean) -> Unit,
-        activeCharacterCard: CharacterCard? = null
+        activePrompt: ActivePrompt
 ) {
     var chatToEdit by remember { mutableStateOf<ChatHistory?>(null) }
     var chatItemActionTarget by remember { mutableStateOf<ChatHistory?>(null) }
@@ -177,14 +205,51 @@ fun ChatHistorySelector(
     val context = LocalContext.current
     val chatHistoryManager = remember { ChatHistoryManager.getInstance(context) }
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
+    val characterGroupCardManager = remember { CharacterGroupCardManager.getInstance(context) }
     val coroutineScope = rememberCoroutineScope()
+    val deleteAnimationDurationMs = 220L
+    var deletingChatIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var availableCharacterCards by remember { mutableStateOf<List<CharacterCard>>(emptyList()) }
+    var availableCharacterGroups by remember { mutableStateOf<List<CharacterGroupCard>>(emptyList()) }
+    var resolvedGroupNameById by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
+    fun requestDeleteChat(history: ChatHistory) {
+        if (history.locked) {
+            onDeleteChat(history.id)
+            return
+        }
+        if (deletingChatIds.contains(history.id)) {
+            return
+        }
+        deletingChatIds = deletingChatIds + history.id
+        coroutineScope.launch {
+            delay(deleteAnimationDurationMs)
+            onDeleteChat(history.id)
+        }
+    }
+
     LaunchedEffect(Unit) {
         characterCardManager.characterCardListFlow.collectLatest { ids ->
             val cards = ids.mapNotNull { id ->
                 runCatching { characterCardManager.getCharacterCard(id) }.getOrNull()
             }
             availableCharacterCards = cards
+        }
+    }
+    LaunchedEffect(Unit) {
+        characterGroupCardManager.allCharacterGroupCardsFlow.collectLatest { groups ->
+            availableCharacterGroups = groups
+        }
+    }
+    val groupNameById = remember(availableCharacterGroups, resolvedGroupNameById) {
+        val fromList = availableCharacterGroups.associate { it.id to it.name }
+        fromList + resolvedGroupNameById
+    }
+    val activeCharacterCardName = remember(activePrompt, availableCharacterCards) {
+        when (val prompt = activePrompt) {
+            is ActivePrompt.CharacterCard ->
+                availableCharacterCards.firstOrNull { it.id == prompt.id }?.name
+            is ActivePrompt.CharacterGroup -> null
         }
     }
     val actualLazyListState = lazyListState ?: rememberLazyListState()
@@ -238,8 +303,32 @@ fun ChatHistorySelector(
             chatHistories
         }
     }
+    val groupIdsInFilteredHistories = remember(filteredHistories) {
+        filteredHistories
+            .mapNotNull { it.characterGroupId?.trim()?.takeIf { id -> id.isNotBlank() } }
+            .toSet()
+    }
+    LaunchedEffect(groupIdsInFilteredHistories, groupNameById) {
+        val missingIds = groupIdsInFilteredHistories.filter { groupNameById[it].isNullOrBlank() }
+        if (missingIds.isEmpty()) {
+            return@LaunchedEffect
+        }
+        val fetched = mutableMapOf<String, String>()
+        missingIds.forEach { groupId ->
+            val groupName = runCatching {
+                characterGroupCardManager.getCharacterGroupCard(groupId)?.name
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+            if (!groupName.isNullOrBlank()) {
+                fetched[groupId] = groupName
+            }
+        }
+        if (fetched.isNotEmpty()) {
+            resolvedGroupNameById = resolvedGroupNameById + fetched
+        }
+    }
 
     val unboundCharacterText = stringResource(R.string.unbound_character_card)
+    val groupPrefix = stringResource(R.string.character_group_binding_prefix)
     val flatItems =
             remember(
                     filteredHistories,
@@ -247,8 +336,11 @@ fun ChatHistorySelector(
                     collapsedCharacters,
                     ungroupedText,
                     unboundCharacterText,
+                    availableCharacterGroups,
+                    groupNameById,
+                    groupPrefix,
                     historyDisplayMode,
-                    activeCharacterCard
+                    activeCharacterCardName
             ) {
                 fun characterKey(name: String) = "character::$name"
                 fun groupKey(characterName: String?, groupValue: String?): String {
@@ -259,10 +351,52 @@ fun ChatHistorySelector(
 
                 when (historyDisplayMode) {
                     ChatHistoryDisplayMode.BY_CHARACTER_CARD -> {
+                        data class BindingBucket(
+                            val key: String,
+                            val displayName: String,
+                            val characterCardName: String?,
+                            val characterGroupId: String?
+                        )
+                        fun resolveBindingBucket(history: ChatHistory): BindingBucket {
+                            val groupId = history.characterGroupId?.trim()?.takeIf { it.isNotBlank() }
+                            if (!groupId.isNullOrBlank()) {
+                                val groupName = groupNameById[groupId]?.takeIf { it.isNotBlank() }
+                                val displayName =
+                                    if (!groupName.isNullOrBlank()) {
+                                        "$groupPrefix: $groupName"
+                                    } else {
+                                        context.getString(R.string.missing_character_group_id, groupId)
+                                    }
+                                return BindingBucket(
+                                    key = "binding::group::$groupId",
+                                    displayName = displayName,
+                                    characterCardName = null,
+                                    characterGroupId = groupId
+                                )
+                            }
+
+                            val cardName = history.characterCardName?.takeIf { it.isNotBlank() }
+                            if (!cardName.isNullOrBlank()) {
+                                return BindingBucket(
+                                    key = "binding::card::$cardName",
+                                    displayName = cardName,
+                                    characterCardName = cardName,
+                                    characterGroupId = null
+                                )
+                            }
+
+                            return BindingBucket(
+                                key = "binding::unbound",
+                                displayName = unboundCharacterText,
+                                characterCardName = null,
+                                characterGroupId = null
+                            )
+                        }
+
                         filteredHistories
-                            .groupBy { it.characterCardName ?: unboundCharacterText }
-                            .flatMap { (characterName, histories) ->
-                                val cKey = characterKey(characterName)
+                            .groupBy { resolveBindingBucket(it) }
+                            .flatMap { (bindingBucket, histories) ->
+                                val cKey = characterKey(bindingBucket.key)
                                 val children =
                                         if (collapsedCharacters.contains(cKey)) {
                                             emptyList()
@@ -271,14 +405,13 @@ fun ChatHistorySelector(
                                                 .groupBy { it.group }
                                                 .flatMap { (groupValue, groupedHistories) ->
                                                     val displayName = groupValue ?: ungroupedText
-                                                    val gKey = groupKey(characterName, groupValue)
+                                                    val gKey = groupKey(bindingBucket.key, groupValue)
                                                     val header =
                                                             HistoryListItem.Header(
                                                                     key = gKey,
                                                                     name = displayName,
                                                                     groupValue = groupValue,
-                                                                    // 未绑定角色卡使用 null 而不是字符串
-                                                                    characterCardName = if (characterName == unboundCharacterText) null else characterName
+                                                                    characterCardName = bindingBucket.characterCardName
                                                             )
                                                     val items =
                                                             if (collapsedGroups.contains(gKey)) {
@@ -287,11 +420,18 @@ fun ChatHistorySelector(
                                                                 groupedHistories.map {
                                                                     HistoryListItem.Item(it)
                                                                 }
-                                                            }
+                                                    }
                                                     listOf(header) + items
                                                 }
                                         }
-                                listOf(HistoryListItem.CharacterHeader(cKey, characterName)) + children
+                                listOf(
+                                    HistoryListItem.CharacterHeader(
+                                        key = cKey,
+                                        name = bindingBucket.displayName,
+                                        characterCardName = bindingBucket.characterCardName,
+                                        characterGroupId = bindingBucket.characterGroupId
+                                    )
+                                ) + children
                             }
                     }
                     else -> {
@@ -302,7 +442,7 @@ fun ChatHistorySelector(
                                 val gKey = groupKey(null, groupValue)
                                 // 在仅显示当前角色卡模式下，使用当前角色卡名称
                                 val effectiveCharacterCardName = if (historyDisplayMode == ChatHistoryDisplayMode.CURRENT_CHARACTER_ONLY) {
-                                    activeCharacterCard?.name
+                                    activeCharacterCardName
                                 } else {
                                     null
                                 }
@@ -335,13 +475,15 @@ fun ChatHistorySelector(
 
         var newGroup: String? = null
         var newCharacterCardName: String? = null
+        var newCharacterGroupId: String? = null
         val newOrderedHistories =
                 reorderedFlatList
                     .mapNotNull {
                         when (it) {
                             is HistoryListItem.CharacterHeader -> {
-                                // 在角色卡分类模式下，更新当前的角色卡名称
-                                newCharacterCardName = if (it.name == unboundCharacterText) null else it.name
+                                // 在绑定分类模式下，更新当前绑定（角色卡/群组）
+                                newCharacterCardName = it.characterCardName
+                                newCharacterGroupId = it.characterGroupId
                                 newGroup = null
                                 null
                             }
@@ -354,7 +496,8 @@ fun ChatHistorySelector(
                                 val updatedHistory = if (historyDisplayMode == ChatHistoryDisplayMode.BY_CHARACTER_CARD) {
                                     it.history.copy(
                                         group = newGroup,
-                                        characterCardName = newCharacterCardName
+                                        characterCardName = newCharacterCardName,
+                                        characterGroupId = newCharacterGroupId
                                     )
                                 } else {
                                     it.history.copy(group = newGroup)
@@ -371,8 +514,16 @@ fun ChatHistorySelector(
 
         // 如果角色卡绑定发生了变化，需要额外通知
         if (historyDisplayMode == ChatHistoryDisplayMode.BY_CHARACTER_CARD &&
-            finalMovedItem.characterCardName != movedItem.history.characterCardName) {
-            onUpdateChatBinding(finalMovedItem.id, finalMovedItem.characterCardName)
+            (
+                finalMovedItem.characterCardName != movedItem.history.characterCardName ||
+                    finalMovedItem.characterGroupId != movedItem.history.characterGroupId
+            )
+        ) {
+            onUpdateChatBinding(
+                finalMovedItem.id,
+                finalMovedItem.characterCardName,
+                finalMovedItem.characterGroupId
+            )
         }
 
         onUpdateChatOrderAndGroup(newOrderedHistories, finalMovedItem, finalMovedItem.group)
@@ -617,7 +768,7 @@ fun ChatHistorySelector(
                                 contentDescription = context.getString(R.string.delete)
                             }
                             .clickable {
-                                onDeleteChat(chatItemActionTarget!!.id)
+                                requestDeleteChat(chatItemActionTarget!!)
                                 chatItemActionTarget = null
                             },
                         color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
@@ -960,14 +1111,54 @@ fun ChatHistorySelector(
     if (chatToEdit != null) {
         val editingChat = chatToEdit!!
         var newTitle by remember(editingChat) { mutableStateOf(editingChat.title) }
-        var selectedCharacterCardName by remember(editingChat) { mutableStateOf(editingChat.characterCardName) }
-        var bindingMenuExpanded by remember { mutableStateOf(false) }
-        val bindingOptions = remember(availableCharacterCards) {
-            listOf<String?>(null) + availableCharacterCards.map { it.name }
+        var selectedCharacterCardName by remember(editingChat) {
+            mutableStateOf(editingChat.characterCardName)
         }
+        var selectedCharacterGroupId by remember(editingChat) {
+            mutableStateOf(editingChat.characterGroupId)
+        }
+        var bindingMenuExpanded by remember { mutableStateOf(false) }
+        data class ChatBindingOption(
+            val label: String,
+            val characterCardName: String?,
+            val characterGroupId: String?
+        )
         val unboundLabel = stringResource(R.string.unbound_character_card)
         val bindingLabel = stringResource(R.string.bind_character_card)
         val bindingHint = stringResource(R.string.chat_binding_scope_hint)
+        val groupPrefix = stringResource(R.string.character_group_binding_prefix)
+        val bindingOptions = remember(availableCharacterCards, availableCharacterGroups, unboundLabel, groupPrefix) {
+            buildList {
+                add(ChatBindingOption(unboundLabel, null, null))
+                availableCharacterCards.forEach { card ->
+                    add(ChatBindingOption(card.name, card.name, null))
+                }
+                availableCharacterGroups.forEach { group ->
+                    add(ChatBindingOption("$groupPrefix: ${group.name}", null, group.id))
+                }
+            }
+        }
+        val selectedBindingLabel = remember(
+            selectedCharacterCardName,
+            selectedCharacterGroupId,
+            groupNameById,
+            unboundLabel,
+            groupPrefix
+        ) {
+            when {
+                !selectedCharacterGroupId.isNullOrBlank() -> {
+                    val normalizedGroupId = selectedCharacterGroupId?.trim()?.takeIf { it.isNotBlank() }
+                    val groupName = normalizedGroupId?.let { groupNameById[it] }?.takeIf { it.isNotBlank() }
+                    if (!groupName.isNullOrBlank()) {
+                        "$groupPrefix: $groupName"
+                    } else {
+                        context.getString(R.string.missing_character_group_id, normalizedGroupId ?: "")
+                    }
+                }
+                !selectedCharacterCardName.isNullOrBlank() -> selectedCharacterCardName!!
+                else -> unboundLabel
+            }
+        }
         val density = LocalDensity.current
         var bindingMenuWidth by remember { mutableStateOf(0.dp) }
         val dropdownClickSource = remember { MutableInteractionSource() }
@@ -985,7 +1176,7 @@ fun ChatHistorySelector(
                         )
                         Box(modifier = Modifier.fillMaxWidth()) {
                             OutlinedTextField(
-                                    value = selectedCharacterCardName ?: unboundLabel,
+                                    value = selectedBindingLabel,
                                     onValueChange = {},
                                     readOnly = true,
                                     label = { Text(bindingLabel) },
@@ -1016,9 +1207,10 @@ fun ChatHistorySelector(
                             ) {
                                 bindingOptions.forEach { option ->
                                     DropdownMenuItem(
-                                            text = { Text(option ?: unboundLabel) },
+                                            text = { Text(option.label) },
                                             onClick = {
-                                                selectedCharacterCardName = option
+                                                selectedCharacterCardName = option.characterCardName
+                                                selectedCharacterGroupId = option.characterGroupId
                                                 bindingMenuExpanded = false
                                             }
                                     )
@@ -1038,8 +1230,15 @@ fun ChatHistorySelector(
                                 if (newTitle != editingChat.title) {
                                     onUpdateChatTitle(editingChat.id, newTitle)
                                 }
-                                if (selectedCharacterCardName != editingChat.characterCardName) {
-                                    onUpdateChatBinding(editingChat.id, selectedCharacterCardName)
+                                if (
+                                    selectedCharacterCardName != editingChat.characterCardName ||
+                                    selectedCharacterGroupId != editingChat.characterGroupId
+                                ) {
+                                    onUpdateChatBinding(
+                                        editingChat.id,
+                                        selectedCharacterCardName,
+                                        selectedCharacterGroupId
+                                    )
                                 }
                                 chatToEdit = null
                             }
@@ -1224,13 +1423,16 @@ fun ChatHistorySelector(
                     Button(
                             onClick = {
                                 if (newGroupName.isNotBlank()) {
-                                    // 根据当前显示模式确定新分组的角色卡归属
-                                    val characterCardName = when (historyDisplayMode) {
-                                        ChatHistoryDisplayMode.BY_CHARACTER_CARD -> activeCharacterCard?.name // 按角色卡分类时绑定到当前角色卡
-                                        ChatHistoryDisplayMode.CURRENT_CHARACTER_ONLY -> activeCharacterCard?.name
-                                        else -> null // 按文件夹分类时不绑定
+                                    val normalizedGroupName = newGroupName.trim()
+                                    if (normalizedGroupName.isBlank()) {
+                                        return@Button
                                     }
-                                    onCreateGroup(newGroupName, characterCardName)
+                                    val (characterCardName, characterGroupId) = resolveBindingForCreate(
+                                        historyDisplayMode = historyDisplayMode,
+                                        activePrompt = activePrompt,
+                                        activeCharacterCardName = activeCharacterCardName
+                                    )
+                                    onCreateGroup(normalizedGroupName, characterCardName, characterGroupId)
                                     newGroupName = ""
                                     showNewGroupDialog = false
                                 }
@@ -1316,13 +1518,12 @@ fun ChatHistorySelector(
         ) {
             Button(
                 onClick = { 
-                    // 根据当前显示模式确定新对话的角色卡归属
-                    val characterCardName = when (historyDisplayMode) {
-                        ChatHistoryDisplayMode.BY_CHARACTER_CARD -> activeCharacterCard?.name
-                        ChatHistoryDisplayMode.CURRENT_CHARACTER_ONLY -> activeCharacterCard?.name
-                        else -> null
-                    }
-                    onNewChat(characterCardName)
+                    val (characterCardName, characterGroupId) = resolveBindingForCreate(
+                        historyDisplayMode = historyDisplayMode,
+                        activePrompt = activePrompt,
+                        activeCharacterCardName = activeCharacterCardName
+                    )
+                    onNewChat(characterCardName, characterGroupId)
                 },
                 modifier = Modifier.weight(1f)
             ) {
@@ -1422,10 +1623,37 @@ fun ChatHistorySelector(
                 when (item) {
                     is HistoryListItem.CharacterHeader -> {
                         val userPreferencesManager = remember { UserPreferencesManager.getInstance(context) }
-                        val characterCard = availableCharacterCards.find { it.name == item.name }
-                        val avatarUri by userPreferencesManager.getAiAvatarForCharacterCardFlow(
-                            characterCard?.id ?: ""
-                        ).collectAsState(initial = null)
+                        val groupId = item.characterGroupId?.trim()?.takeIf { it.isNotBlank() }
+                        val groupAvatarUri by remember(groupId) {
+                            groupId?.let { userPreferencesManager.getAiAvatarForCharacterGroupFlow(it) }
+                                ?: flowOf(null)
+                        }.collectAsState(initial = null)
+                        val groupFallbackMemberCardId = remember(groupId, availableCharacterGroups) {
+                            val group = if (groupId.isNullOrBlank()) null else {
+                                availableCharacterGroups.firstOrNull { it.id == groupId }
+                            }
+                            val sortedMembers = group?.members?.sortedBy { it.orderIndex }.orEmpty()
+                            sortedMembers.firstOrNull()?.characterCardId
+                        }
+                        val groupFallbackMemberAvatarUri by remember(groupFallbackMemberCardId) {
+                            groupFallbackMemberCardId?.let {
+                                userPreferencesManager.getAiAvatarForCharacterCardFlow(it)
+                            } ?: flowOf(null)
+                        }.collectAsState(initial = null)
+                        val characterCardId = remember(item.characterCardName, availableCharacterCards) {
+                            val cardName = item.characterCardName?.takeIf { it.isNotBlank() } ?: return@remember null
+                            availableCharacterCards.firstOrNull { it.name == cardName }?.id
+                        }
+                        val characterCardAvatarUri by remember(characterCardId) {
+                            characterCardId?.let { userPreferencesManager.getAiAvatarForCharacterCardFlow(it) }
+                                ?: flowOf(null)
+                        }.collectAsState(initial = null)
+                        val avatarUri =
+                            if (!groupId.isNullOrBlank()) {
+                                groupAvatarUri ?: groupFallbackMemberAvatarUri
+                            } else {
+                                characterCardAvatarUri
+                            }
                         
                         val isExpanded = !collapsedCharacters.contains(item.key)
                         val stateDescription = if (isExpanded) {
@@ -1487,7 +1715,7 @@ fun ChatHistorySelector(
                                         )
                                     } else {
                                         Icon(
-                                            imageVector = Icons.Default.Person,
+                                            imageVector = if (!groupId.isNullOrBlank()) Icons.Default.Groups else Icons.Default.Person,
                                             contentDescription = null,
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier
@@ -1639,7 +1867,7 @@ fun ChatHistorySelector(
                     }
                     is HistoryListItem.Item -> {
                         val deleteAction = SwipeAction(
-                            onSwipe = { onDeleteChat(item.history.id) },
+                            onSwipe = { requestDeleteChat(item.history) },
                             icon = {
                                 Icon(
                                     modifier = Modifier.padding(16.dp),
@@ -1669,6 +1897,7 @@ fun ChatHistorySelector(
                             key = item.history.id,
                             animateItemModifier = Modifier.animateItem(placementSpec = null)
                         ) { isDragging ->
+                            val isDeleting = deletingChatIds.contains(item.history.id)
                             val isSelected = item.history.id == currentId
                             val containerColor = if (isSelected) {
                                 MaterialTheme.colorScheme.primaryContainer
@@ -1681,139 +1910,148 @@ fun ChatHistorySelector(
                                 MaterialTheme.colorScheme.onSurface
                             }
 
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            AnimatedVisibility(
+                                visible = !isDeleting,
+                                exit =
+                                    shrinkVertically(
+                                        animationSpec = tween(deleteAnimationDurationMs.toInt()),
+                                        shrinkTowards = Alignment.Top
+                                    ) + fadeOut(animationSpec = tween(deleteAnimationDurationMs.toInt()))
                             ) {
-                                if (historyDisplayMode == ChatHistoryDisplayMode.BY_CHARACTER_CARD) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(32.dp)
-                                            .padding(start = 16.dp, end = 8.dp)
-                                    ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (historyDisplayMode == ChatHistoryDisplayMode.BY_CHARACTER_CARD) {
                                         Box(
                                             modifier = Modifier
-                                                .width(2.dp)
-                                                .height(50.dp)
-                                                .align(Alignment.Center)
-                                                .background(
-                                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                                                    shape = RoundedCornerShape(1.dp)
-                                                )
-                                        )
-                                    }
-                                }
-                                Box(modifier = Modifier.weight(1f)) {
-                                    SwipeableActionsBox(
-                                        startActions = listOf(editAction),
-                                        endActions = listOf(deleteAction),
-                                        swipeThreshold = 100.dp,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(MaterialTheme.shapes.medium)
-                                    ) {
-                                        Surface(
-                                            modifier = Modifier
-                                                .fillMaxWidth(),
-                                            color = containerColor,
-                                            shape = MaterialTheme.shapes.medium,
-                                            shadowElevation = if (isDragging) 8.dp else 0.dp
+                                                .width(32.dp)
+                                                .padding(start = 16.dp, end = 8.dp)
                                         ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .fillMaxWidth()
+                                                    .width(2.dp)
+                                                    .height(50.dp)
+                                                    .align(Alignment.Center)
+                                                    .background(
+                                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                                        shape = RoundedCornerShape(1.dp)
+                                                    )
+                                            )
+                                        }
+                                    }
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        SwipeableActionsBox(
+                                            startActions = listOf(editAction),
+                                            endActions = listOf(deleteAction),
+                                            swipeThreshold = 100.dp,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(MaterialTheme.shapes.medium)
+                                        ) {
+                                            Surface(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(),
+                                                color = containerColor,
+                                                shape = MaterialTheme.shapes.medium,
+                                                shadowElevation = if (isDragging) 8.dp else 0.dp
                                             ) {
-                                                val titlePreview = item.history.title.take(20)
-                                                val groupName = item.history.group ?: ungroupedText
-                                                Row(
+                                                Box(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .padding(horizontal = 10.dp)
-                                                        .semantics(mergeDescendants = false) {
-                                                            contentDescription = "$titlePreview, $groupName"
-                                                        }
-                                                        .pointerInput(Unit) {
-                                                            detectTapGestures(
-                                                                onTap = { onSelectChat(item.history.id) },
-                                                                onLongPress = { chatItemActionTarget = item.history }
-                                                            )
-                                                        },
-                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    val dragDescription = stringResource(R.string.drag_item, item.history.title)
-                                                    IconButton(
+                                                    val titlePreview = item.history.title.take(20)
+                                                    val groupName = item.history.group ?: ungroupedText
+                                                    Row(
                                                         modifier = Modifier
-                                                            .draggableHandle()
-                                                            .semantics {
-                                                                contentDescription = dragDescription
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = 10.dp)
+                                                            .semantics(mergeDescendants = false) {
+                                                                contentDescription = "$titlePreview, $groupName"
+                                                            }
+                                                            .pointerInput(Unit) {
+                                                                detectTapGestures(
+                                                                    onTap = { onSelectChat(item.history.id) },
+                                                                    onLongPress = { chatItemActionTarget = item.history }
+                                                                )
                                                             },
-                                                        onClick = {}
+                                                        verticalAlignment = Alignment.CenterVertically
                                                     ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.DragHandle,
-                                                            contentDescription = null,
-                                                            tint = contentColor
-                                                        )
-                                                    }
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Column(
-                                                        modifier = Modifier
-                                                            .weight(1f)
-                                                            .semantics { contentDescription = "" }
-                                                    ) {
-                                                        Text(
-                                                            text = item.history.title,
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            color = contentColor,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
+                                                        val dragDescription = stringResource(R.string.drag_item, item.history.title)
+                                                        IconButton(
+                                                            modifier = Modifier
+                                                                .draggableHandle()
+                                                                .semantics {
+                                                                    contentDescription = dragDescription
+                                                                },
+                                                            onClick = {}
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.DragHandle,
+                                                                contentDescription = null,
+                                                                tint = contentColor
+                                                            )
+                                                        }
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Column(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .semantics { contentDescription = "" }
+                                                        ) {
+                                                            Text(
+                                                                text = item.history.title,
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                color = contentColor,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
 
-                                                        // 如果是分支，在右侧显示分支图标和父对话标题
-                                                        if (item.history.parentChatId != null) {
-                                                            val parentChat = chatHistories.find { it.id == item.history.parentChatId }
-                                                            if (parentChat != null) {
-                                                                Spacer(modifier = Modifier.height(2.dp))
-                                                                Row(
-                                                                    verticalAlignment = Alignment.CenterVertically,
-                                                                    modifier = Modifier.semantics { contentDescription = "" }
-                                                                ) {
-                                                                    Icon(
-                                                                        imageVector = Icons.Default.AccountTree,
-                                                                        contentDescription = null,
-                                                                        tint = contentColor.copy(alpha = 0.6f),
-                                                                        modifier = Modifier.size(14.dp)
-                                                                    )
-                                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                                    Text(
-                                                                        text = parentChat.title,
-                                                                        style = MaterialTheme.typography.bodySmall,
-                                                                        color = contentColor.copy(alpha = 0.6f),
-                                                                        maxLines = 1,
-                                                                        overflow = TextOverflow.Ellipsis
-                                                                    )
+                                                            // 如果是分支，在右侧显示分支图标和父对话标题
+                                                            if (item.history.parentChatId != null) {
+                                                                val parentChat = chatHistories.find { it.id == item.history.parentChatId }
+                                                                if (parentChat != null) {
+                                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                                    Row(
+                                                                        verticalAlignment = Alignment.CenterVertically,
+                                                                        modifier = Modifier.semantics { contentDescription = "" }
+                                                                    ) {
+                                                                        Icon(
+                                                                            imageVector = Icons.Default.AccountTree,
+                                                                            contentDescription = null,
+                                                                            tint = contentColor.copy(alpha = 0.6f),
+                                                                            modifier = Modifier.size(14.dp)
+                                                                        )
+                                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                                        Text(
+                                                                            text = parentChat.title,
+                                                                            style = MaterialTheme.typography.bodySmall,
+                                                                            color = contentColor.copy(alpha = 0.6f),
+                                                                            maxLines = 1,
+                                                                            overflow = TextOverflow.Ellipsis
+                                                                        )
+                                                                    }
                                                                 }
                                                             }
                                                         }
-                                                    }
-                                                    if (activeStreamingChatIds.contains(item.history.id)) {
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        CircularProgressIndicator(
-                                                            modifier = Modifier.size(12.dp),
-                                                            strokeWidth = 1.5.dp,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                                        )
-                                                    }
-                                                    if (item.history.locked) {
-                                                        Spacer(modifier = Modifier.width(8.dp))
-                                                        Icon(
-                                                            imageVector = Icons.Default.Lock,
-                                                            contentDescription = null,
-                                                            tint = contentColor.copy(alpha = 0.6f),
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
+                                                        if (activeStreamingChatIds.contains(item.history.id)) {
+                                                            Spacer(modifier = Modifier.width(4.dp))
+                                                            CircularProgressIndicator(
+                                                                modifier = Modifier.size(12.dp),
+                                                                strokeWidth = 1.5.dp,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                                            )
+                                                        }
+                                                        if (item.history.locked) {
+                                                            Spacer(modifier = Modifier.width(8.dp))
+                                                            Icon(
+                                                                imageVector = Icons.Default.Lock,
+                                                                contentDescription = null,
+                                                                tint = contentColor.copy(alpha = 0.6f),
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        }
                                                     }
                                                 }
                                             }

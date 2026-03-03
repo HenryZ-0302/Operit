@@ -3,13 +3,16 @@ package com.ai.assistance.operit.ui.features.settings.screens
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -20,13 +23,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.outlined.MoreVert
 import com.ai.assistance.operit.ui.components.CustomScaffold
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.ContentValues
@@ -40,10 +50,15 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.model.CharacterCard
+import com.ai.assistance.operit.data.model.CharacterGroupCard
+import com.ai.assistance.operit.data.model.GroupMemberConfig
 import com.ai.assistance.operit.data.model.PromptTag
 import com.ai.assistance.operit.data.model.TagType
 import com.ai.assistance.operit.data.preferences.CharacterCardBilingualData
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
+import com.ai.assistance.operit.data.preferences.CharacterGroupCardManager
+import com.ai.assistance.operit.data.preferences.ActivePromptManager
+import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.preferences.PromptTagManager
 import com.ai.assistance.operit.data.preferences.PromptPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
@@ -64,8 +79,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.draw.shadow
 import com.ai.assistance.operit.ui.features.settings.components.CharacterCardDialog
+import com.ai.assistance.operit.ui.features.settings.components.CompactAvatarPicker
+import com.ai.assistance.operit.ui.features.settings.components.CompactTextFieldWithExpand
+import coil.compose.rememberAsyncImagePainter
 import com.ai.assistance.operit.ui.common.rememberLocal
 import com.ai.assistance.operit.util.ColorQrCodeUtil
 import com.ai.assistance.operit.util.AppLogger
@@ -81,6 +98,9 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlinx.coroutines.flow.first
+import org.json.JSONArray
+import org.json.JSONObject
+import coil.compose.AsyncImage
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class, ExperimentalLayoutApi::class)
 @Composable
@@ -98,14 +118,18 @@ fun ModelPromptsSettingsScreen(
 
     // 管理器
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
+    val characterGroupCardManager = remember { CharacterGroupCardManager.getInstance(context) }
+    val activePromptManager = remember { ActivePromptManager.getInstance(context) }
     val promptTagManager = remember { PromptTagManager.getInstance(context) }
     val userPreferencesManager = remember { UserPreferencesManager.getInstance(context) }
 
-    // 获取当前活跃角色卡ID
-    val activeCharacterCardId by characterCardManager.activeCharacterCardIdFlow.collectAsState(initial = "")
+    // 获取当前活跃目标（角色卡或群组）
+    val activePrompt by activePromptManager.activePromptFlow.collectAsState(
+        initial = ActivePrompt.CharacterCard(CharacterCardManager.DEFAULT_CHARACTER_CARD_ID)
+    )
 
     // 状态
-    var currentTab by remember { mutableStateOf(0) } // 0: 角色卡, 1: 标签
+    var currentTab by remember { mutableStateOf(0) } // 0: 角色卡, 1: 标签, 2: 群组
     var refreshTrigger by remember { mutableStateOf(0) }
 
     // 角色卡相关状态
@@ -119,6 +143,13 @@ fun ModelPromptsSettingsScreen(
     var showDeleteCharacterCardConfirm by remember { mutableStateOf(false) }
     var deletingCharacterCardId by remember { mutableStateOf("") }
     var deletingCharacterCardName by remember { mutableStateOf("") }
+
+    // 群组相关状态
+    var showAddGroupCardDialog by remember { mutableStateOf(false) }
+    var showEditGroupCardDialog by remember { mutableStateOf(false) }
+    var editingGroupCard by remember { mutableStateOf<CharacterGroupCard?>(null) }
+    var showDeleteGroupCardConfirm by remember { mutableStateOf(false) }
+    var deletingGroupCard by remember { mutableStateOf<CharacterGroupCard?>(null) }
 
     // 重置确认对话框状态
     var showResetDefaultConfirm by remember { mutableStateOf(false) }
@@ -166,6 +197,28 @@ fun ModelPromptsSettingsScreen(
         }
     }
 
+    val cropGroupAvatarLauncher = rememberLauncherForActivityResult(CropImageContract()) { result ->
+        if (result.isSuccessful) {
+            val croppedUri = result.uriContent
+            if (croppedUri != null) {
+                scope.launch {
+                    editingGroupCard?.let { group ->
+                        val internalUri = FileUtils.copyFileToInternalStorage(context, croppedUri, "group_avatar_${group.id}")
+                        if (internalUri != null) {
+                            userPreferencesManager.saveAiAvatarForCharacterGroup(group.id, internalUri.toString())
+                            Toast.makeText(context, context.getString(R.string.avatar_updated), Toast.LENGTH_SHORT).show()
+                            refreshTrigger++
+                        } else {
+                            Toast.makeText(context, context.getString(R.string.theme_copy_failed), Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+        } else if (result.error != null) {
+            Toast.makeText(context, context.getString(R.string.avatar_crop_failed, result.error!!.message), Toast.LENGTH_LONG).show()
+        }
+    }
+
     fun launchAvatarCrop(uri: Uri) {
         val cropOptions = CropImageContractOptions(
             uri,
@@ -185,11 +238,38 @@ fun ModelPromptsSettingsScreen(
         cropAvatarLauncher.launch(cropOptions)
     }
 
+    fun launchGroupAvatarCrop(uri: Uri) {
+        val cropOptions = CropImageContractOptions(
+            uri,
+            CropImageOptions().apply {
+                guidelines = com.canhub.cropper.CropImageView.Guidelines.ON
+                outputCompressFormat = android.graphics.Bitmap.CompressFormat.PNG
+                outputCompressQuality = 90
+                fixAspectRatio = true
+                aspectRatioX = 1
+                aspectRatioY = 1
+                cropMenuCropButtonTitle = context.getString(R.string.theme_crop_done)
+                activityTitle = context.getString(R.string.crop_avatar)
+                toolbarColor = Color.Gray.toArgb()
+                toolbarTitleColor = Color.White.toArgb()
+            }
+        )
+        cropGroupAvatarLauncher.launch(cropOptions)
+    }
+
     val avatarImagePicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
             launchAvatarCrop(uri)
+        }
+    }
+
+    val groupAvatarImagePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            launchGroupAvatarCrop(uri)
         }
     }
 
@@ -369,6 +449,11 @@ fun ModelPromptsSettingsScreen(
         }
     }
 
+    var isTagImporting by remember { mutableStateOf(false) }
+    var isTagExporting by remember { mutableStateOf(false) }
+    var showTagExportSelectionDialog by remember { mutableStateOf(false) }
+    var selectedTagExportIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+
     fun getTmpCameraUri(context: Context): Uri {
         val authority = "${context.applicationContext.packageName}.fileprovider"
         val tmpFile = File.createTempFile("color_qr_", ".jpg", context.cacheDir).apply {
@@ -378,8 +463,101 @@ fun ModelPromptsSettingsScreen(
         return FileProvider.getUriForFile(context, authority, tmpFile)
     }
 
+    val tagImportFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let { fileUri ->
+            if (isTagImporting) return@rememberLauncherForActivityResult
+            scope.launch {
+                isTagImporting = true
+                try {
+                    val jsonContent = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(fileUri).use { inputStream ->
+                            requireNotNull(inputStream) { context.getString(R.string.file_read_error_message) }
+                            BufferedReader(InputStreamReader(inputStream)).readText()
+                        }
+                    }
+                    val result = importPromptTagsFromJsonContent(
+                        jsonContent = jsonContent,
+                        promptTagManager = promptTagManager
+                    )
+                    Toast.makeText(
+                        context,
+                        context.getString(
+                            R.string.tag_import_summary,
+                            result.createdCount,
+                            result.updatedCount,
+                            result.skippedCount
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (e: Exception) {
+                    val errorMessage = when (e.message) {
+                        "invalid format", "missing tags array" -> context.getString(R.string.tag_import_invalid_format)
+                        else -> e.message ?: context.getString(R.string.unknown_error)
+                    }
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.import_failed, errorMessage),
+                        Toast.LENGTH_LONG
+                    ).show()
+                } finally {
+                    isTagImporting = false
+                }
+            }
+        }
+    }
+
+    fun exportCustomTagsToJson(selectedIds: Set<String>) {
+        if (isTagExporting) return
+        scope.launch {
+            isTagExporting = true
+            try {
+                val tags = promptTagManager.getAllTags()
+                if (tags.isEmpty()) {
+                    Toast.makeText(context, context.getString(R.string.tag_export_no_custom_tags), Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val selectedTags = tags.filter { it.id in selectedIds }
+                if (selectedTags.isEmpty()) {
+                    Toast.makeText(context, context.getString(R.string.tag_export_select_at_least_one), Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val exportJson = buildPromptTagExportJson(selectedTags)
+                val fileName = "prompt_tags_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.json"
+                val ok = saveBytesToDownloads(
+                    context = context,
+                    bytes = exportJson.toByteArray(Charsets.UTF_8),
+                    fileName = fileName,
+                    mimeType = "application/json"
+                )
+                if (ok) {
+                    exportSavedPath = "${Environment.DIRECTORY_DOWNLOADS}/Operit/exports/$fileName"
+                    showExportSavedDialog = true
+                } else {
+                    Toast.makeText(context, context.getString(R.string.save_failed), Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.export_failed_with_reason, e.message ?: context.getString(R.string.unknown_error)),
+                    Toast.LENGTH_LONG
+                ).show()
+            } finally {
+                isTagExporting = false
+            }
+        }
+    }
+
     // 标签相关状态
     val allTags by promptTagManager.allTagsFlow.collectAsState(initial = emptyList())
+    val customTagsForExport by remember(allTags) {
+        derivedStateOf {
+            allTags.sortedBy { it.name.lowercase(Locale.getDefault()) }
+        }
+    }
     var showAddTagDialog by remember { mutableStateOf(false) }
     var showEditTagDialog by remember { mutableStateOf(false) }
     var editingTag by remember { mutableStateOf<PromptTag?>(null) }
@@ -392,6 +570,7 @@ fun ModelPromptsSettingsScreen(
     // 初始化
     LaunchedEffect(Unit) {
         characterCardManager.initializeIfNeeded()
+        characterGroupCardManager.initializeIfNeeded()
     }
 
     // 获取所有角色卡
@@ -402,6 +581,7 @@ fun ModelPromptsSettingsScreen(
             allCharacterCards = cards
         }
     }
+    val allCharacterGroups by characterGroupCardManager.allCharacterGroupCardsFlow.collectAsState(initial = emptyList())
 
     // 保存角色卡
     fun saveCharacterCard() {
@@ -517,6 +697,50 @@ fun ModelPromptsSettingsScreen(
         }
     }
 
+    // 保存群组角色卡
+    fun saveGroupCard() {
+        editingGroupCard?.let { group ->
+            scope.launch {
+                val isNew = group.id.isBlank()
+                if (isNew) {
+                    characterGroupCardManager.createCharacterGroupCard(group)
+                } else {
+                    characterGroupCardManager.updateCharacterGroupCard(group)
+                }
+                showAddGroupCardDialog = false
+                showEditGroupCardDialog = false
+                editingGroupCard = null
+                showSaveSuccessMessage = true
+                refreshTrigger++
+            }
+        }
+    }
+
+    fun duplicateGroupCard(group: CharacterGroupCard) {
+        scope.launch {
+            val duplicatedName = group.name + context.getString(R.string.card_copy_suffix)
+            characterGroupCardManager.duplicateCharacterGroupCard(group.id, duplicatedName)
+            showDuplicateSuccessMessage = true
+            refreshTrigger++
+        }
+    }
+
+    fun confirmDeleteGroupCard() {
+        val group = deletingGroupCard ?: return
+        scope.launch {
+            characterGroupCardManager.deleteCharacterGroupCard(group.id)
+            val currentPrompt = activePrompt
+            if (currentPrompt is ActivePrompt.CharacterGroup && currentPrompt.id == group.id) {
+                activePromptManager.setActivePrompt(
+                    ActivePrompt.CharacterCard(CharacterCardManager.DEFAULT_CHARACTER_CARD_ID)
+                )
+            }
+            deletingGroupCard = null
+            showDeleteGroupCardConfirm = false
+            refreshTrigger++
+        }
+    }
+
     // 删除标签
     fun deleteTag(id: String) {
         scope.launch {
@@ -586,14 +810,30 @@ fun ModelPromptsSettingsScreen(
                             Text(stringResource(R.string.tags), fontSize = 12.sp)
                         }
                     }
-                    // 旧配置选项已废弃，删除对应标签
+                    Tab(
+                        selected = currentTab == 2,
+                        onClick = { currentTab = 2 }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(vertical = 10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.People,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(stringResource(R.string.character_groups), fontSize = 12.sp)
+                        }
+                    }
                 }
 
-                // 内容区域（仅保留角色卡和标签两页）
+                // 内容区域
                 when (currentTab) {
                     0 -> CharacterCardTab(
                         characterCards = allCharacterCards,
-                        activeCharacterCardId = activeCharacterCardId,
+                        activePrompt = activePrompt,
                         allTags = allTags,
                         onAddCharacterCard = {
                             editingOriginalName = null
@@ -602,7 +842,8 @@ fun ModelPromptsSettingsScreen(
                                 name = "",
                                 description = "",
                                 characterSetting = CharacterCardBilingualData.getDefaultCharacterSetting(context),
-                                otherContent = CharacterCardBilingualData.getDefaultOtherContent(context),
+                                otherContentChat = CharacterCardBilingualData.getDefaultOtherContentChat(context),
+                                otherContentVoice = "",
                                 attachedTagIds = emptyList(),
                                 advancedCustomPrompt = "",
                                 marks = ""
@@ -619,7 +860,7 @@ fun ModelPromptsSettingsScreen(
                         onResetDefaultCharacterCard = { showResetDefaultConfirm = true },
                         onSetActiveCharacterCard = { cardId ->
                             scope.launch {
-                                characterCardManager.setActiveCharacterCard(cardId)
+                                activePromptManager.setActivePrompt(ActivePrompt.CharacterCard(cardId))
                                 refreshTrigger++
                             }
                         },
@@ -664,7 +905,48 @@ fun ModelPromptsSettingsScreen(
                             showEditTagDialog = true
                         },
                         onDeleteTag = { tag -> showDeleteTagConfirm(tag.id, tag.name) },
+                        onImportTags = { tagImportFilePickerLauncher.launch("*/*") },
+                        onExportTags = {
+                            if (customTagsForExport.isEmpty()) {
+                                Toast.makeText(context, context.getString(R.string.tag_export_no_custom_tags), Toast.LENGTH_SHORT).show()
+                            } else {
+                                selectedTagExportIds = customTagsForExport.map { it.id }.toSet()
+                                showTagExportSelectionDialog = true
+                            }
+                        },
+                        isImporting = isTagImporting,
+                        isExporting = isTagExporting,
                         onNavigateToMarket = onNavigateToMarket
+                    )
+                    2 -> GroupCardTab(
+                        groups = allCharacterGroups,
+                        characterCards = allCharacterCards,
+                        activePrompt = activePrompt,
+                        onAddGroup = {
+                            editingGroupCard = CharacterGroupCard(
+                                id = "",
+                                name = "",
+                                description = ""
+                            )
+                            showAddGroupCardDialog = true
+                        },
+                        onEditGroup = { group ->
+                            editingGroupCard = group
+                            showEditGroupCardDialog = true
+                        },
+                        onDeleteGroup = { group ->
+                            deletingGroupCard = group
+                            showDeleteGroupCardConfirm = true
+                        },
+                        onDuplicateGroup = { group ->
+                            duplicateGroupCard(group)
+                        },
+                        onSetActiveGroup = { groupId ->
+                            scope.launch {
+                                activePromptManager.setActivePrompt(ActivePrompt.CharacterGroup(groupId))
+                                refreshTrigger++
+                            }
+                        }
                     )
                 }
             }
@@ -840,7 +1122,8 @@ fun ModelPromptsSettingsScreen(
                 name = "",
                 description = "",
                 characterSetting = "",
-                otherContent = "",
+                otherContentChat = "",
+                otherContentVoice = "",
                 attachedTagIds = emptyList(),
                 advancedCustomPrompt = ""
             ),
@@ -876,7 +1159,8 @@ fun ModelPromptsSettingsScreen(
                 name = "",
                 description = "",
                 characterSetting = "",
-                otherContent = "",
+                otherContentChat = "",
+                otherContentVoice = "",
                 attachedTagIds = emptyList(),
                 advancedCustomPrompt = ""
             ),
@@ -944,6 +1228,95 @@ fun ModelPromptsSettingsScreen(
                 editingTag = it
                 saveTag()
                                         }
+        )
+    }
+
+    if (showAddGroupCardDialog) {
+        GroupCardDialog(
+            group = editingGroupCard ?: CharacterGroupCard(id = "", name = ""),
+            allCharacterCards = allCharacterCards,
+            userPreferencesManager = userPreferencesManager,
+            onDismiss = {
+                showAddGroupCardDialog = false
+                editingGroupCard = null
+            },
+            onSave = { group ->
+                editingGroupCard = group
+                saveGroupCard()
+            },
+            onAvatarChange = {
+                groupAvatarImagePicker.launch("image/*")
+            },
+            onAvatarReset = {
+                scope.launch {
+                    editingGroupCard?.let { group ->
+                        userPreferencesManager.saveAiAvatarForCharacterGroup(group.id, null)
+                        Toast.makeText(context, context.getString(R.string.avatar_reset), Toast.LENGTH_SHORT).show()
+                        refreshTrigger++
+                    }
+                }
+            }
+        )
+    }
+
+    if (showEditGroupCardDialog) {
+        GroupCardDialog(
+            group = editingGroupCard ?: CharacterGroupCard(id = "", name = ""),
+            allCharacterCards = allCharacterCards,
+            userPreferencesManager = userPreferencesManager,
+            onDismiss = {
+                showEditGroupCardDialog = false
+                editingGroupCard = null
+            },
+            onSave = { group ->
+                editingGroupCard = group
+                saveGroupCard()
+            },
+            onAvatarChange = {
+                groupAvatarImagePicker.launch("image/*")
+            },
+            onAvatarReset = {
+                scope.launch {
+                    editingGroupCard?.let { group ->
+                        userPreferencesManager.saveAiAvatarForCharacterGroup(group.id, null)
+                        Toast.makeText(context, context.getString(R.string.avatar_reset), Toast.LENGTH_SHORT).show()
+                        refreshTrigger++
+                    }
+                }
+            }
+        )
+    }
+
+    if (showDeleteGroupCardConfirm && deletingGroupCard != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showDeleteGroupCardConfirm = false
+                deletingGroupCard = null
+            },
+            title = { Text(stringResource(R.string.delete_character_group)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.delete_character_group_confirm,
+                        deletingGroupCard?.name ?: ""
+                    )
+                )
+            },
+            confirmButton = {
+                Button(onClick = { confirmDeleteGroupCard() }) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteGroupCardConfirm = false
+                        deletingGroupCard = null
+                    }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
         )
     }
 
@@ -1050,6 +1423,108 @@ fun ModelPromptsSettingsScreen(
                         deletingTagId = ""
                         deletingTagName = ""
                     }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showTagExportSelectionDialog) {
+        AlertDialog(
+            onDismissRequest = { showTagExportSelectionDialog = false },
+            title = { Text(stringResource(R.string.tag_export_select_title)) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                selectedTagExportIds = customTagsForExport.map { it.id }.toSet()
+                            },
+                            enabled = !isTagExporting,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(stringResource(R.string.tag_export_select_all), fontSize = 12.sp)
+                        }
+                        OutlinedButton(
+                            onClick = { selectedTagExportIds = emptySet() },
+                            enabled = !isTagExporting,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(stringResource(R.string.tag_export_clear_all), fontSize = 12.sp)
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        customTagsForExport.forEach { tag ->
+                            val checked = selectedTagExportIds.contains(tag.id)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = !isTagExporting) {
+                                        selectedTagExportIds =
+                                            if (checked) selectedTagExportIds - tag.id
+                                            else selectedTagExportIds + tag.id
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = checked,
+                                    onCheckedChange = { isChecked ->
+                                        selectedTagExportIds =
+                                            if (isChecked) selectedTagExportIds + tag.id
+                                            else selectedTagExportIds - tag.id
+                                    },
+                                    enabled = !isTagExporting
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = tag.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    if (tag.description.isNotBlank()) {
+                                        Text(
+                                            text = tag.description,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val ids = selectedTagExportIds
+                        showTagExportSelectionDialog = false
+                        exportCustomTagsToJson(ids)
+                    },
+                    enabled = selectedTagExportIds.isNotEmpty() && !isTagExporting
+                ) {
+                    Text(stringResource(R.string.export))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showTagExportSelectionDialog = false },
+                    enabled = !isTagExporting
                 ) {
                     Text(stringResource(R.string.cancel))
                 }
@@ -1445,7 +1920,7 @@ enum class ExportMode {
 @Composable
 fun CharacterCardTab(
     characterCards: List<CharacterCard>,
-    activeCharacterCardId: String,
+    activePrompt: ActivePrompt,
     allTags: List<PromptTag>,
     onAddCharacterCard: () -> Unit,
     onEditCharacterCard: (CharacterCard) -> Unit,
@@ -1600,8 +2075,7 @@ fun CharacterCardTab(
                             expanded = sortMenuExpanded,
                             onDismissRequest = { sortMenuExpanded = false },
                             modifier = Modifier
-                                .shadow(12.dp, RoundedCornerShape(16.dp))
-                                .background(Color.White, RoundedCornerShape(16.dp))
+                                .background(Color.White, RoundedCornerShape(8.dp))
                         ) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.character_card_sort_default)) },
@@ -1634,7 +2108,7 @@ fun CharacterCardTab(
         items(sortedCharacterCards) { characterCard ->
             CharacterCardItem(
                 characterCard = characterCard,
-                isActive = characterCard.id == activeCharacterCardId,
+                isActive = (activePrompt as? ActivePrompt.CharacterCard)?.id == characterCard.id,
                 allTags = allTags,
                 onEdit = { onEditCharacterCard(characterCard) },
                 onDelete = { onDeleteCharacterCard(characterCard) },
@@ -1643,6 +2117,43 @@ fun CharacterCardTab(
                 onSetActive = { onSetActiveCharacterCard(characterCard.id) },
                 onExport = { onExportCharacterCard(characterCard.id, characterCard.name) }
             )
+        }
+    }
+}
+
+@Composable
+private fun SettingsListAvatar(
+    avatarUri: String?,
+    fallbackIcon: ImageVector,
+    contentDescription: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .size(40.dp)
+            .clip(CircleShape),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        if (!avatarUri.isNullOrBlank()) {
+            AsyncImage(
+                model = Uri.parse(avatarUri),
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = fallbackIcon,
+                    contentDescription = contentDescription,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
     }
 }
@@ -1661,17 +2172,23 @@ fun CharacterCardItem(
     onSetActive: () -> Unit,
     onExport: () -> Unit
 ) {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(8.dp),
+    val context = LocalContext.current
+    val userPreferencesManager = remember { UserPreferencesManager.getInstance(context) }
+    val avatarUri by remember(characterCard.id) {
+        userPreferencesManager.getAiAvatarForCharacterCardFlow(characterCard.id)
+    }.collectAsState(initial = null)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ),
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
         border = BorderStroke(
             width = 0.5.dp,
             color = MaterialTheme.colorScheme.outlineVariant
         )
-                        ) {
+    ) {
         Column(
             modifier = Modifier.padding(12.dp)
         ) {
@@ -1679,151 +2196,164 @@ fun CharacterCardItem(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                    text = characterCard.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                                        )
-                if (isActive) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    AssistChip(
-                        onClick = { },
-                        label = { Text(stringResource(R.string.currently_active), fontSize = 10.sp) },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = stringResource(R.string.currently_active),
-                                modifier = Modifier.size(14.dp)
-                            )
-                        },
-                        modifier = Modifier.height(24.dp)
-                    )
-                }
-            }
-
-            // 三点菜单
-            var showMenu by remember { mutableStateOf(false) }
-            Box {
-                IconButton(
-                    onClick = { showMenu = true },
-                    modifier = Modifier.size(32.dp)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Outlined.MoreVert,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
+                    SettingsListAvatar(
+                        avatarUri = avatarUri,
+                        fallbackIcon = Icons.Default.AccountCircle,
+                        contentDescription = "Character Avatar"
                     )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = characterCard.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (isActive) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            AssistChip(
+                                onClick = { },
+                                label = { Text(stringResource(R.string.currently_active), fontSize = 10.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = stringResource(R.string.currently_active),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                },
+                                modifier = Modifier.height(24.dp)
+                            )
+                        }
+                    }
                 }
+
+                // 三点菜单
+                var showMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(
+                        onClick = { showMenu = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.MoreVert,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
-                    if (!isActive) {
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        modifier = Modifier
+                            .background(Color.White, RoundedCornerShape(8.dp))
+                    ) {
+                        if (!isActive) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.set_active)) },
+                                onClick = {
+                                    onSetActive()
+                                    showMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            )
+                        }
+                    
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.set_active)) },
+                            text = { Text(stringResource(R.string.edit)) },
                             onClick = {
-                                onSetActive()
+                                onEdit()
                                 showMenu = false
                             },
                             leadingIcon = {
                                 Icon(
-                                    Icons.Default.Check,
+                                    Icons.Default.Edit,
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         )
-                    }
                     
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.edit)) },
-                        onClick = {
-                            onEdit()
-                            showMenu = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Edit,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    )
-                    
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.duplicate)) },
-                        onClick = {
-                            onDuplicate()
-                            showMenu = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.ContentCopy,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.duplicate)) },
+                            onClick = {
+                                onDuplicate()
+                                showMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        )
 
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.export)) },
-                        onClick = {
-                            onExport()
-                            showMenu = false
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Default.Share,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    )
-                    
-                    if (characterCard.isDefault) {
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.reset)) },
+                            text = { Text(stringResource(R.string.export)) },
                             onClick = {
-                                onReset()
+                                onExport()
                                 showMenu = false
                             },
                             leadingIcon = {
                                 Icon(
-                                    Icons.Default.Restore,
+                                    Icons.Default.Share,
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         )
-                    }
                     
-                    if (!characterCard.isDefault) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.delete)) },
-                            onClick = {
-                                onDelete()
-                                showMenu = false
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            },
-                            colors = MenuDefaults.itemColors(
-                                textColor = MaterialTheme.colorScheme.error
+                        if (characterCard.isDefault) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.reset)) },
+                                onClick = {
+                                    onReset()
+                                    showMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Restore,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             )
-                        )
+                        }
+                    
+                        if (!characterCard.isDefault) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.delete)) },
+                                onClick = {
+                                    onDelete()
+                                    showMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                },
+                                colors = MenuDefaults.itemColors(
+                                    textColor = MaterialTheme.colorScheme.error
+                                )
+                            )
+                        }
                     }
                 }
             }
-        }
 
         // 角色设定预览
         if (characterCard.characterSetting.isNotBlank()) {
@@ -1836,10 +2366,10 @@ fun CharacterCardItem(
                 )
             }
 
-            // 其他内容预览
-            if (characterCard.otherContent.isNotBlank()) {
+            // 其他内容（聊天）预览
+            if (characterCard.otherContentChat.isNotBlank()) {
                                     Text(
-                    text = stringResource(R.string.other_content_preview, characterCard.otherContent.take(40)),
+                    text = stringResource(R.string.other_content_chat_preview, characterCard.otherContentChat.take(40)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 11.sp
@@ -1888,9 +2418,8 @@ fun CharacterCardItem(
                 )
             }
         }
+        }
     }
-}
-
 // 标签标签页
 @Composable
 fun TagTab(
@@ -1898,6 +2427,10 @@ fun TagTab(
     onAddTag: () -> Unit,
     onEditTag: (PromptTag) -> Unit,
     onDeleteTag: (PromptTag) -> Unit,
+    onImportTags: () -> Unit,
+    onExportTags: () -> Unit,
+    isImporting: Boolean,
+    isExporting: Boolean,
     onNavigateToMarket: () -> Unit
 ) {
     LazyColumn(
@@ -1933,31 +2466,74 @@ fun TagTab(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // 第二行：标签市场按钮
-                OutlinedButton(
-                    onClick = onNavigateToMarket,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                // 第二行：导入/导出/市场
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(stringResource(R.string.tag_market), fontSize = 12.sp)
+                    OutlinedButton(
+                        onClick = onImportTags,
+                        enabled = !isImporting && !isExporting,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.import_action), fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = onExportTags,
+                        enabled = !isImporting && !isExporting,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.export), fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = onNavigateToMarket,
+                        enabled = !isImporting && !isExporting,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.tag_market), fontSize = 12.sp)
+                    }
+                }
+
+                if (isImporting || isExporting) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Text(
+                            text = stringResource(R.string.processing),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
 
-        // 系统标签
-        val systemTags = tags.filter { it.isSystemTag }
-        if (systemTags.isNotEmpty()) {
+        val sortedTags = tags.sortedBy { it.name.lowercase(Locale.getDefault()) }
+        if (sortedTags.isNotEmpty()) {
             item {
-                                                    Text(
-                    text = stringResource(R.string.system_tags),
+                Text(
+                    text = stringResource(R.string.tags),
                     style = MaterialTheme.typography.titleMedium,
-                                                        fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
                 )
             }
 
-            items(systemTags) { tag ->
+            items(sortedTags) { tag ->
                 TagItem(
                     tag = tag,
                     onEdit = { onEditTag(tag) },
@@ -1965,25 +2541,541 @@ fun TagTab(
                 )
             }
         }
+    }
+}
 
-        // 自定义标签
-        val customTags = tags.filter { !it.isSystemTag }
-        if (customTags.isNotEmpty()) {
-            item {
-                                Text(
-                    text = stringResource(R.string.custom_tags),
-                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+@Composable
+fun GroupCardTab(
+    groups: List<CharacterGroupCard>,
+    characterCards: List<CharacterCard>,
+    activePrompt: ActivePrompt,
+    onAddGroup: () -> Unit,
+    onEditGroup: (CharacterGroupCard) -> Unit,
+    onDeleteGroup: (CharacterGroupCard) -> Unit,
+    onDuplicateGroup: (CharacterGroupCard) -> Unit,
+    onSetActiveGroup: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.character_groups),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(onClick = onAddGroup, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = stringResource(R.string.create),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+
+        if (groups.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.character_group_empty_state),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(groups, key = { it.id }) { group ->
+                    val memberNames = group.members.mapNotNull { member ->
+                        characterCards.firstOrNull { it.id == member.characterCardId }?.name
+                    }
+                    GroupCardItem(
+                        group = group,
+                        isActive = (activePrompt as? ActivePrompt.CharacterGroup)?.id == group.id,
+                        memberNames = memberNames,
+                        onEdit = { onEditGroup(group) },
+                        onDelete = { onDeleteGroup(group) },
+                        onDuplicate = { onDuplicateGroup(group) },
+                        onSetActive = { onSetActiveGroup(group.id) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupCardItem(
+    group: CharacterGroupCard,
+    isActive: Boolean,
+    memberNames: List<String>,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    onDuplicate: () -> Unit,
+    onSetActive: () -> Unit
+) {
+    val context = LocalContext.current
+    val userPreferencesManager = remember { UserPreferencesManager.getInstance(context) }
+    val groupAvatarUri by remember(group.id) {
+        userPreferencesManager.getAiAvatarForCharacterGroupFlow(group.id)
+    }.collectAsState(initial = null)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(
+            width = 0.5.dp,
+            color = if (isActive) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            }
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SettingsListAvatar(
+                        avatarUri = groupAvatarUri,
+                        fallbackIcon = Icons.Default.Group,
+                        contentDescription = "Group Avatar"
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = group.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (isActive) {
+                                AssistChip(
+                                    onClick = {},
+                                    label = { Text(stringResource(R.string.currently_active), fontSize = 10.sp) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    },
+                                    modifier = Modifier.height(24.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                var showMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(
+                        onClick = { showMenu = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Outlined.MoreVert,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        modifier = Modifier.background(Color.White, RoundedCornerShape(8.dp))
+                    ) {
+                        if (!isActive) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.set_active)) },
+                                onClick = {
+                                    onSetActive()
+                                    showMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            )
+                        }
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.edit)) },
+                            onClick = {
+                                onEdit()
+                                showMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.duplicate)) },
+                            onClick = {
+                                onDuplicate()
+                                showMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.delete)) },
+                            onClick = {
+                                onDelete()
+                                showMenu = false
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            },
+                            colors = MenuDefaults.itemColors(
+                                textColor = MaterialTheme.colorScheme.error
+                            )
+                        )
+                    }
+                }
+            }
+
+            if (group.description.isNotBlank()) {
+                Text(
+                    text = group.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
                 )
             }
 
-            items(customTags) { tag ->
-                TagItem(
-                    tag = tag,
-                    onEdit = { onEditTag(tag) },
-                    onDelete = { onDeleteTag(tag) }
+            Text(
+                text = stringResource(R.string.character_group_member_count, group.members.size),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (memberNames.isNotEmpty()) {
+                Text(
+                    text = memberNames.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupCardDialog(
+    group: CharacterGroupCard,
+    allCharacterCards: List<CharacterCard>,
+    userPreferencesManager: UserPreferencesManager,
+    onDismiss: () -> Unit,
+    onSave: (CharacterGroupCard) -> Unit,
+    onAvatarChange: () -> Unit,
+    onAvatarReset: () -> Unit
+) {
+    var name by remember(group.id) { mutableStateOf(group.name) }
+    var description by remember(group.id) { mutableStateOf(group.description) }
+    var members by remember(group.id) {
+        mutableStateOf(group.members.sortedBy { it.orderIndex })
+    }
+
+    var addMemberMenuExpanded by remember { mutableStateOf(false) }
+    var selectedAddMemberId by remember { mutableStateOf<String?>(null) }
+
+    val selectableCards = remember(allCharacterCards, members) {
+        val existing = members.map { it.characterCardId }.toSet()
+        allCharacterCards.filter { it.id !in existing }
+    }
+
+    if (selectedAddMemberId == null && selectableCards.isNotEmpty()) {
+        selectedAddMemberId = selectableCards.first().id
+    }
+
+    val avatarUri by userPreferencesManager.getAiAvatarForCharacterGroupFlow(group.id)
+        .collectAsState(initial = null)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .wrapContentHeight()
+                .imePadding(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            border = BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                // 头部区域 - 头像 + 基本信息
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 紧凑型头像
+                    CompactAvatarPicker(
+                        avatarUri = avatarUri,
+                        onAvatarChange = onAvatarChange,
+                        onAvatarReset = onAvatarReset
+                    )
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // 基本信息
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        CompactTextFieldWithExpand(
+                            value = name,
+                            onValueChange = { name = it },
+                            label = stringResource(R.string.group_name),
+                            singleLine = true,
+                            onExpandClick = { /* 可选：添加全屏编辑 */ }
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        CompactTextFieldWithExpand(
+                            value = description,
+                            onValueChange = { description = it },
+                            label = stringResource(R.string.description_optional),
+                            maxLines = 2,
+                            onExpandClick = { /* 可选：添加全屏编辑 */ }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 可滚动内容区域
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // 群组成员标题
+                    Text(
+                        text = stringResource(R.string.group_members),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    // 添加成员
+                    if (selectableCards.isNotEmpty()) {
+                        val selectedCardName = selectableCards.firstOrNull { it.id == selectedAddMemberId }?.name ?: ""
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = selectedCardName,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text(stringResource(R.string.group_add_member), fontSize = 11.sp) },
+                                trailingIcon = {
+                                    Icon(
+                                        if (addMemberMenuExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clickable { addMemberMenuExpanded = !addMemberMenuExpanded }
+                            )
+                            DropdownMenu(
+                                expanded = addMemberMenuExpanded,
+                                onDismissRequest = { addMemberMenuExpanded = false }
+                            ) {
+                                selectableCards.forEach { card ->
+                                    DropdownMenuItem(
+                                        text = { Text(card.name, fontSize = 12.sp) },
+                                        onClick = {
+                                            selectedAddMemberId = card.id
+                                            addMemberMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                val selected = selectedAddMemberId ?: return@OutlinedButton
+                                members = (members + GroupMemberConfig(
+                                    characterCardId = selected,
+                                    orderIndex = members.size
+                                )).mapIndexed { index, member -> member.copy(orderIndex = index) }
+                                val next = selectableCards.firstOrNull { it.id != selected }?.id
+                                selectedAddMemberId = next
+                            },
+                            modifier = Modifier.height(32.dp),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(stringResource(R.string.add), fontSize = 12.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // 成员列表
+                    if (members.isEmpty()) {
+                        Text(
+                            text = stringResource(R.string.group_member_empty_hint),
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            members.forEachIndexed { index, member ->
+                                val cardName = allCharacterCards.firstOrNull { it.id == member.characterCardId }?.name
+                                    ?: member.characterCardId
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                    ),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = cardName,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                members = members.toMutableList().also { it.removeAt(index) }
+                                                    .mapIndexed { orderIndex, it -> it.copy(orderIndex = orderIndex) }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 操作按钮
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(stringResource(R.string.cancel), fontSize = 13.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            val normalizedName = name.trim()
+                            if (normalizedName.isBlank()) return@Button
+
+                            val normalizedMembers = members.mapIndexed { order, member ->
+                                member.copy(orderIndex = order)
+                            }
+
+                            onSave(
+                                group.copy(
+                                    name = normalizedName,
+                                    description = description.trim(),
+                                    members = normalizedMembers,
+                                    updatedAt = System.currentTimeMillis()
+                                )
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(stringResource(R.string.save), fontSize = 13.sp)
+                    }
+                }
             }
         }
     }
@@ -2000,10 +3092,7 @@ fun TagItem(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(6.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (tag.isSystemTag)
-                MaterialTheme.colorScheme.secondaryContainer
-            else
-                MaterialTheme.colorScheme.surface
+            containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
                                                         Row(
@@ -2046,14 +3135,12 @@ fun TagItem(
                     Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.edit), modifier = Modifier.size(16.dp))
                 }
 
-                if (!tag.isSystemTag) {
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete), modifier = Modifier.size(16.dp))
-                                                            }
-                                    }
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.delete), modifier = Modifier.size(16.dp))
+                }
             }
         }
     }
@@ -2133,6 +3220,106 @@ fun TagDialog(
                 Text(stringResource(R.string.cancel))
             }
         }
+    )
+}
+
+private data class PromptTagImportSummary(
+    val createdCount: Int,
+    val updatedCount: Int,
+    val skippedCount: Int
+)
+
+private fun buildPromptTagExportJson(tags: List<PromptTag>): String {
+    val tagsArray = JSONArray()
+    tags.forEach { tag ->
+        tagsArray.put(
+            JSONObject().apply {
+                put("name", tag.name)
+                put("description", tag.description)
+                put("promptContent", tag.promptContent)
+                put("tagType", tag.tagType.name)
+            }
+        )
+    }
+
+    return JSONObject().apply {
+        put("format", "operit_prompt_tags")
+        put("version", 1)
+        put("exportedAt", System.currentTimeMillis())
+        put("tags", tagsArray)
+    }.toString(2)
+}
+
+private suspend fun importPromptTagsFromJsonContent(
+    jsonContent: String,
+    promptTagManager: PromptTagManager
+): PromptTagImportSummary {
+    val root = JSONObject(jsonContent)
+    val format = root.optString("format")
+    if (format.isNotBlank() && format != "operit_prompt_tags") {
+        throw IllegalArgumentException("invalid format")
+    }
+
+    val tagsArray = root.optJSONArray("tags")
+        ?: throw IllegalArgumentException("missing tags array")
+
+    val existingCustomTagsByName = promptTagManager.getAllTags()
+        .associateBy(
+            keySelector = { it.name.trim().lowercase(Locale.getDefault()) },
+            valueTransform = { it.id }
+        )
+        .toMutableMap()
+
+    var createdCount = 0
+    var updatedCount = 0
+    var skippedCount = 0
+
+    for (i in 0 until tagsArray.length()) {
+        val obj = tagsArray.optJSONObject(i)
+        if (obj == null) {
+            skippedCount++
+            continue
+        }
+
+        val name = obj.optString("name").trim()
+        if (name.isBlank()) {
+            skippedCount++
+            continue
+        }
+
+        val description = obj.optString("description")
+        val promptContent = obj.optString("promptContent")
+        val tagType = runCatching {
+            TagType.valueOf(obj.optString("tagType", TagType.CUSTOM.name))
+        }.getOrDefault(TagType.CUSTOM)
+        val nameKey = name.lowercase(Locale.getDefault())
+        val existingTagId = existingCustomTagsByName[nameKey]
+
+        if (existingTagId != null) {
+            promptTagManager.updatePromptTag(
+                id = existingTagId,
+                name = name,
+                description = description,
+                promptContent = promptContent,
+                tagType = tagType
+            )
+            updatedCount++
+        } else {
+            val newId = promptTagManager.createPromptTag(
+                name = name,
+                description = description,
+                promptContent = promptContent,
+                tagType = tagType
+            )
+            existingCustomTagsByName[nameKey] = newId
+            createdCount++
+        }
+    }
+
+    return PromptTagImportSummary(
+        createdCount = createdCount,
+        updatedCount = updatedCount,
+        skippedCount = skippedCount
     )
 }
 

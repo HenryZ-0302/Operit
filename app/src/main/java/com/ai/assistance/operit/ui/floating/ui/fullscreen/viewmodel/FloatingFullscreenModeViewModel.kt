@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "FloatingFullscreenViewModel"
+private const val FULLSCREEN_TTS_CAPTURE_SUPPRESS_MS = 1200L
 
 class FloatingFullscreenModeViewModel(
     private val context: Context,
@@ -59,6 +60,8 @@ class FloatingFullscreenModeViewModel(
     private var lastVoiceActivityAtMs: Long = 0L
 
     private var wakeEnterJob: Job? = null
+    private var suppressRecognitionUntilMs: Long = 0L
+    private var waveModeAutoTimeoutEnabled: Boolean = false
     
     // ===== 语音交互管理器 =====
     val speechManager = SpeechInteractionManager(
@@ -160,23 +163,31 @@ class FloatingFullscreenModeViewModel(
             sb.append(char)
             
             if (char in endChars || sb.length >= 50) {
-                if (trySpeak(sb.toString(), isFirstSentence, cleaners)) {
+                if (trySpeak(sb.toString(), isFirstSentence, cleaners, armMicSuppression = isFirstSentence)) {
                     isFirstSentence = false
                     sb.clear()
                 }
             }
         }
-        trySpeak(sb.toString(), isFirstSentence, cleaners)
+        trySpeak(sb.toString(), isFirstSentence, cleaners, armMicSuppression = isFirstSentence)
     }
 
     private fun handleStaticResponse(content: String, cleaners: List<String>) {
         aiMessage = content
-        trySpeak(content, false, cleaners)
+        trySpeak(content, false, cleaners, armMicSuppression = true)
     }
 
-    private fun trySpeak(text: String, interrupt: Boolean, cleaners: List<String>): Boolean {
+    private fun trySpeak(
+        text: String,
+        interrupt: Boolean,
+        cleaners: List<String>,
+        armMicSuppression: Boolean = false
+    ): Boolean {
         val cleanText = speechManager.cleanTextForTts(text.trim(), cleaners)
         if (cleanText.isNotEmpty()) {
+            if (armMicSuppression && isWaveActive) {
+                suppressRecognitionUntilMs = System.currentTimeMillis() + FULLSCREEN_TTS_CAPTURE_SUPPRESS_MS
+            }
             speechManager.speak(cleanText, interrupt)
             return true
         }
@@ -204,21 +215,29 @@ class FloatingFullscreenModeViewModel(
         speechManager.stopListening(isCancel)
     }
 
-    fun enterWaveMode(wakeLaunched: Boolean = false) {
+    fun enterWaveMode(
+        wakeLaunched: Boolean = false,
+        enableAutoTimeout: Boolean = false
+    ) {
         wakeEnterJob?.cancel()
         wakeEnterJob = coroutineScope.launch {
             // 语音态 UI 先切换出来（唤醒场景更符合预期）
             isWaveActive = true
+            waveModeAutoTimeoutEnabled = enableAutoTimeout
+            inactivityJob?.cancel()
+            inactivityJob = null
 
             playWakeGreetingIfNeeded(wakeLaunched)
 
             startVoiceCapture()
-            if (speechManager.isRecording) {
+            if (speechManager.isRecording && waveModeAutoTimeoutEnabled) {
                 lastVoiceActivityAtMs = System.currentTimeMillis()
                 startInactivityMonitor()
             } else {
-                isWaveActive = false
-                showBottomControls = true
+                if (!speechManager.isRecording) {
+                    isWaveActive = false
+                    showBottomControls = true
+                }
             }
         }
     }
@@ -226,6 +245,8 @@ class FloatingFullscreenModeViewModel(
     fun exitWaveMode() {
         wakeEnterJob?.cancel()
         wakeEnterJob = null
+        suppressRecognitionUntilMs = 0L
+        waveModeAutoTimeoutEnabled = false
         stopVoiceCapture(true)
         coroutineScope.launch { speechManager.voiceService.stop() }
         isWaveActive = false
@@ -246,30 +267,17 @@ class FloatingFullscreenModeViewModel(
             }
         if (text.isBlank()) return
 
-        // 先朗读问候语，再开始录音；等待 TTS 结束，避免把 TTS 录进去。
+        // 唤醒问候语与录音并行执行（全双工）
+        if (isWaveActive) {
+            suppressRecognitionUntilMs = System.currentTimeMillis() + FULLSCREEN_TTS_CAPTURE_SUPPRESS_MS
+        }
         speechManager.speak(text, interrupt = true)
-
-        val voiceService = speechManager.voiceService
-        val estimatedMs = (600L + text.length * 220L).coerceIn(800L, 6000L)
-
-        val started = withTimeoutOrNull(1500L) {
-            voiceService.speakingStateFlow.filter { it }.first()
-        }
-
-        if (started != null) {
-            withTimeoutOrNull(estimatedMs + 2500L) {
-                voiceService.speakingStateFlow.filter { speaking -> !speaking }.first()
-            }
-        } else {
-            // 某些实现可能不会及时发 speaking=true，这里用估时兜底
-            delay(estimatedMs)
-        }
-
-        // 留一点间隔，减少回声/尾音被录入
-        delay(250L)
     }
 
     fun handleRecognitionResult(resultText: String, isFinal: Boolean) {
+        if (isWaveActive && System.currentTimeMillis() < suppressRecognitionUntilMs) {
+            return
+        }
         if (isWaveActive && resultText.isNotBlank()) {
             lastVoiceActivityAtMs = System.currentTimeMillis()
         }
@@ -301,7 +309,7 @@ class FloatingFullscreenModeViewModel(
          }
 
          if (autoEnterVoiceChat) {
-             enterWaveMode(wakeLaunched = wakeLaunched)
+             enterWaveMode(wakeLaunched = wakeLaunched, enableAutoTimeout = true)
          }
      }
 

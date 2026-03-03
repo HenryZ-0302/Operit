@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -38,29 +39,39 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.data.preferences.CharacterCardManager
+import com.ai.assistance.operit.data.preferences.CharacterGroupCardManager
+import com.ai.assistance.operit.data.preferences.ActivePromptManager
+import com.ai.assistance.operit.data.model.ActivePrompt
 import com.ai.assistance.operit.data.preferences.SpeechServicesPreferences
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.data.preferences.WakeWordPreferences
 import com.ai.assistance.operit.ui.floating.FloatContext
 import com.ai.assistance.operit.ui.floating.FloatingMode
-import com.ai.assistance.operit.ui.floating.ui.fullscreen.XmlTextProcessor
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.components.BottomControlBar
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.components.EditPanel
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.components.MessageDisplay
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.components.WaveVisualizerSection
 import com.ai.assistance.operit.ui.floating.ui.fullscreen.viewmodel.rememberFloatingFullscreenModeViewModel
+import java.util.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
 
 /**
  * 全屏模式主屏幕
@@ -77,13 +88,45 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
     // 偏好设置
     val preferencesManager = UserPreferencesManager.getInstance(context)
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
-    val activeCharacterCard by characterCardManager.activeCharacterCardFlow.collectAsState(initial = null)
-    val activeCharacterAvatarUri by remember(activeCharacterCard?.id) {
+    val characterGroupCardManager = remember { CharacterGroupCardManager.getInstance(context) }
+    val activePromptManager = remember { ActivePromptManager.getInstance(context) }
+    val activePrompt by activePromptManager.activePromptFlow.collectAsState(
+        initial = ActivePrompt.CharacterCard(CharacterCardManager.DEFAULT_CHARACTER_CARD_ID)
+    )
+    val activeCharacterCard by remember(activePrompt) {
+        when (val prompt = activePrompt) {
+            is ActivePrompt.CharacterCard -> characterCardManager.getCharacterCardFlow(prompt.id)
+            is ActivePrompt.CharacterGroup -> flowOf(null)
+        }
+    }.collectAsState(initial = null)
+    val activeCharacterGroup by remember(activePrompt) {
+        when (val prompt = activePrompt) {
+            is ActivePrompt.CharacterGroup -> characterGroupCardManager.getCharacterGroupCardFlow(prompt.id)
+            is ActivePrompt.CharacterCard -> flowOf(null)
+        }
+    }.collectAsState(initial = null)
+    val activeCardAvatarUri by remember(activeCharacterCard?.id) {
         activeCharacterCard?.id?.let { preferencesManager.getAiAvatarForCharacterCardFlow(it) } ?: flowOf(null)
     }.collectAsState(initial = null)
+    val activeGroupAvatarUri by remember(activeCharacterGroup?.id) {
+        activeCharacterGroup?.id?.let { preferencesManager.getAiAvatarForCharacterGroupFlow(it) } ?: flowOf(null)
+    }.collectAsState(initial = null)
+    val activeGroupFallbackMemberCardId = remember(activeCharacterGroup?.members) {
+        val sortedMembers = activeCharacterGroup?.members?.sortedBy { it.orderIndex }.orEmpty()
+        sortedMembers.firstOrNull()?.characterCardId
+    }
+    val activeGroupFallbackMemberAvatarUri by remember(activeGroupFallbackMemberCardId) {
+        activeGroupFallbackMemberCardId?.let { preferencesManager.getAiAvatarForCharacterCardFlow(it) }
+            ?: flowOf(null)
+    }.collectAsState(initial = null)
+    val activeCharacterAvatarUri =
+        when (activePrompt) {
+            is ActivePrompt.CharacterGroup -> activeGroupAvatarUri ?: activeGroupFallbackMemberAvatarUri
+            is ActivePrompt.CharacterCard -> activeCardAvatarUri
+        }
     val globalAiAvatarUri by preferencesManager.customAiAvatarUri.collectAsState(initial = null)
     val aiAvatarUri = activeCharacterAvatarUri ?: globalAiAvatarUri
-    
+
     val speechServicesPrefs = SpeechServicesPreferences(context)
     val ttsCleanerRegexs by speechServicesPrefs.ttsCleanerRegexsFlow.collectAsState(initial = emptyList())
     
@@ -180,30 +223,71 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
         animationSpec = tween(durationMillis = 260),
         label = "fullscreen_bg_alpha"
     )
-    val fullscreenGradientAlpha by animateFloatAsState(
-        targetValue = if (autoEnteringVoice) 0f else 0.45f,
+    val systemBlurActive = floatContext.windowState?.fullscreenSystemBlurActive?.value ?: false
+    val fallbackBlurEnabled = !systemBlurActive
+    val fallbackOverlayAlpha by animateFloatAsState(
+        targetValue = if (fallbackBlurEnabled && !autoEnteringVoice) 0.30f else 0f,
         animationSpec = tween(durationMillis = 260),
-        label = "fullscreen_gradient_alpha"
+        label = "fullscreen_fallback_alpha"
+    )
+    val fallbackBlurRadius by animateFloatAsState(
+        targetValue = if (fallbackBlurEnabled && !autoEnteringVoice) 22f else 0f,
+        animationSpec = tween(durationMillis = 260),
+        label = "fullscreen_fallback_blur"
+    )
+    val fallbackNoiseAlpha by animateFloatAsState(
+        targetValue = if (fallbackBlurEnabled && !autoEnteringVoice) 0.06f else 0f,
+        animationSpec = tween(durationMillis = 260),
+        label = "fullscreen_fallback_noise"
     )
     val fullscreenScrimColor = MaterialTheme.colorScheme.scrim.copy(alpha = fullscreenBgAlpha)
+    val noiseBitmap = rememberNoiseBitmap()
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(fullscreenScrimColor)
-            .background(
-                brush = Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        // 上半部分完全透明
-                        0.0f to Color.Transparent,
-                        0.10f to Color.Transparent,
-                        // 从屏幕中间往下开始出现更暗一些的蓝绿色渐变（降低明度，不是加厚遮罩）
-                        0.35f to Color(0xFF42A5F5).copy(alpha = fullscreenGradientAlpha),  // 深一点的蓝
-                        0.75f  to Color(0xFF26C6DA).copy(alpha = fullscreenGradientAlpha),  // 深一点的蓝绿
-                        1.0f  to Color(0xFF66BB6A).copy(alpha = fullscreenGradientAlpha)   // 深一点的绿色
-                    )
-                )
-            )
     ) {
+        if (fallbackBlurEnabled) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = fallbackOverlayAlpha }
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.0f to Color.Transparent,
+                                0.40f to Color.Transparent,
+                                0.68f to MaterialTheme.colorScheme.surface.copy(alpha = 0.22f),
+                                1.0f to MaterialTheme.colorScheme.surface.copy(alpha = 0.40f)
+                            )
+                        )
+                    )
+                    .blur(fallbackBlurRadius.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = fallbackOverlayAlpha }
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colorStops = arrayOf(
+                                0.0f to Color.Transparent,
+                                0.35f to Color.Transparent,
+                                0.70f to Color.White.copy(alpha = 0.08f),
+                                1.0f to Color.White.copy(alpha = 0.16f)
+                            )
+                        )
+                    )
+            )
+            Image(
+                bitmap = noiseBitmap,
+                contentDescription = null,
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = fallbackNoiseAlpha },
+                contentScale = ContentScale.Crop
+            )
+        }
         Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -211,7 +295,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                 .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
-        ) {
+    ) {
             IconButton(
                 onClick = {
                     val group = autoNewChatGroup.trim().ifBlank {
@@ -300,7 +384,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                         if (viewModel.isWaveActive) {
                             viewModel.exitWaveMode()
                         } else {
-                            viewModel.enterWaveMode()
+                            viewModel.enterWaveMode(enableAutoTimeout = false)
                         }
                     },
                     modifier = Modifier
@@ -390,7 +474,7 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
                 if (viewModel.isWaveActive) {
                     viewModel.exitWaveMode()
                 } else {
-                    viewModel.enterWaveMode()
+                    viewModel.enterWaveMode(enableAutoTimeout = false)
                 }
             },
             onEnterEditMode = { text -> viewModel.enterEditMode(text) },
@@ -409,5 +493,20 @@ fun FloatingFullscreenMode(floatContext: FloatContext) {
             volumeLevel = volumeLevel,
             modifier = Modifier.align(Alignment.BottomCenter)
         )
+    }
+}
+
+@Composable
+private fun rememberNoiseBitmap(size: Int = 120): ImageBitmap {
+    return remember(size) {
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val random = Random(0)
+        val pixels = IntArray(size * size)
+        for (i in pixels.indices) {
+            val alpha = 8 + random.nextInt(20)
+            pixels[i] = AndroidColor.argb(alpha, 255, 255, 255)
+        }
+        bitmap.setPixels(pixels, 0, size, 0, 0, size, size)
+        bitmap.asImageBitmap()
     }
 }

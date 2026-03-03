@@ -1018,6 +1018,38 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "update_chat_title",
+                            description = "Update a chat title.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "target chat id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "title",
+                                        type = "string",
+                                        description = "new chat title",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "delete_chat",
+                            description = "Delete a chat by id.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "target chat id",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "send_message_to_ai",
                             description = "Send a user message to AI.",
                             parametersStructured =
@@ -1436,6 +1468,688 @@ object SystemToolPromptsInternal {
                                         type = "string",
                                         description = "optional, target app package name",
                                         required = false
+                                    )
+                                )
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
+                categoryName = "Software Settings Tools",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "read_environment_variable",
+                            description = "Read current value of an environment variable by key.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "key",
+                                        type = "string",
+                                        description = "environment variable key",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "write_environment_variable",
+                            description = "Write an environment variable by key; empty value clears it.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "key",
+                                        type = "string",
+                                        description = "environment variable key",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "value",
+                                        type = "string",
+                                        description = "optional, value to write; empty clears the key",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "list_sandbox_packages",
+                            description = "List sandbox packages (built-in and external) with current enabled states and management paths.",
+                            parametersStructured = listOf()
+                        ),
+                        ToolPrompt(
+                            name = "set_sandbox_package_enabled",
+                            description = "Enable or disable a sandbox package by package_name.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "package_name",
+                                        type = "string",
+                                        description = "sandbox package name",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enabled",
+                                        type = "boolean",
+                                        description = "true to enable, false to disable",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "restart_mcp_with_logs",
+                            description = "Restart MCP plugin startup flow and return per-plugin startup logs.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "optional, max wait time in milliseconds",
+                                        required = false,
+                                        default = "120000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "get_speech_services_config",
+                            description = "Get current TTS/STT speech services configuration.",
+                            parametersStructured = listOf()
+                        ),
+                        ToolPrompt(
+                            name = "set_speech_services_config",
+                            description = "Update TTS/STT speech services configuration fields.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "tts_service_type",
+                                        type = "string",
+                                        description = "optional, SIMPLE_TTS/HTTP_TTS/SILICONFLOW_TTS/OPENAI_TTS",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_url_template",
+                                        type = "string",
+                                        description = "optional, TTS endpoint URL template",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_api_key",
+                                        type = "string",
+                                        description = "optional, TTS API key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_headers",
+                                        type = "string",
+                                        description = "optional, TTS headers JSON object string",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_http_method",
+                                        type = "string",
+                                        description = "optional, GET/POST",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_request_body",
+                                        type = "string",
+                                        description = "optional, TTS POST body template",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_content_type",
+                                        type = "string",
+                                        description = "optional, TTS content type",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_voice_id",
+                                        type = "string",
+                                        description = "optional, TTS voice id",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_model_name",
+                                        type = "string",
+                                        description = "optional, TTS model name",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_cleaner_regexs",
+                                        type = "string",
+                                        description = "optional, TTS cleaner regex list JSON array string",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_speech_rate",
+                                        type = "number",
+                                        description = "optional, TTS speech rate",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_pitch",
+                                        type = "number",
+                                        description = "optional, TTS pitch",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stt_service_type",
+                                        type = "string",
+                                        description = "optional, SHERPA_NCNN/OPENAI_STT/DEEPGRAM_STT",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stt_endpoint_url",
+                                        type = "string",
+                                        description = "optional, STT endpoint URL",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stt_api_key",
+                                        type = "string",
+                                        description = "optional, STT API key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stt_model_name",
+                                        type = "string",
+                                        description = "optional, STT model name",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "list_model_configs",
+                            description = "List all model configs and function-to-config bindings.",
+                            parametersStructured = listOf()
+                        ),
+                        ToolPrompt(
+                            name = "create_model_config",
+                            description = "Create a model config. Optional fields can be provided at creation.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "optional, config display name",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_provider_type",
+                                        type = "string",
+                                        description = "optional, provider enum name (e.g. OPENAI_GENERIC/DEEPSEEK/GEMINI_GENERIC/OLLAMA/MNN/LLAMA_CPP)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_endpoint",
+                                        type = "string",
+                                        description = "optional, API endpoint URL",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_key",
+                                        type = "string",
+                                        description = "optional, API key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "model_name",
+                                        type = "string",
+                                        description = "optional, model name; multiple models can be comma-separated",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable max_tokens parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens",
+                                        type = "integer",
+                                        description = "optional, max_tokens value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "temperature_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable temperature parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "temperature",
+                                        type = "number",
+                                        description = "optional, temperature value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_p_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable top_p parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_p",
+                                        type = "number",
+                                        description = "optional, top_p value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_k_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable top_k parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_k",
+                                        type = "integer",
+                                        description = "optional, top_k value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "presence_penalty_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable presence_penalty parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "presence_penalty",
+                                        type = "number",
+                                        description = "optional, presence_penalty value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "frequency_penalty_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable frequency_penalty parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "frequency_penalty",
+                                        type = "number",
+                                        description = "optional, frequency_penalty value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "repetition_penalty_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable repetition_penalty parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "repetition_penalty",
+                                        type = "number",
+                                        description = "optional, repetition_penalty value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "context_length",
+                                        type = "number",
+                                        description = "optional, base context length",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_context_length",
+                                        type = "number",
+                                        description = "optional, max context length",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_max_context_mode",
+                                        type = "boolean",
+                                        description = "optional, use max_context_length as active context",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "summary_token_threshold",
+                                        type = "number",
+                                        description = "optional, token-ratio threshold for context summary trigger (0~1)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_summary",
+                                        type = "boolean",
+                                        description = "optional, enable context summary",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_summary_by_message_count",
+                                        type = "boolean",
+                                        description = "optional, enable summary trigger by message count",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "summary_message_count_threshold",
+                                        type = "integer",
+                                        description = "optional, message-count threshold for summary trigger",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "custom_parameters",
+                                        type = "string",
+                                        description = "optional, custom parameters JSON array string",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "update_model_config",
+                            description = "Update fields of an existing model config by config_id.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "config_id",
+                                        type = "string",
+                                        description = "target model config id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "optional, config display name",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_provider_type",
+                                        type = "string",
+                                        description = "optional, provider enum name",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_endpoint",
+                                        type = "string",
+                                        description = "optional, API endpoint URL",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_key",
+                                        type = "string",
+                                        description = "optional, API key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "model_name",
+                                        type = "string",
+                                        description = "optional, model name; multiple models can be comma-separated",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable max_tokens parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens",
+                                        type = "integer",
+                                        description = "optional, max_tokens value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "temperature_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable temperature parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "temperature",
+                                        type = "number",
+                                        description = "optional, temperature value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_p_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable top_p parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_p",
+                                        type = "number",
+                                        description = "optional, top_p value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_k_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable top_k parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_k",
+                                        type = "integer",
+                                        description = "optional, top_k value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "presence_penalty_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable presence_penalty parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "presence_penalty",
+                                        type = "number",
+                                        description = "optional, presence_penalty value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "frequency_penalty_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable frequency_penalty parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "frequency_penalty",
+                                        type = "number",
+                                        description = "optional, frequency_penalty value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "repetition_penalty_enabled",
+                                        type = "boolean",
+                                        description = "optional, enable repetition_penalty parameter",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "repetition_penalty",
+                                        type = "number",
+                                        description = "optional, repetition_penalty value",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "context_length",
+                                        type = "number",
+                                        description = "optional, base context length",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_context_length",
+                                        type = "number",
+                                        description = "optional, max context length",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_max_context_mode",
+                                        type = "boolean",
+                                        description = "optional, use max_context_length as active context",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "summary_token_threshold",
+                                        type = "number",
+                                        description = "optional, token-ratio threshold for context summary trigger (0~1)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_summary",
+                                        type = "boolean",
+                                        description = "optional, enable context summary",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_summary_by_message_count",
+                                        type = "boolean",
+                                        description = "optional, enable summary trigger by message count",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "summary_message_count_threshold",
+                                        type = "integer",
+                                        description = "optional, message-count threshold for summary trigger",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "custom_parameters",
+                                        type = "string",
+                                        description = "optional, custom parameters JSON array string",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_direct_image_processing",
+                                        type = "boolean",
+                                        description = "optional, enable direct image processing",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_direct_audio_processing",
+                                        type = "boolean",
+                                        description = "optional, enable direct audio processing",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_direct_video_processing",
+                                        type = "boolean",
+                                        description = "optional, enable direct video processing",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_google_search",
+                                        type = "boolean",
+                                        description = "optional, Gemini grounding switch",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_tool_call",
+                                        type = "boolean",
+                                        description = "optional, enable provider-native tool call",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "strict_tool_call",
+                                        type = "boolean",
+                                        description = "optional, strict tool call mode",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "mnn_forward_type",
+                                        type = "integer",
+                                        description = "optional, MNN forward type",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "mnn_thread_count",
+                                        type = "integer",
+                                        description = "optional, MNN thread count",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "llama_thread_count",
+                                        type = "integer",
+                                        description = "optional, llama.cpp thread count",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "llama_context_size",
+                                        type = "integer",
+                                        description = "optional, llama.cpp context size",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "request_limit_per_minute",
+                                        type = "integer",
+                                        description = "optional, requests-per-minute limit (0 = unlimited)",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_concurrent_requests",
+                                        type = "integer",
+                                        description = "optional, max concurrent requests (0 = unlimited)",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "delete_model_config",
+                            description = "Delete a model config by config_id (default config cannot be deleted).",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "config_id",
+                                        type = "string",
+                                        description = "target model config id",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "list_function_model_configs",
+                            description = "List function model bindings only (function_type -> config_id + model_index).",
+                            parametersStructured = listOf()
+                        ),
+                        ToolPrompt(
+                            name = "get_function_model_config",
+                            description = "Get the single model config bound to one function_type.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "function_type",
+                                        type = "string",
+                                        description = "function type enum name (CHAT/SUMMARY/PROBLEM_LIBRARY/UI_CONTROLLER/TRANSLATION/GREP/IMAGE_RECOGNITION/AUDIO_RECOGNITION/VIDEO_RECOGNITION)",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "set_function_model_config",
+                            description = "Bind one function type to a model config (and optional model_index).",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "function_type",
+                                        type = "string",
+                                        description = "function type enum name (CHAT/SUMMARY/PROBLEM_LIBRARY/UI_CONTROLLER/TRANSLATION/GREP/IMAGE_RECOGNITION/AUDIO_RECOGNITION/VIDEO_RECOGNITION)",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "config_id",
+                                        type = "string",
+                                        description = "target model config id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "model_index",
+                                        type = "integer",
+                                        description = "optional, selected model index when model_name contains multiple models",
+                                        required = false,
+                                        default = "0"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "test_model_config_connection",
+                            description = "Run the same model-config connection checks as settings UI for a given config_id.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "config_id",
+                                        type = "string",
+                                        description = "target model config id",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "model_index",
+                                        type = "integer",
+                                        description = "optional, selected model index when model_name contains multiple models",
+                                        required = false,
+                                        default = "0"
                                     )
                                 )
                         )
@@ -2758,6 +3472,38 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "update_chat_title",
+                            description = "更新对话标题。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "目标对话 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "title",
+                                        type = "string",
+                                        description = "新的对话标题",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "delete_chat",
+                            description = "按 ID 删除对话。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "目标对话 ID",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "send_message_to_ai",
                             description = "向 AI 发送消息。",
                             parametersStructured =
@@ -3176,6 +3922,688 @@ object SystemToolPromptsInternal {
                                         type = "string",
                                         description = "可选，目标应用包名",
                                         required = false
+                                    )
+                                )
+                        )
+                    )
+            ),
+            SystemToolPromptCategory(
+                categoryName = "软件设置工具",
+                tools =
+                    listOf(
+                        ToolPrompt(
+                            name = "read_environment_variable",
+                            description = "按 key 读取环境变量当前值。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "key",
+                                        type = "string",
+                                        description = "环境变量名",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "write_environment_variable",
+                            description = "按 key 写入环境变量；value 为空时清除该变量。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "key",
+                                        type = "string",
+                                        description = "环境变量名",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "value",
+                                        type = "string",
+                                        description = "可选，写入值；空值清除该变量",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "list_sandbox_packages",
+                            description = "列出沙盒包（内置与外部）及当前启用状态和管理路径。",
+                            parametersStructured = listOf()
+                        ),
+                        ToolPrompt(
+                            name = "set_sandbox_package_enabled",
+                            description = "按 package_name 启用或停用沙盒包。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "package_name",
+                                        type = "string",
+                                        description = "沙盒包名称",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enabled",
+                                        type = "boolean",
+                                        description = "true 启用，false 停用",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "restart_mcp_with_logs",
+                            description = "重启 MCP 插件启动流程，并返回每个插件的启动日志。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "可选，最大等待时长（毫秒）",
+                                        required = false,
+                                        default = "120000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "get_speech_services_config",
+                            description = "获取当前 TTS/STT 语音服务配置。",
+                            parametersStructured = listOf()
+                        ),
+                        ToolPrompt(
+                            name = "set_speech_services_config",
+                            description = "更新 TTS/STT 语音服务配置字段。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "tts_service_type",
+                                        type = "string",
+                                        description = "可选，SIMPLE_TTS/HTTP_TTS/SILICONFLOW_TTS/OPENAI_TTS",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_url_template",
+                                        type = "string",
+                                        description = "可选，TTS 端点 URL 模板",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_api_key",
+                                        type = "string",
+                                        description = "可选，TTS API Key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_headers",
+                                        type = "string",
+                                        description = "可选，TTS headers 的 JSON 对象字符串",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_http_method",
+                                        type = "string",
+                                        description = "可选，GET/POST",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_request_body",
+                                        type = "string",
+                                        description = "可选，TTS POST body 模板",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_content_type",
+                                        type = "string",
+                                        description = "可选，TTS Content-Type",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_voice_id",
+                                        type = "string",
+                                        description = "可选，TTS 音色 ID",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_model_name",
+                                        type = "string",
+                                        description = "可选，TTS 模型名",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_cleaner_regexs",
+                                        type = "string",
+                                        description = "可选，TTS 清理正则列表 JSON 数组字符串",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_speech_rate",
+                                        type = "number",
+                                        description = "可选，TTS 语速",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "tts_pitch",
+                                        type = "number",
+                                        description = "可选，TTS 音调",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stt_service_type",
+                                        type = "string",
+                                        description = "可选，SHERPA_NCNN/OPENAI_STT/DEEPGRAM_STT",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stt_endpoint_url",
+                                        type = "string",
+                                        description = "可选，STT 端点 URL",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stt_api_key",
+                                        type = "string",
+                                        description = "可选，STT API Key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stt_model_name",
+                                        type = "string",
+                                        description = "可选，STT 模型名",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "list_model_configs",
+                            description = "列出全部模型配置及当前功能模型绑定关系。",
+                            parametersStructured = listOf()
+                        ),
+                        ToolPrompt(
+                            name = "create_model_config",
+                            description = "创建模型配置；可在创建时传入部分字段。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "可选，配置名称",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_provider_type",
+                                        type = "string",
+                                        description = "可选，提供商枚举名（如 OPENAI_GENERIC/DEEPSEEK/GEMINI_GENERIC/OLLAMA/MNN/LLAMA_CPP）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_endpoint",
+                                        type = "string",
+                                        description = "可选，API 端点 URL",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_key",
+                                        type = "string",
+                                        description = "可选，API Key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "model_name",
+                                        type = "string",
+                                        description = "可选，模型名；多个模型可用逗号分隔",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 max_tokens 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens",
+                                        type = "integer",
+                                        description = "可选，max_tokens 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "temperature_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 temperature 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "temperature",
+                                        type = "number",
+                                        description = "可选，temperature 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_p_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 top_p 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_p",
+                                        type = "number",
+                                        description = "可选，top_p 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_k_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 top_k 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_k",
+                                        type = "integer",
+                                        description = "可选，top_k 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "presence_penalty_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 presence_penalty 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "presence_penalty",
+                                        type = "number",
+                                        description = "可选，presence_penalty 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "frequency_penalty_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 frequency_penalty 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "frequency_penalty",
+                                        type = "number",
+                                        description = "可选，frequency_penalty 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "repetition_penalty_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 repetition_penalty 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "repetition_penalty",
+                                        type = "number",
+                                        description = "可选，repetition_penalty 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "context_length",
+                                        type = "number",
+                                        description = "可选，基础上下文长度",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_context_length",
+                                        type = "number",
+                                        description = "可选，最大上下文长度",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_max_context_mode",
+                                        type = "boolean",
+                                        description = "可选，是否启用最大上下文模式（启用后使用 max_context_length）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "summary_token_threshold",
+                                        type = "number",
+                                        description = "可选，上下文总结触发的 token 比例阈值（0~1）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_summary",
+                                        type = "boolean",
+                                        description = "可选，是否启用上下文总结",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_summary_by_message_count",
+                                        type = "boolean",
+                                        description = "可选，是否启用按消息条数触发总结",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "summary_message_count_threshold",
+                                        type = "integer",
+                                        description = "可选，按消息条数触发总结的阈值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "custom_parameters",
+                                        type = "string",
+                                        description = "可选，自定义参数 JSON 数组字符串",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "update_model_config",
+                            description = "按 config_id 更新模型配置字段。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "config_id",
+                                        type = "string",
+                                        description = "目标配置 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "name",
+                                        type = "string",
+                                        description = "可选，配置名称",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_provider_type",
+                                        type = "string",
+                                        description = "可选，提供商枚举名",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_endpoint",
+                                        type = "string",
+                                        description = "可选，API 端点 URL",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "api_key",
+                                        type = "string",
+                                        description = "可选，API Key",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "model_name",
+                                        type = "string",
+                                        description = "可选，模型名；多个模型可用逗号分隔",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 max_tokens 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens",
+                                        type = "integer",
+                                        description = "可选，max_tokens 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "temperature_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 temperature 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "temperature",
+                                        type = "number",
+                                        description = "可选，temperature 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_p_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 top_p 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_p",
+                                        type = "number",
+                                        description = "可选，top_p 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_k_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 top_k 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "top_k",
+                                        type = "integer",
+                                        description = "可选，top_k 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "presence_penalty_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 presence_penalty 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "presence_penalty",
+                                        type = "number",
+                                        description = "可选，presence_penalty 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "frequency_penalty_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 frequency_penalty 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "frequency_penalty",
+                                        type = "number",
+                                        description = "可选，frequency_penalty 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "repetition_penalty_enabled",
+                                        type = "boolean",
+                                        description = "可选，是否启用 repetition_penalty 参数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "repetition_penalty",
+                                        type = "number",
+                                        description = "可选，repetition_penalty 数值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "context_length",
+                                        type = "number",
+                                        description = "可选，基础上下文长度",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_context_length",
+                                        type = "number",
+                                        description = "可选，最大上下文长度",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_max_context_mode",
+                                        type = "boolean",
+                                        description = "可选，是否启用最大上下文模式（启用后使用 max_context_length）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "summary_token_threshold",
+                                        type = "number",
+                                        description = "可选，上下文总结触发的 token 比例阈值（0~1）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_summary",
+                                        type = "boolean",
+                                        description = "可选，是否启用上下文总结",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_summary_by_message_count",
+                                        type = "boolean",
+                                        description = "可选，是否启用按消息条数触发总结",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "summary_message_count_threshold",
+                                        type = "integer",
+                                        description = "可选，按消息条数触发总结的阈值",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "custom_parameters",
+                                        type = "string",
+                                        description = "可选，自定义参数 JSON 数组字符串",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_direct_image_processing",
+                                        type = "boolean",
+                                        description = "可选，是否开启直接图片处理",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_direct_audio_processing",
+                                        type = "boolean",
+                                        description = "可选，是否开启直接音频处理",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_direct_video_processing",
+                                        type = "boolean",
+                                        description = "可选，是否开启直接视频处理",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_google_search",
+                                        type = "boolean",
+                                        description = "可选，Gemini 搜索增强开关",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_tool_call",
+                                        type = "boolean",
+                                        description = "可选，是否开启模型原生 Tool Call",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "strict_tool_call",
+                                        type = "boolean",
+                                        description = "可选，严格 Tool Call 模式",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "mnn_forward_type",
+                                        type = "integer",
+                                        description = "可选，MNN 前向类型",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "mnn_thread_count",
+                                        type = "integer",
+                                        description = "可选，MNN 线程数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "llama_thread_count",
+                                        type = "integer",
+                                        description = "可选，llama.cpp 线程数",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "llama_context_size",
+                                        type = "integer",
+                                        description = "可选，llama.cpp 上下文大小",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "request_limit_per_minute",
+                                        type = "integer",
+                                        description = "可选，每分钟请求限制（0 为不限）",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_concurrent_requests",
+                                        type = "integer",
+                                        description = "可选，最大并发请求数（0 为不限）",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "delete_model_config",
+                            description = "按 config_id 删除模型配置（默认配置不可删除）。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "config_id",
+                                        type = "string",
+                                        description = "目标配置 ID",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "list_function_model_configs",
+                            description = "仅列出功能模型绑定关系（function_type -> config_id + model_index）。",
+                            parametersStructured = listOf()
+                        ),
+                        ToolPrompt(
+                            name = "get_function_model_config",
+                            description = "获取某个 function_type 当前绑定的单个模型配置。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "function_type",
+                                        type = "string",
+                                        description = "功能类型枚举名（CHAT/SUMMARY/PROBLEM_LIBRARY/UI_CONTROLLER/TRANSLATION/GREP/IMAGE_RECOGNITION/AUDIO_RECOGNITION/VIDEO_RECOGNITION）",
+                                        required = true
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "set_function_model_config",
+                            description = "将某个功能类型绑定到指定模型配置（可选 model_index）。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "function_type",
+                                        type = "string",
+                                        description = "功能类型枚举名（CHAT/SUMMARY/PROBLEM_LIBRARY/UI_CONTROLLER/TRANSLATION/GREP/IMAGE_RECOGNITION/AUDIO_RECOGNITION/VIDEO_RECOGNITION）",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "config_id",
+                                        type = "string",
+                                        description = "目标模型配置 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "model_index",
+                                        type = "integer",
+                                        description = "可选，当 model_name 为多模型时指定索引",
+                                        required = false,
+                                        default = "0"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "test_model_config_connection",
+                            description = "按 config_id 执行与设置页一致的模型连接测试。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "config_id",
+                                        type = "string",
+                                        description = "目标模型配置 ID",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "model_index",
+                                        type = "integer",
+                                        description = "可选，当 model_name 为多模型时指定索引",
+                                        required = false,
+                                        default = "0"
                                     )
                                 )
                         )

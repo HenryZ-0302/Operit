@@ -200,11 +200,11 @@ object ToolGetter {
     }
 
     /**
-     * 获取SSH远程连接工具
+     * 获取软件设置修改工具
      * @param context 应用上下文
-     * @return SSH远程连接工具实现（独立于终端）
+     * @return 软件设置修改工具实现（标准版本）
      */
-    fun getSSHRemoteConnectionTools(context: Context): SSHRemoteConnectionTools {
-        return SSHRemoteConnectionTools(context)
+    fun getSoftwareSettingsModifyTools(context: Context): StandardSoftwareSettingsModifyTools {
+        return StandardSoftwareSettingsModifyTools(context)
     }
 }

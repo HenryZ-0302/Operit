@@ -14,8 +14,11 @@ import {
     CalculationResultData, FFmpegResultData, ADBResultData, IntentResultData, TerminalCommandResultData, TerminalSessionScreenResultData,
     FilePartContentData, FileApplyResultData, WorkflowListResultData, WorkflowResultData, WorkflowDetailResultData,
     StringResultData, ChatServiceStartResultData, ChatCreationResultData, ChatListResultData, ChatFindResultData, AgentStatusResultData,
-    ChatSwitchResultData, MessageSendResultData, MemoryLinkResultData, MemoryLinkQueryResultData, GrepResultData,
-    ChatMessagesResultData, CharacterCardListResultData
+    ChatSwitchResultData, ChatTitleUpdateResultData, ChatDeleteResultData, MessageSendResultData, MemoryLinkResultData, MemoryLinkQueryResultData, GrepResultData,
+    ChatMessagesResultData, CharacterCardListResultData,
+    SpeechServicesConfigResultData, SpeechServicesUpdateResultData,
+    ModelConfigsResultData, ModelConfigCreateResultData, ModelConfigUpdateResultData, ModelConfigDeleteResultData,
+    FunctionModelConfigsResultData, FunctionModelConfigResultData, FunctionModelBindingResultData, ModelConfigConnectionTestResultData
 } from './results';
 
 /**
@@ -75,6 +78,21 @@ export interface ToolResultMap {
     'device_info': DeviceInfoResultData;
     'get_notifications': NotificationData;
     'get_device_location': LocationData;
+    'read_environment_variable': StringResultData;
+    'write_environment_variable': StringResultData;
+    'list_sandbox_packages': StringResultData;
+    'set_sandbox_package_enabled': StringResultData;
+    'restart_mcp_with_logs': StringResultData;
+    'get_speech_services_config': SpeechServicesConfigResultData;
+    'set_speech_services_config': SpeechServicesUpdateResultData;
+    'list_model_configs': ModelConfigsResultData;
+    'create_model_config': ModelConfigCreateResultData;
+    'update_model_config': ModelConfigUpdateResultData;
+    'delete_model_config': ModelConfigDeleteResultData;
+    'list_function_model_configs': FunctionModelConfigsResultData;
+    'get_function_model_config': FunctionModelConfigResultData;
+    'set_function_model_config': FunctionModelBindingResultData;
+    'test_model_config_connection': ModelConfigConnectionTestResultData;
     'trigger_tasker_event': string;
 
     // UI operations
@@ -126,6 +144,8 @@ export interface ToolResultMap {
     'find_chat': ChatFindResultData;
     'agent_status': AgentStatusResultData;
     'switch_chat': ChatSwitchResultData;
+    'update_chat_title': ChatTitleUpdateResultData;
+    'delete_chat': ChatDeleteResultData;
 
     'send_message_to_ai': MessageSendResultData;
     'list_character_cards': CharacterCardListResultData;
