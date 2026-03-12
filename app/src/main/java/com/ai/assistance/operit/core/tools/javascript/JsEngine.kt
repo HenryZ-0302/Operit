@@ -1,160 +1,370 @@
 package com.ai.assistance.operit.core.tools.javascript
 
 import android.content.Context
-import com.ai.assistance.operit.util.AppLogger
+import android.graphics.Bitmap
 import android.os.Looper
 import android.webkit.JavascriptInterface
-import android.webkit.WebView
 import androidx.annotation.Keep
 import androidx.core.content.ContextCompat
+import com.ai.assistance.operit.core.application.ActivityLifecycleManager
+import com.ai.assistance.operit.core.chat.logMessageTiming
+import com.ai.assistance.operit.core.chat.messageTimingNow
 import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.core.tools.BooleanResultData
-import com.ai.assistance.operit.core.tools.IntResultData
-import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.packTool.PackageManager
-import com.ai.assistance.operit.data.model.AITool
-import com.ai.assistance.operit.data.model.ToolParameter
+import com.ai.assistance.operit.core.tools.packTool.TOOLPKG_EVENT_MESSAGE_PROCESSING
+import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.util.ImagePoolManager
+import com.ai.assistance.operit.util.LocaleUtils
+import com.ai.assistance.operit.util.OperitPaths
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
-import com.ai.assistance.operit.data.preferences.EnvPreferences
-import android.graphics.Bitmap
-import android.util.Base64
-import com.ai.assistance.operit.core.application.ActivityLifecycleManager
-import com.ai.assistance.operit.core.tools.BinaryResultData
-import com.ai.assistance.operit.core.tools.javascript.JsTimeoutConfig
-import com.ai.assistance.operit.util.ImagePoolManager
-import com.ai.assistance.operit.util.OperitPaths
-import java.io.ByteArrayOutputStream
-import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
 /**
- * JavaScript 引擎 - 通过 WebView 执行 JavaScript 脚本 提供与 Android 原生代码的交互机制
- *
- * 主要功能：
- * 1. 执行 JavaScript 脚本
- * 2. 为脚本提供工具调用能力
- * 3. 集成常用的第三方 JavaScript 库
- *
- * 工具调用使用方式:
- * - 标准模式: toolCall("toolType", "toolName", { param1: "value1" })
- * - 简化模式: toolCall("toolName", { param1: "value1" })
- * - 对象模式: toolCall({ type: "toolType", name: "toolName", params: { param1: "value1" } })
- * - 直接模式: toolCall("toolName")
- *
- * 便捷工具调用:
- * - 文件操作: Tools.Files.read("/path/to/file")
- * - 网络操作: Tools.Net.httpGet("https://example.com")
- * - 系统操作: Tools.System.sleep("1")
- * - 计算功能: Tools.calc("2 + 2 * 3")
- *
- * 完成脚本执行:
- * - complete(result) 函数传递最终结果返回给调用者
+ * JavaScript 引擎 - 通过 QuickJS 执行 JavaScript 脚本并提供与 Android 原生代码的交互机制
  */
 class JsEngine(private val context: Context) {
     companion object {
         private const val TAG = "JsEngine"
-        private const val BINARY_DATA_THRESHOLD = 32 * 1024 // 32KB
+        private const val TOOLPKG_TAG = "ToolPkg"
+        private const val BINARY_DATA_THRESHOLD = 32 * 1024
         private const val BINARY_HANDLE_PREFIX = "@binary_handle:"
     }
 
-    // 存储原生Bitmap对象的注册表
     private val bitmapRegistry = ConcurrentHashMap<String, Bitmap>()
-    // 存储大型二进制数据的注册表
     private val binaryDataRegistry = ConcurrentHashMap<String, ByteArray>()
-    // 存储 Java/Kotlin 桥接对象实例
     private val javaObjectRegistry = ConcurrentHashMap<String, Any>()
+    private val externalJavaCodeLoader = JsExternalJavaCodeLoader(context)
 
-    // WebView 实例用于执行 JavaScript
-    private var webView: WebView? = null
-
-    // 工具处理器
     private val toolHandler = AIToolHandler.getInstance(context)
     private val packageManager by lazy { PackageManager.getInstance(context, toolHandler) }
-
-    // 工具调用接口
     private val toolCallInterface = JsToolCallInterface()
 
-    // 结果回调
-    private var resultCallback: CompletableFuture<Any?>? = null
-    private var intermediateResultCallback: ((Any?) -> Unit)? = null
+    @Volatile
+    private var quickJsThread: Thread? = null
 
-    // 用于存储工具调用的回调
-    private val toolCallbacks = mutableMapOf<String, CompletableFuture<String>>()
-    private val composeDslActionCompleteCallbacks = ConcurrentHashMap<String, () -> Unit>()
-    private val composeDslActionErrorCallbacks = ConcurrentHashMap<String, (String) -> Unit>()
-
-    // 标记 JS 环境是否已初始化
-    private var jsEnvironmentInitialized = false
-
-    private var envOverrides: Map<String, String> = emptyMap()
-
-    // 初始化 WebView
-    private fun initWebView() {
-        if (webView == null) {
-            // 需要在主线程创建 WebView
-            val latch = CountDownLatch(1)
-            ContextCompat.getMainExecutor(context).execute {
-                try {
-                    webView =
-                            WebView(context).apply {
-                                settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true // 允许访问 sessionStorage 和 localStorage
-
-                                // 为了安全，禁用文件系统访问，除非显式通过工具提供
-                                settings.allowFileAccess = false
-                                settings.allowContentAccess = false
-
-                                // 设置User Agent
-                                settings.userAgentString = "Operit-JsEngine/1.0"
-                                addJavascriptInterface(toolCallInterface, "NativeInterface")
-                                // 加载一个带有有效基地址的空HTML页面，以解决 about:blank 的源安全问题
-                                loadDataWithBaseURL("https://localhost", "<html></html>", "text/html", "UTF-8", null)
-                            }
-                    latch.countDown()
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error initializing WebView: ${e.message}", e)
-                    latch.countDown()
-                }
-            }
-            latch.await(10, TimeUnit.SECONDS)
+    private val quickJsExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "OperitQuickJsEngine").apply {
+            isDaemon = true
+            quickJsThread = this
         }
     }
+    private val quickJsDispatcher = quickJsExecutor.asCoroutineDispatcher()
+    private val engineScope = CoroutineScope(SupervisorJob() + quickJsDispatcher)
+    private val quickJsInitLock = Any()
 
-    private fun getComposeDslContextBridgeDefinition(): String {
-        return buildComposeDslContextBridgeDefinition()
+    @Volatile
+    private var quickJs: OperitQuickJsEngine? = null
+
+    private data class ExecutionSession(
+        val callId: String,
+        val future: CompletableFuture<Any?>,
+        val intermediateResultCallback: ((Any?) -> Unit)?,
+        val envOverrides: Map<String, String>,
+        val toolPkgLogSnapshot: JsToolPkgExecutionContext.LogSnapshot
+    )
+
+    private val activeExecutionSessions = ConcurrentHashMap<String, ExecutionSession>()
+    private var jsEnvironmentInitialized = false
+
+    private val toolPkgExecutionContext = JsToolPkgExecutionContext()
+    private val toolPkgRegistrationSession = JsToolPkgRegistrationSession()
+
+    fun <T> withTemporaryToolPkgTextResourceResolver(
+        resolver: (String, String) -> String?,
+        block: () -> T
+    ): T {
+        return toolPkgExecutionContext.withTemporaryTextResourceResolver(resolver, block)
     }
 
-    private fun getJavaClassBridgeDefinition(): String {
-        return buildJavaClassBridgeDefinition()
+    private fun resolveTemporaryToolPkgTextResource(
+        packageNameOrSubpackageId: String,
+        resourcePath: String
+    ): String? {
+        return toolPkgExecutionContext.resolveTemporaryTextResource(
+            packageNameOrSubpackageId = packageNameOrSubpackageId,
+            resourcePath = resourcePath,
+            onResolverFailure = { e ->
+                AppLogger.e(
+                    TAG,
+                    "Temporary toolpkg text resource resolver failed: package/subpackage=$packageNameOrSubpackageId, path=$resourcePath",
+                    e
+                )
+            }
+        )
     }
 
-    private fun getJavaBridgeClassLoader(): ClassLoader {
+    private fun hasTemporaryToolPkgTextResourceResolver(): Boolean {
+        return toolPkgExecutionContext.hasTemporaryTextResourceResolver()
+    }
+
+    private fun getJavaBridgeBaseClassLoader(): ClassLoader {
         return context.classLoader
             ?: this::class.java.classLoader
             ?: ClassLoader.getSystemClassLoader()
     }
 
-    private fun decodeEvaluateJavascriptResult(raw: String?): String {
-        if (raw.isNullOrBlank() || raw == "null") {
+    private fun getJavaBridgeClassLoader(): ClassLoader {
+        return externalJavaCodeLoader.getEffectiveClassLoader(getJavaBridgeBaseClassLoader())
+    }
+
+    private fun <T> runOnQuickJsThreadBlocking(block: () -> T): T {
+        return if (Thread.currentThread() === quickJsThread) {
+            block()
+        } else {
+            runBlocking(quickJsDispatcher) {
+                block()
+            }
+        }
+    }
+
+    private fun ensureQuickJs() {
+        if (quickJs != null) {
+            return
+        }
+        synchronized(quickJsInitLock) {
+            if (quickJs != null) {
+                return
+            }
+            try {
+                val engine = runOnQuickJsThreadBlocking {
+                    OperitQuickJsEngine().also {
+                        it.bindNativeInterface(toolCallInterface)
+                    }
+                }
+                quickJs = engine
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error initializing QuickJS: ${e.message}", e)
+                throw e
+            }
+        }
+    }
+
+    private fun <T> evaluateQuickJsBlocking(script: String, fileName: String = "<eval>"): T? {
+        ensureQuickJs()
+        val engine = quickJs ?: return null
+        return if (Thread.currentThread() === quickJsThread) {
+            runBlocking {
+                engine.evaluate<T>(script, fileName)
+            }
+        } else {
+            runBlocking(quickJsDispatcher) {
+                engine.evaluate<T>(script, fileName)
+            }
+        }
+    }
+
+    private fun launchQuickJsEvaluation(
+        script: String,
+        fileName: String = "<eval>",
+        onError: ((Exception) -> Unit)? = null
+    ) {
+        val engine = quickJs ?: return
+        engineScope.launch {
+            try {
+                engine.evaluate<Any?>(script, fileName)
+            } catch (e: Exception) {
+                if (onError != null) {
+                    onError(e)
+                } else {
+                    AppLogger.e(TAG, "QuickJS evaluation failed: ${e.message}", e)
+                }
+            }
+        }
+    }
+
+    private fun launchQuickJsFunctionCall(
+        functionName: String,
+        argsJson: String,
+        callSite: String = "<call:$functionName>",
+        onError: ((Exception) -> Unit)? = null
+    ) {
+        val engine = quickJs ?: return
+        engineScope.launch {
+            try {
+                engine.callFunction<Any?>(functionName, argsJson, callSite)
+            } catch (e: Exception) {
+                if (onError != null) {
+                    onError(e)
+                } else {
+                    AppLogger.e(TAG, "QuickJS function call failed: ${e.message}", e)
+                }
+            }
+        }
+    }
+
+
+    private fun nextExecutionCallId(): String {
+        return "operit_call_${UUID.randomUUID().toString().replace("-", "")}" 
+    }
+
+    private fun createExecutionSession(
+        callId: String,
+        script: String,
+        functionName: String,
+        params: Map<String, Any?>,
+        envOverrides: Map<String, String>,
+        onIntermediateResult: ((Any?) -> Unit)?
+    ): ExecutionSession {
+        return ExecutionSession(
+            callId = callId,
+            future = CompletableFuture(),
+            intermediateResultCallback = onIntermediateResult,
+            envOverrides = envOverrides,
+            toolPkgLogSnapshot = toolPkgExecutionContext.capture(script, functionName, params)
+        )
+    }
+
+    private fun resolveExecutionSession(callId: String): ExecutionSession? {
+        return activeExecutionSessions[callId.trim()]
+    }
+
+    private fun removeExecutionSession(callId: String): ExecutionSession? {
+        return activeExecutionSessions.remove(callId.trim())
+    }
+
+    private fun cancelAllExecutionSessions(reason: String) {
+        val sessions = activeExecutionSessions.values.toList()
+        activeExecutionSessions.clear()
+        sessions.forEach { session ->
+            if (!session.future.isDone) {
+                session.future.complete(reason)
+            }
+            cancelExecutionSessionInJs(
+                callId = session.callId,
+                reason = reason
+            )
+        }
+    }
+
+    private fun cancelExecutionSessionInJs(callId: String, reason: String) {
+        ensureQuickJs()
+        val safeCallId = JSONObject.quote(callId)
+        val safeReason = JSONObject.quote(reason)
+        launchQuickJsEvaluation(
+            script =
+                """
+                    (function() {
+                        var root = typeof globalThis !== 'undefined'
+                            ? globalThis
+                            : (typeof window !== 'undefined' ? window : this);
+                        if (typeof root.__operitCancelCallSession === 'function') {
+                            root.__operitCancelCallSession($safeCallId, $safeReason);
+                        }
+                    })();
+                """.trimIndent(),
+            fileName = "quickjs/runtime/cancel-call-session.js",
+            onError = { e ->
+                AppLogger.e(TAG, "Error canceling JS execution session $callId: ${e.message}", e)
+            }
+        )
+    }
+
+    private fun withToolPkgPluginTag(message: String): String {
+        return toolPkgExecutionContext.withPluginTag(null, message)
+    }
+
+    private fun withToolPkgPluginTag(session: ExecutionSession?, message: String): String {
+        return toolPkgExecutionContext.withPluginTag(session?.toolPkgLogSnapshot, message)
+    }
+
+    private fun withToolPkgCodeContext(session: ExecutionSession?, message: String): String {
+        return toolPkgExecutionContext.withCodeContext(session?.toolPkgLogSnapshot, message)
+    }
+
+    private fun runtimeBootstrapModules(): List<JsBootstrapModule> {
+        return buildRuntimeBootstrapModules(
+            context = context,
+            operitDownloadDir = OperitPaths.operitRootPathSdcard(),
+            operitCleanOnExitDir = OperitPaths.cleanOnExitPathSdcard()
+        )
+    }
+
+    private fun evaluateBootstrapModule(module: JsBootstrapModule) {
+        if (module.source.isBlank()) {
+            return
+        }
+        try {
+            evaluateQuickJsBlocking<Any?>(module.source, module.fileName)
+            exposeBootstrapGlobals(module)
+        } catch (e: Exception) {
+            val globalsSummary = module.globals.joinToString(prefix = "[", postfix = "]")
+            AppLogger.e(
+                TAG,
+                "Bootstrap module failed: file=${module.fileName}, scriptLength=${module.source.length}, globals=$globalsSummary, preview=${summarizeJavaScriptForLog(module.source)}",
+                e
+            )
+            throw IllegalStateException("Bootstrap failed for ${module.fileName}: ${e.message}", e)
+        }
+    }
+
+    private fun summarizeJavaScriptForLog(source: String, maxLength: Int = 320): String {
+        if (source.isBlank()) {
             return ""
         }
-        return try {
-            val token = JSONTokener(raw).nextValue()
-            when (token) {
-                is String -> token
-                else -> token?.toString().orEmpty()
-            }
-        } catch (_: Exception) {
-            raw
+        val normalized =
+            buildString(source.length) {
+                source.forEach { ch ->
+                    append(
+                        when (ch) {
+                            '\n', '\r', '\t' -> ' '
+                            else -> ch
+                        }
+                    )
+                }
+            }.trim()
+        return if (normalized.length <= maxLength) {
+            normalized
+        } else {
+            normalized.take(maxLength - 3) + "..."
         }
+    }
+
+    private fun exposeBootstrapGlobals(module: JsBootstrapModule) {
+        if (module.globals.isEmpty()) {
+            return
+        }
+        evaluateQuickJsBlocking<Any?>(
+            buildBootstrapGlobalExposureScript(module.globals),
+            "${module.fileName}#globals"
+        )
+    }
+
+    private fun buildBootstrapGlobalExposureScript(globalNames: List<String>): String {
+        val exposeStatements =
+            globalNames.joinToString("\n") { name ->
+                val quotedName = JSONObject.quote(name)
+                "expose($quotedName, typeof $name !== 'undefined' ? $name : undefined);"
+            }
+
+        return """
+            (function() {
+                var root = typeof globalThis !== 'undefined'
+                    ? globalThis
+                    : (typeof window !== 'undefined' ? window : this);
+                var expose = typeof root.__operitExpose === 'function'
+                    ? root.__operitExpose
+                    : function(name, value) {
+                        var key = String(name || '').trim();
+                        if (!key || value === undefined) {
+                            return;
+                        }
+                        try { root[key] = value; } catch (_error) {}
+                        try { window[key] = value; } catch (_error2) {}
+                    };
+                $exposeStatements
+            })();
+        """.trimIndent()
     }
 
     private fun invokeJavaBridgeJsObjectCallbackSync(
@@ -169,11 +379,11 @@ class JsEngine(private val context: Context) {
                 .toString()
         }
 
-        val targetWebView = webView
-        if (targetWebView == null) {
+        ensureQuickJs()
+        if (quickJs == null) {
             return JSONObject()
                 .put("success", false)
-                .put("error", "webview is not initialized")
+                .put("error", "quickjs is not initialized")
                 .toString()
         }
 
@@ -210,649 +420,111 @@ class JsEngine(private val context: Context) {
             })();
             """.trimIndent()
 
-        val latch = CountDownLatch(1)
-        var decodedResult: String? = null
-
-        ContextCompat.getMainExecutor(context).execute {
-            try {
-                targetWebView.evaluateJavascript(callbackScript) { raw ->
-                    decodedResult = decodeEvaluateJavascriptResult(raw)
-                    latch.countDown()
-                }
-            } catch (e: Exception) {
-                decodedResult =
-                    JSONObject()
-                        .put("success", false)
-                        .put("error", "java bridge callback evaluation failed: ${e.message}")
-                        .toString()
-                latch.countDown()
-            }
-        }
-
         return try {
-            if (!latch.await(6, TimeUnit.SECONDS)) {
-                JSONObject()
-                    .put("success", false)
-                    .put("error", "java bridge callback timed out")
-                    .toString()
-            } else {
-                decodedResult
-                    ?: JSONObject()
-                        .put("success", false)
-                        .put("error", "java bridge callback returned empty result")
-                        .toString()
-            }
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
+            val callbackResult =
+                evaluateQuickJsBlocking<String>(
+                    script = callbackScript,
+                    fileName = "quickjs/runtime/java-bridge-callback.js"
+                )
+            callbackResult ?: JSONObject()
+                .put("success", false)
+                .put("error", "java bridge callback returned empty result")
+                .toString()
+        } catch (e: Exception) {
             JSONObject()
                 .put("success", false)
-                .put("error", "java bridge callback interrupted: ${e.message}")
+                .put("error", "java bridge callback evaluation failed: ${e.message}")
                 .toString()
         }
     }
 
-    /** 初始化 JavaScript 环境 加载核心功能、工具库和辅助函数 这些代码只需要执行一次 */
-    private fun initJavaScriptEnvironment() {
-        if (jsEnvironmentInitialized) {
-            return // 如果已经初始化，直接返回
+    private fun releaseJavaBridgeJsObjectSync(jsObjectId: String): Boolean {
+        val normalizedId = jsObjectId.trim()
+        if (normalizedId.isEmpty() || !jsEnvironmentInitialized) {
+            return false
         }
 
-        val operitDownloadDir = OperitPaths.operitRootPathSdcard()
-        val operitCleanOnExitDir = OperitPaths.cleanOnExitPathSdcard()
+        ensureQuickJs()
+        if (quickJs == null) {
+            return false
+        }
 
-        val initScript =
-                """
-            // 添加全局错误处理器，捕获所有未处理的错误
-            window.onerror = function(message, source, lineno, colno, error) {
+        val releaseScript =
+            """
+            (function() {
                 try {
-                    // 构建完整的错误信息
-                    var errorInfo = {
-                        message: message,
-                        source: source,
-                        line: lineno,
-                        column: colno,
-                        stack: error && error.stack ? error.stack : "No stack trace available"
-                    };
-                    
-                    // 记录详细的错误信息到控制台
-                    console.error("GLOBAL ERROR CAUGHT:", JSON.stringify(errorInfo));
-                    
-                    // 如果尚未完成执行，报告错误
-                    if (!window._hasCompleted) {
-                        NativeInterface.setError("JavaScript Error: " + message + " at line " + lineno + 
-                                               ", column " + colno + " in " + (source || "unknown") + 
-                                               "\nStack: " + (error && error.stack ? error.stack : "No stack trace"));
-                        window._hasCompleted = true;
+                    var __release =
+                        (typeof globalThis !== 'undefined' && typeof globalThis.__operitJavaBridgeReleaseJsObject === 'function')
+                            ? globalThis.__operitJavaBridgeReleaseJsObject
+                            : undefined;
+                    if (!__release) {
+                        return false;
                     }
-                    
-                    // 返回true表示我们已经处理了错误
-                    return true;
-                } catch(e) {
-                    // 确保错误处理器本身不会抛出错误
-                    console.error("Error in error handler:", e);
+                    return !!__release(${JSONObject.quote(normalizedId)});
+                } catch (_error) {
                     return false;
                 }
-            };
-            
-            // 添加异常对象扩展方法，用于格式化错误信息
-            window.formatErrorDetails = function(error) {
-                if (!error) return "Unknown error";
-                
-                try {
-                    // 尝试提取完整的错误信息
-                    var details = {
-                        name: error.name || "Error",
-                        message: error.message || String(error),
-                        stack: error.stack || "No stack trace available",
-                        fileName: error.fileName || "Unknown file",
-                        lineNumber: error.lineNumber || "Unknown line",
-                        columnNumber: error.columnNumber || "Unknown column"
-                    };
-                    
-                    // 尝试从堆栈信息中提取更多信息
-                    if (details.stack && (!details.fileName || details.fileName === "Unknown file")) {
-                        var stackMatch = details.stack.match(/at\s+.*?\s+\((.+):(\d+):(\d+)\)/);
-                        if (stackMatch) {
-                            details.fileName = stackMatch[1] || details.fileName;
-                            details.lineNumber = stackMatch[2] || details.lineNumber;
-                            details.columnNumber = stackMatch[3] || details.columnNumber;
-                        }
-                    }
-                    
-                    // 生成详细的错误消息
-                    var formattedMessage = details.name + ": " + details.message + "\n" +
-                                          "File: " + details.fileName + "\n" +
-                                          "Line: " + details.lineNumber + ", Column: " + details.columnNumber + "\n" +
-                                          "Stack Trace:\n" + details.stack;
-                    
-                    return {
-                        formatted: formattedMessage,
-                        details: details
-                    };
-                } catch (e) {
-                    console.error("Error formatting error details:", e);
-                    return {
-                        formatted: String(error),
-                        details: { message: String(error) }
-                    };
-                }
-            };
-            
-            // 添加一个专用的方法来报告详细错误
-            window.reportDetailedError = function(error, context) {
-                var errorDetails = window.formatErrorDetails(error);
-                console.error("DETAILED ERROR (" + (context || "unknown context") + "):", errorDetails.formatted);
-                
-                if (typeof NativeInterface !== 'undefined' && NativeInterface.reportError) {
-                    try {
-                        NativeInterface.reportError(
-                            errorDetails.details.name || "Error",
-                            errorDetails.details.message || String(error),
-                            errorDetails.details.lineNumber || 0,
-                            errorDetails.details.stack || "No stack trace"
-                        );
-                    } catch (e) {
-                        console.error("Failed to report error to native interface:", e);
-                    }
-                }
-                
-                return errorDetails;
-            };
-            
-            // 增强console功能，将所有控制台输出发送到Android
-            (function() {
-                var originalConsole = {
-                    log: console.log,
-                    error: console.error,
-                    warn: console.warn,
-                    info: console.info
-                };
-                
-                // 重写控制台方法
-                console.log = function() {
-                    try {
-                        var args = Array.prototype.slice.call(arguments);
-                        var message = args.map(function(arg) {
-                            return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-                        }).join(' ');
-                        
-                        // 调用原始方法
-                        originalConsole.log.apply(console, arguments);
-                        
-                        // 向Android报告日志
-                        if (typeof NativeInterface !== 'undefined' && NativeInterface.logInfo) {
-                            NativeInterface.logInfo("LOG: " + message);
-                        }
-                    } catch(e) {
-                        originalConsole.error("Error in console.log:", e);
-                    }
-                };
-                
-                console.error = function() {
-                    try {
-                        var args = Array.prototype.slice.call(arguments);
-                        var message = args.map(function(arg) {
-                            return typeof arg === 'object' ? JSON.stringify(arg) : String(arg);
-                        }).join(' ');
-                        
-                        // 调用原始方法
-                        originalConsole.error.apply(console, arguments);
-                        
-                        // 向Android报告错误
-                        if (typeof NativeInterface !== 'undefined' && NativeInterface.logError) {
-                            NativeInterface.logError("ERROR: " + message);
-                        }
-                    } catch(e) {
-                        originalConsole.error("Error in console.error:", e);
-                    }
-                };
             })();
-            
-            // 定义 toolCall 函数 - 支持多种参数传递方式，并且返回Promise
-            function toolCall(toolType, toolName, toolParams) {
-                // Create a Promise wrapping the tool call
-                return new Promise((resolve, reject) => {
-                    try {
-                        // 生成唯一回调ID
-                        const callbackId = '_tc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                        
-                        // 处理不同的参数调用模式
-                        let type, name, params;
-                        
-                        if (arguments.length === 1 && typeof toolType === 'object') {
-                            // 对象模式: toolCall({type: "...", name: "...", params: {...}})
-                            const config = toolType;
-                            type = config.type || "default";
-                            name = config.name || "";
-                            
-                            // 安全地序列化参数对象
-                            try {
-                                let paramsObj = {};
-                                if (config.params && typeof config.params === 'object') {
-                                    paramsObj = Object.assign({}, config.params);
-                                }
-                                params = JSON.stringify(paramsObj);
-                            } catch (e) {
-                                console.error("Error serializing object mode params:", e);
-                                params = "{}";
-                            }
-                        } else if (arguments.length === 1 && typeof toolType === 'string') {
-                            // 字符串模式: toolCall("toolName")
-                            type = "default";
-                            name = toolType;
-                            params = "{}";
-                        } else if (arguments.length === 2 && typeof toolName === 'object') {
-                            // 工具名+参数模式: toolCall("toolName", {param1: "value1"})
-                            type = "default";
-                            name = toolType;
-                            
-                            // 安全地序列化参数对象
-                            try {
-                                // 使用深拷贝而非直接引用，避免修改原始对象
-                                const paramsCopy = Object.assign({}, toolName || {});
-                                params = JSON.stringify(paramsCopy);
-                            } catch (e) {
-                                console.error("Error serializing params:", e);
-                                params = "{}";
-                            }
-                        } else {
-                            // 标准模式: toolCall("toolType", "toolName", {param1: "value1"})
-                            type = toolType || "default";
-                            name = toolName || "";
-                            
-                            // 安全地序列化参数对象
-                            try {
-                                const paramsCopy = Object.assign({}, toolParams || {});
-                                params = JSON.stringify(paramsCopy);
-                            } catch (e) {
-                                console.error("Error serializing params:", e);
-                                params = "{}";
-                            }
-                        }
-                        
-                        // 调用本地方法，并传递回调ID
-                        NativeInterface.callToolAsync(callbackId, type, name, params);
-                        
-                        // 注册回调处理
-                        window[callbackId] = function(result, isError) {
-                            // 清理回调
-                            delete window[callbackId];
-                            
-                            // Handle the structured result
-                            if (isError) {
-                                // Error results are now structured JSON objects
-                                if (typeof result === 'object' && result.success === false) {
-                                    reject(new Error(result.error || "Unknown error"));
-                                } else {
-                                    reject(new Error(typeof result === 'string' ? result : JSON.stringify(result)));
-                                }
-                            } else {
-                                try {
-                                    // Process structured result
-                                    let processedResult;
-                                    
-                                    // If it's already a JS object (from JSON in sendToolResult)
-                                    if (typeof result === 'object') {
-                                        if (result.success) {
-                                            // Return just the data part of successful results
-                                            processedResult = result.data;
-                                        } else {
-                                            // For error objects, reject the promise
-                                            reject(new Error(result.error || "Unknown error"));
-                                            return;
-                                        }
-                                    } 
-                                    // If it's a JSON string
-                                    else if (typeof result === 'string' && (result.startsWith('{') || result.startsWith('['))) {
-                                        const parsedResult = JSON.parse(result);
-                                        
-                                        // Check if it's our ToolResult format
-                                        if (parsedResult && typeof parsedResult === 'object' && 'success' in parsedResult) {
-                                            if (parsedResult.success) {
-                                                // Return just the data for successful results
-                                                processedResult = parsedResult.data;
-                                            } else {
-                                                // For error results, reject the promise
-                                                reject(new Error(parsedResult.error || "Unknown error"));
-                                                return;
-                                            }
-                                        } else {
-                                            // Regular JSON result (legacy or other format)
-                                            processedResult = parsedResult;
-                                        }
-                                    } else {
-                                        // Plain string or other primitive
-                                        processedResult = result;
-                                    }
-                                    
-                                    // Resolve the promise with the final processed result
-                                    resolve(processedResult);
-                                } catch (e) {
-                                    // If any parsing error occurs, return the original result
-                                    console.error("Error processing tool result:", e);
-                                    resolve(result);
-                                }
-                            }
-                        };
-                    } catch (error) {
-                        reject(error);
-                    }
-                });
-            }
+            """.trimIndent()
 
-            // 环境变量访问助手
-            function getEnv(key) {
-                try {
-                    if (typeof NativeInterface !== 'undefined' && NativeInterface.getEnv) {
-                        var name = String(key || "").trim();
-                        if (!name) {
-                            return undefined;
-                        }
-                        var value = NativeInterface.getEnv(name);
-                        if (value === null || value === undefined || value === "") {
-                            return undefined;
-                        }
-                        return String(value);
-                    }
-                } catch (e) {
-                    console.error("getEnv error:", e);
+        return try {
+            when (
+                val result =
+                    evaluateQuickJsBlocking<Any?>(
+                        script = releaseScript,
+                        fileName = "quickjs/runtime/java-bridge-release.js"
+                    )
+            ) {
+                is Boolean -> result
+                is String -> result.equals("true", ignoreCase = true)
+                is Number -> result.toInt() != 0
+                else -> false
+            }
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to auto-release JS interface object $normalizedId: ${e.message}", e)
+            false
+        }
+    }
+
+    private fun splitBridgeResult(raw: String): Pair<String?, Any?> {
+        if (raw.isBlank()) {
+            return Pair("empty bridge response", null)
+        }
+        return try {
+            val token = JSONTokener(raw).nextValue()
+            if (token is JSONObject) {
+                val success = token.optBoolean("success", false)
+                val data = token.opt("data")
+                val error = token.optString("error").ifBlank { null }
+                if (success) {
+                    Pair(null, data)
+                } else {
+                    Pair(error ?: "bridge call failed", null)
                 }
-                return undefined;
+            } else {
+                Pair("invalid bridge response format", null)
             }
+        } catch (e: Exception) {
+            Pair("failed to parse bridge response: ${e.message}", null)
+        }
+    }
 
-            function getState() {
-                try {
-                    var v = window['__operit_package_state'];
-                    if (v === null || v === undefined || v === "") {
-                        return undefined;
-                    }
-                    return String(v);
-                } catch (e) {
-                    return undefined;
-                }
-            }
-
-            function getLang() {
-                try {
-                    var v = window['__operit_package_lang'];
-                    if (v === null || v === undefined || v === "") {
-                        return "en";
-                    }
-                    return String(v);
-                } catch (e) {
-                    return "en";
-                }
-            }
-
-            function getCallerName() {
-                try {
-                    var v = window['__operit_package_caller_name'];
-                    if (v === null || v === undefined || v === "") {
-                        return undefined;
-                    }
-                    return String(v);
-                } catch (e) {
-                    return undefined;
-                }
-            }
-
-            function getChatId() {
-                try {
-                    var v = window['__operit_package_chat_id'];
-                    if (v === null || v === undefined || v === "") {
-                        return undefined;
-                    }
-                    return String(v);
-                } catch (e) {
-                    return undefined;
-                }
-            }
-
-            function getCallerCardId() {
-                try {
-                    var v = window['__operit_package_caller_card_id'];
-                    if (v === null || v === undefined || v === "") {
-                        return undefined;
-                    }
-                    return String(v);
-                } catch (e) {
-                    return undefined;
-                }
-            }
-
-            // Operit standard directories (injected from native)
-            var OPERIT_DOWNLOAD_DIR = ${JSONObject.quote(operitDownloadDir)};
-            var OPERIT_CLEAN_ON_EXIT_DIR = ${JSONObject.quote(operitCleanOnExitDir)};
-            
-            // 加载工具调用的便捷方法
-            ${getJsToolsDefinition()}
-
-            // compose_dsl 上下文桥接（让 UI 脚本可直接使用 toolCall / Tools）
-            ${getComposeDslContextBridgeDefinition()}
-
-            // Java/Kotlin 类桥接（Rhino 风格 Java.type）
-            ${getJavaClassBridgeDefinition()}
-              
-            // 定义完成回调
-            function complete(result) {
-                try {
-                    console.log("complete() called with result type: " + typeof result);
-                    
-                    if (!window._hasCompleted) {
-                        window._hasCompleted = true;
-                        clearTimeout(window._safetyTimeout);
-                        
-                        // 确保结果是可以序列化的
-                        let serializedResult;
-                        try {
-                            serializedResult = JSON.stringify(result);
-                            console.log("Result serialized successfully, length: " + serializedResult.length);
-                        } catch (serializeError) {
-                            console.error("Failed to serialize result:", serializeError);
-                            serializedResult = JSON.stringify({
-                                error: "Failed to serialize result",
-                                message: String(serializeError),
-                                result: String(result).substring(0, 1000)
-                            });
-                        }
-                        
-                        // 通过JavaScript接口发送结果
-                        try {
-                            console.log("Calling NativeInterface.setResult...");
-                            NativeInterface.setResult(serializedResult);
-                            console.log("NativeInterface.setResult call completed");
-                        } catch (nativeError) {
-                            console.error("Error calling NativeInterface:", nativeError);
-                            // 尝试再次调用，以防是暂时性错误
-                            setTimeout(() => {
-                                try {
-                                    console.log("Retrying NativeInterface.setResult...");
-                                    NativeInterface.setResult(serializedResult);
-                                } catch (retryError) {
-                                    console.error("Retry also failed:", retryError);
-                                }
-                            }, 100);
-                        }
-                    } else {
-                        console.warn("complete() called but execution was already completed");
-                    }
-                } catch (completeError) {
-                    console.error("Error in complete function:", completeError);
-                    try {
-                        NativeInterface.setError("Error in complete function: " + completeError.message);
-                    } catch (e) {
-                        console.error("Failed to report complete error:", e);
-                    }
-                }
-            }
-
-            function sendIntermediateResult(result) {
-                try {
-                    if (window._hasCompleted) {
-                        console.warn("sendIntermediateResult called after execution was completed. Ignoring.");
-                        return;
-                    }
-                    
-                    let serializedResult;
-                    try {
-                        serializedResult = JSON.stringify(result);
-                    } catch (serializeError) {
-                        console.error("Failed to serialize intermediate result:", serializeError);
-                        serializedResult = JSON.stringify({
-                            error: "Failed to serialize result",
-                            message: String(serializeError)
-                        });
-                    }
-                    NativeInterface.sendIntermediateResult(serializedResult);
-                } catch (error) {
-                    console.error("Error in sendIntermediateResult function:", error);
-                }
-            }
-            
-            // 加载第三方库支持
-            ${getJsThirdPartyLibraries()}
-
-            // 加载 CryptoJS 原生桥接
-            ${loadCryptoJs(context)}
-            
-            // 加载 Jimp 原生桥接
-            ${loadJimpJs(context)}
-            
-            // 加载 UINode 库
-            ${loadUINodeJs(context)}
-            
-            // 加载 AndroidUtils 库
-            ${loadAndroidUtilsJs(context)}
-            
-            // 加载 OkHttp3 库
-            ${loadOkHttp3Js(context)}
-            
-            // 加载 pako 库 (原生桥接)
-            ${loadPakoJs(context)}
-            
-            // 函数处理异步Promise的辅助函数
-            function __handleAsync(possiblePromise) {
-                if (possiblePromise instanceof Promise) {
-                    // 更强大的异步处理
-                    
-                    // 创建一个超时保护，确保非常长时间运行的Promise最终会被处理
-                    const asyncTimeout = setTimeout(() => {
-                        if (!window._hasCompleted) {
-                            // 尝试安全地完成执行
-                            try {
-                                window._hasCompleted = true;
-                                // 创建超时结果
-                                const timeoutResult = {
-                                    warning: "Operation timeout", 
-                                    result: "Promise did not resolve within the time limit (${JsTimeoutConfig.ASYNC_PROMISE_TIMEOUT_SECONDS} seconds)"
-                                };
-                                
-                                NativeInterface.setResult(JSON.stringify(timeoutResult));
-                            } catch (e) {
-                                console.error("Error during timeout handling:", e);
-                            }
-                        }
-                    }, ${JsTimeoutConfig.ASYNC_PROMISE_TIMEOUT_SECONDS * 1000}); // 比主超时稍短
-                    
-                    possiblePromise
-                        .then(result => {
-                            clearTimeout(asyncTimeout);
-                            if (!window._hasCompleted) {
-                                try {
-                                    window._hasCompleted = true;
-                                    // 安全地序列化结果
-                                    let serializedResult;
-                                    try {
-                                        serializedResult = JSON.stringify(result);
-                                    } catch (serializeError) {
-                                        console.error("Failed to serialize Promise result:", serializeError);
-                                        // 创建一个简单的可以序列化的对象
-                                        serializedResult = JSON.stringify({
-                                            error: "Failed to serialize result",
-                                            message: String(serializeError),
-                                            result: String(result).substring(0, 1000)
-                                        });
-                                    }
-                                    NativeInterface.setResult(serializedResult);
-                                } catch (completionError) {
-                                    console.error("Error during async completion:", completionError);
-                                    NativeInterface.setError("Async completion error: " + completionError.message);
-                                }
-                            }
-                        })
-                        .catch(error => {
-                            clearTimeout(asyncTimeout);
-                            
-                            // 使用我们新的详细错误报告功能
-                            const errorReport = window.reportDetailedError(error, "Async Promise Rejection");
-                            
-                            if (!window._hasCompleted) {
-                                try {
-                                    window._hasCompleted = true;
-                                    
-                                    // 使用格式化的错误信息
-                                    NativeInterface.setError(JSON.stringify({
-                                        error: "Promise rejection",
-                                        details: errorReport.details,
-                                        formatted: errorReport.formatted
-                                    }));
-                                } catch (errorHandlingError) {
-                                    console.error("Error during async error handling:", errorHandlingError);
-                                    
-                                    // 尝试更简单的错误报告方式作为后备
-                                    try {
-                                        NativeInterface.setError("Error in Promise: " + String(error) + 
-                                                               "\nError handling failed: " + String(errorHandlingError));
-                                    } catch (e) {
-                                        console.error("Complete failure in error handling chain:", e);
-                                    }
-                                }
-                            }
-                        });
-                    return true; // Signal that we're handling it asynchronously
-                }
-                return false; // Not a promise
-            }
-        """.trimIndent()
-
-        // 在 WebView 中执行初始化脚本
-        val initLatch = CountDownLatch(1)
-        ContextCompat.getMainExecutor(context).execute {
-            try {
-                webView?.evaluateJavascript(initScript) { result ->
-                    AppLogger.d(TAG, "JS environment initialization completed: $result")
-                    try {
-                        webView?.evaluateJavascript("typeof __handleAsync === 'function'") { checkResult ->
-                            val isHandleAsyncDefined = checkResult == "true"
-                            if (isHandleAsyncDefined) {
-                                jsEnvironmentInitialized = true
-                            } else {
-                                jsEnvironmentInitialized = false
-                                AppLogger.e(TAG, "__handleAsync is not defined after JS environment initialization. Result: $checkResult")
-                            }
-                            initLatch.countDown()
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "Failed to verify __handleAsync after JS environment initialization: ${e.message}", e)
-                        jsEnvironmentInitialized = false
-                        initLatch.countDown()
-                    }
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to initialize JS environment: ${e.message}", e)
-                jsEnvironmentInitialized = false
-                initLatch.countDown()
-            }
+    /** 初始化 JavaScript 环境，加上 QuickJS 兼容层、核心运行时与工具桥 */
+    private fun initJavaScriptEnvironment() {
+        if (jsEnvironmentInitialized) {
+            return
         }
 
-        // 等待初始化完成，使用超时避免无限等待
+        ensureQuickJs()
         try {
-            if (!initLatch.await(10, TimeUnit.SECONDS)) {
-                AppLogger.w(TAG, "JS environment initialization timeout after 10 seconds")
-            }
-        } catch (e: InterruptedException) {
-            AppLogger.e(TAG, "JS environment initialization interrupted", e)
-            Thread.currentThread().interrupt()
+            runtimeBootstrapModules().forEach(::evaluateBootstrapModule)
+            jsEnvironmentInitialized = true
+        } catch (e: Exception) {
+            AppLogger.e(TAG, "Failed to initialize JS environment: ${e.message}", e)
+            jsEnvironmentInitialized = false
+        }
+        if (!jsEnvironmentInitialized) {
+            AppLogger.e(TAG, "QuickJS init script failed to produce runtime bridge")
         }
     }
 
@@ -868,627 +540,185 @@ class JsEngine(private val context: Context) {
             functionName: String,
             params: Map<String, Any?>,
             envOverrides: Map<String, String> = emptyMap(),
-            onIntermediateResult: ((Any?) -> Unit)? = null
+            onIntermediateResult: ((Any?) -> Unit)? = null,
+            timeoutSec: Long = JsTimeoutConfig.MAIN_TIMEOUT_SECONDS.toLong()
     ): Any? {
-        // Reset any previous state
-        resetState()
-        this.envOverrides = envOverrides
-        this.intermediateResultCallback = onIntermediateResult
-
-        initWebView()
-
-        // 确保JavaScript环境已初始化
-        if (!jsEnvironmentInitialized) {
-            initJavaScriptEnvironment()
+        val effectiveParams = params.toMutableMap()
+        val explicitLanguage = effectiveParams["__operit_package_lang"]?.toString()?.trim().orEmpty()
+        if (explicitLanguage.isBlank()) {
+            effectiveParams["__operit_package_lang"] =
+                LocaleUtils.getCurrentLanguage(context).trim().ifBlank { "en" }
         }
 
-        val future = CompletableFuture<Any?>()
-        resultCallback = future
-
-        // 将参数转换为 JSON 对象
-        val paramsJson = JSONObject(params).toString()
-        val scriptJson = JSONObject.quote(script)
-
-        // 优化后的脚本执行代码，只包含必要的执行逻辑
-        val executionScript =
-                """
-            // 清理定时器以准备新的执行
-            (function() {
-                try {
-                    var highestTimeoutId = setTimeout(";");
-                    for (var i = 0 ; i < highestTimeoutId ; i++) {
-                        clearTimeout(i);
-                        clearInterval(i);
-                    }
-                } catch(e) {}
-            })();
-            
-            // 设置参数和执行状态
-            var params = $paramsJson;
-            window._hasCompleted = false;
-            try {
-                var __operitState = (params && params.__operit_package_state !== undefined && params.__operit_package_state !== null && String(params.__operit_package_state).length > 0)
-                    ? String(params.__operit_package_state)
-                    : undefined;
-                window['__operit_package_state'] = __operitState;
-            } catch (e) {
-            }
-            try {
-                var __operitLang = (params && params.__operit_package_lang !== undefined && params.__operit_package_lang !== null && String(params.__operit_package_lang).length > 0)
-                    ? String(params.__operit_package_lang)
-                    : ((window['__operit_package_lang'] !== undefined && window['__operit_package_lang'] !== null && String(window['__operit_package_lang']).length > 0)
-                        ? String(window['__operit_package_lang'])
-                        : undefined);
-                window['__operit_package_lang'] = __operitLang;
-            } catch (e) {
-            }
-            try {
-                var __operitCallerName = (params && params.__operit_package_caller_name !== undefined && params.__operit_package_caller_name !== null && String(params.__operit_package_caller_name).length > 0)
-                    ? String(params.__operit_package_caller_name)
-                    : undefined;
-                window['__operit_package_caller_name'] = __operitCallerName;
-            } catch (e) {
-            }
-            try {
-                var __operitChatId = (params && params.__operit_package_chat_id !== undefined && params.__operit_package_chat_id !== null && String(params.__operit_package_chat_id).length > 0)
-                    ? String(params.__operit_package_chat_id)
-                    : undefined;
-                window['__operit_package_chat_id'] = __operitChatId;
-            } catch (e) {
-            }
-            try {
-                var __operitCallerCardId = (params && params.__operit_package_caller_card_id !== undefined && params.__operit_package_caller_card_id !== null && String(params.__operit_package_caller_card_id).length > 0)
-                    ? String(params.__operit_package_caller_card_id)
-                    : undefined;
-                window['__operit_package_caller_card_id'] = __operitCallerCardId;
-            } catch (e) {
-            }
-            
-            // 设置安全超时机制
-            window._safetyTimeout = setTimeout(function() {
-                if (!window._hasCompleted) {
-                    console.log("Safety timeout warning at " + (${JsTimeoutConfig.PRE_TIMEOUT_SECONDS}) + " seconds");
-                    // 不立即结束，而是添加另一个最终超时
-                    setTimeout(function() {
-                        if (!window._hasCompleted) {
-                            window._hasCompleted = true;
-                            NativeInterface.setResult("Script execution timed out after ${JsTimeoutConfig.MAIN_TIMEOUT_SECONDS} seconds");
-                        }
-                    }, 5000); // 再等5秒
+        val timingEvent = effectiveParams["event"]?.toString()?.trim().orEmpty()
+        val timingPluginId =
+            effectiveParams["pluginId"]?.toString()?.trim().orEmpty()
+                .ifBlank {
+                    effectiveParams["__operit_plugin_id"]?.toString()?.trim().orEmpty()
                 }
-            }, ${JsTimeoutConfig.PRE_TIMEOUT_SECONDS * 1000});
-            
-            // 执行用户脚本
-            try {
-                // 创建模块执行环境 - 使用一个闭包来避免重复声明变量
-                let moduleResult = (function() {
-                    // 创建一个自包含的模块环境
-                    const module = {exports: {}};
-                    const exports = module.exports;
-                    
-                    const __operitPackageTarget =
-                        (params &&
-                            params.__operit_ui_package_name !== undefined &&
-                            params.__operit_ui_package_name !== null &&
-                            String(params.__operit_ui_package_name).length > 0)
-                            ? String(params.__operit_ui_package_name)
-                            : ((params &&
-                                params.toolPkgId !== undefined &&
-                                params.toolPkgId !== null &&
-                                String(params.toolPkgId).length > 0)
-                                ? String(params.toolPkgId)
-                                : "");
-                    const __operitEntryPath =
-                        (params &&
-                            params.__operit_script_entry !== undefined &&
-                            params.__operit_script_entry !== null &&
-                            String(params.__operit_script_entry).length > 0)
-                            ? String(params.__operit_script_entry).replace(/\\/g, '/')
-                            : ((params &&
-                                params.moduleSpec &&
-                                params.moduleSpec.entry !== undefined &&
-                                params.moduleSpec.entry !== null &&
-                                String(params.moduleSpec.entry).length > 0)
-                                ? String(params.moduleSpec.entry).replace(/\\/g, '/')
-                                : "");
-                    const __operitModuleCache = {};
+                .ifBlank { "none" }
+        val shouldLogTiming = timingEvent.equals(TOOLPKG_EVENT_MESSAGE_PROCESSING, ignoreCase = true)
+        val totalStartTime = if (shouldLogTiming) messageTimingNow() else 0L
 
-                    function __operitTranspileEsmToCjs(sourceCode, modulePath) {
-                        var code = String(sourceCode || '');
-
-                        code = code.replace(
-                            /^\s*import\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
-                            function(_, mod) {
-                                return "require('" + mod + "');";
-                            }
-                        );
-                        code = code.replace(
-                            /^\s*import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
-                            function(_, localName, mod) {
-                                return "const " + localName + " = require('" + mod + "');";
-                            }
-                        );
-                        code = code.replace(
-                            /^\s*import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
-                            function(_, localName, mod) {
-                                return (
-                                    "const " +
-                                    localName +
-                                    " = (function(__m){ return (__m && Object.prototype.hasOwnProperty.call(__m, 'default')) ? __m.default : __m; })(require('" +
-                                    mod +
-                                    "'));"
-                                );
-                            }
-                        );
-                        code = code.replace(
-                            /^\s*import\s+([A-Za-z_$][\w$]*)\s*,\s*\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
-                            function(_, defaultName, namedPart, mod) {
-                                var namedList = String(namedPart || '').trim();
-                                return (
-                                    "const __mod = require('" +
-                                    mod +
-                                    "');\n" +
-                                    "const " +
-                                    defaultName +
-                                    " = (function(__m){ return (__m && Object.prototype.hasOwnProperty.call(__m, 'default')) ? __m.default : __m; })(__mod);\n" +
-                                    "const { " +
-                                    namedList.replace(/\sas\s/g, ': ') +
-                                    " } = __mod;"
-                                );
-                            }
-                        );
-                        code = code.replace(
-                            /^\s*import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]\s*;?\s*$/gm,
-                            function(_, namedPart, mod) {
-                                var namedList = String(namedPart || '').trim();
-                                return "const { " + namedList.replace(/\sas\s/g, ': ') + " } = require('" + mod + "');";
-                            }
-                        );
-
-                        var exportedNames = [];
-                        code = code.replace(
-                            /^\s*export\s+(async\s+function|function|class)\s+([A-Za-z_$][\w$]*)/gm,
-                            function(_, decl, name) {
-                                exportedNames.push(name);
-                                return decl + " " + name;
-                            }
-                        );
-                        code = code.replace(
-                            /^\s*export\s+(const|let|var)\s+([A-Za-z_$][\w$]*)/gm,
-                            function(_, decl, name) {
-                                exportedNames.push(name);
-                                return decl + " " + name;
-                            }
-                        );
-                        code = code.replace(
-                            /^\s*export\s+default\s+/gm,
-                            "module.exports.default = "
-                        );
-                        code = code.replace(
-                            /^\s*export\s*\{\s*([^}]+)\s*\}\s*;?\s*$/gm,
-                            function(_, rawSpec) {
-                                var specs = String(rawSpec || '').split(',');
-                                var lines = [];
-                                for (var i = 0; i < specs.length; i++) {
-                                    var item = specs[i].trim();
-                                    if (!item) {
-                                        continue;
-                                    }
-                                    var match = item.match(/^([A-Za-z_$][\w$]*)(\s+as\s+([A-Za-z_$][\w$]*))?$/);
-                                    if (!match) {
-                                        continue;
-                                    }
-                                    var localName = match[1];
-                                    var exportName = match[3] || localName;
-                                    lines.push("module.exports['" + exportName + "'] = " + localName + ";");
-                                }
-                                return lines.join('\n');
-                            }
-                        );
-                        code = code.replace(
-                            /^\s*export\s+\*\s+from\s+['"][^'"]+['"]\s*;?\s*$/gm,
-                            "throw new Error('export * from is not supported in compose_dsl runtime');"
-                        );
-                        code = code.replace(/^\s*export\s*\{\s*\}\s*;?\s*$/gm, "");
-
-                        if (exportedNames.length > 0) {
-                            var uniqueNames = {};
-                            var exportLines = [];
-                            for (var i = 0; i < exportedNames.length; i++) {
-                                var name = exportedNames[i];
-                                if (uniqueNames[name]) {
-                                    continue;
-                                }
-                                uniqueNames[name] = true;
-                                exportLines.push("module.exports['" + name + "'] = " + name + ";");
-                            }
-                            if (exportLines.length > 0) {
-                                code += "\n" + exportLines.join("\n");
-                            }
-                        }
-
-                        console.warn(
-                            '[compose_dsl] transpiled ESM to CJS: ' +
-                                (modulePath || '<inline>') +
-                                ', length=' +
-                                code.length
-                        );
-                        return code;
-                    }
-
-                    function __operitBuildScriptFactory(scriptText, modulePath) {
-                        try {
-                            return new Function('module', 'exports', 'require', scriptText);
-                        } catch (compileError) {
-                            var message = String(compileError && compileError.message ? compileError.message : compileError);
-                            var maybeEsm =
-                                message.indexOf("Unexpected token 'export'") >= 0 ||
-                                message.indexOf('Cannot use import statement outside a module') >= 0 ||
-                                message.indexOf("Unexpected token 'import'") >= 0;
-                            if (!maybeEsm) {
-                                throw compileError;
-                            }
-                            console.warn(
-                                '[compose_dsl] compile failed, retry as ESM->CJS: ' +
-                                    (modulePath || '<inline>') +
-                                    ', error=' +
-                                    message
-                            );
-                            var transpiled = __operitTranspileEsmToCjs(scriptText, modulePath);
-                            return new Function('module', 'exports', 'require', transpiled);
-                        }
-                    }
-
-                    function __operitNormalizePath(path) {
-                        var parts = String(path || '').replace(/\\/g, '/').split('/');
-                        var stack = [];
-                        for (var i = 0; i < parts.length; i++) {
-                            var part = parts[i];
-                            if (!part || part === '.') {
-                                continue;
-                            }
-                            if (part === '..') {
-                                if (stack.length > 0) {
-                                    stack.pop();
-                                }
-                                continue;
-                            }
-                            stack.push(part);
-                        }
-                        return stack.join('/');
-                    }
-
-                    function __operitDirname(path) {
-                        var normalized = __operitNormalizePath(path);
-                        if (!normalized) {
-                            return '';
-                        }
-                        var index = normalized.lastIndexOf('/');
-                        if (index < 0) {
-                            return '';
-                        }
-                        return normalized.substring(0, index);
-                    }
-
-                    function __operitResolveModulePath(moduleName, fromPath) {
-                        var request = String(moduleName || '').replace(/\\/g, '/').trim();
-                        if (!request) {
-                            return '';
-                        }
-                        if (!(request.startsWith('.') || request.startsWith('/'))) {
-                            return request;
-                        }
-                        if (request.startsWith('/')) {
-                            return __operitNormalizePath(request);
-                        }
-                        var baseDir = __operitDirname(fromPath || __operitEntryPath || '');
-                        var combined = baseDir ? (baseDir + '/' + request) : request;
-                        return __operitNormalizePath(combined);
-                    }
-
-                    function __operitBuildCandidatePaths(modulePath) {
-                        var normalized = __operitNormalizePath(modulePath);
-                        if (!normalized) {
-                            return [];
-                        }
-                        var candidates = [normalized];
-                        var hasExt = /\.[a-z0-9]+$/i.test(normalized);
-                        if (!hasExt) {
-                            candidates.push(normalized + '.js');
-                            candidates.push(normalized + '.json');
-                            candidates.push(normalized + '/index.js');
-                            candidates.push(normalized + '/index.json');
-                        }
-                        return candidates;
-                    }
-
-                    function __operitReadToolPkgModule(modulePath) {
-                        if (!__operitPackageTarget) {
-                            console.error('[compose_dsl] empty package target for module: ' + modulePath);
-                            return null;
-                        }
-                        if (
-                            typeof NativeInterface === 'undefined' ||
-                            !NativeInterface ||
-                            typeof NativeInterface.readToolPkgTextResource !== 'function'
-                        ) {
-                            console.error('[compose_dsl] NativeInterface.readToolPkgTextResource unavailable');
-                            return null;
-                        }
-                        var candidates = __operitBuildCandidatePaths(modulePath);
-                        for (var i = 0; i < candidates.length; i++) {
-                            var candidatePath = candidates[i];
-                            var moduleText = NativeInterface.readToolPkgTextResource(
-                                __operitPackageTarget,
-                                candidatePath
-                            );
-                            if (typeof moduleText === 'string' && moduleText.length > 0) {
-                                console.log(
-                                    '[compose_dsl] module loaded: ' +
-                                        candidatePath +
-                                        ', bytes=' +
-                                        moduleText.length
-                                );
-                                return {
-                                    path: candidatePath,
-                                    text: moduleText
-                                };
-                            }
-                        }
-                        console.warn(
-                            '[compose_dsl] module not found in toolpkg: ' +
-                                modulePath +
-                                ', candidates=' +
-                                JSON.stringify(candidates)
-                        );
-                        return null;
-                    }
-
-                    function __operitExecuteModule(modulePath, moduleText, requireInternal) {
-                        if (__operitModuleCache[modulePath]) {
-                            return __operitModuleCache[modulePath].exports;
-                        }
-                        var localModule = { exports: {} };
-                        __operitModuleCache[modulePath] = localModule;
-                        try {
-                            if (/\.json$/i.test(modulePath)) {
-                                localModule.exports = JSON.parse(moduleText);
-                                return localModule.exports;
-                            }
-                            var localRequire = function(nextName) {
-                                return requireInternal(nextName, modulePath);
-                            };
-                            var compiled = __operitBuildScriptFactory(moduleText, modulePath);
-                            compiled(localModule, localModule.exports, localRequire);
-                            return localModule.exports;
-                        } catch (e) {
-                            console.error(
-                                '[compose_dsl] execute module failed: ' +
-                                    modulePath +
-                                    ', error=' +
-                                    (e && e.message ? e.message : String(e))
-                            );
-                            delete __operitModuleCache[modulePath];
-                            throw e;
-                        }
-                    }
-
-                    const requireInternal = function(moduleName, fromPath) {
-                        if (moduleName === 'lodash') return _;
-                        if (moduleName === 'uuid') {
-                            return {
-                                v4: function() {
-                                    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                                        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-                                        return v.toString(16);
-                                    });
-                                }
-                            };
-                        }
-                        if (moduleName === 'axios') {
-                            return {
-                                get: (url, config) => {
-                                    const params = config ? Object.assign({}, { url }, config) : { url };
-                                    return toolCall("http_request", params);
-                                },
-                                post: (url, data, config) => {
-                                    const params = config ? Object.assign({}, { url, data }, config) : { url, data };
-                                    return toolCall("http_request", params);
-                                }
-                            };
-                        }
-
-                        var request = String(moduleName || '').trim();
-                        if (request.startsWith('.') || request.startsWith('/')) {
-                            var resolvedModulePath = __operitResolveModulePath(request, fromPath);
-                            var loadedModule = __operitReadToolPkgModule(resolvedModulePath);
-                            if (loadedModule) {
-                                return __operitExecuteModule(
-                                    loadedModule.path,
-                                    loadedModule.text,
-                                    requireInternal
-                                );
-                            }
-                            console.error(
-                                'Failed to resolve module from toolpkg: ' +
-                                    request +
-                                    ' (from ' +
-                                    (fromPath || __operitEntryPath || '<root>') +
-                                    ')'
-                            );
-                            throw new Error(
-                                'Cannot resolve module "' +
-                                    request +
-                                    '" from "' +
-                                    (fromPath || __operitEntryPath || '<root>') +
-                                    '"'
-                            );
-                        }
-
-                        console.log('Attempted to require unsupported module: ' + request);
-                        return {};
-                    };
-
-                    const require = function(moduleName) {
-                        console.log(
-                            '[compose_dsl] require request: ' +
-                                String(moduleName || '') +
-                                ', from=' +
-                                (__operitEntryPath || '<root>')
-                        );
-                        return requireInternal(moduleName, __operitEntryPath);
-                    };
-                    
-                    // 执行用户脚本，定义所有函数（通过Function包装，避免裸插入脚本导致解析期匿名错误）
-                    const __operitScriptText = $scriptJson;
-                    console.log(
-                        '[compose_dsl] executing entry script, package=' +
-                            (__operitPackageTarget || '<none>') +
-                            ', entry=' +
-                            (__operitEntryPath || '<none>') +
-                            ', bytes=' +
-                            __operitScriptText.length
-                    );
-                    const __operitScriptFactory = __operitBuildScriptFactory(
-                        __operitScriptText,
-                        __operitEntryPath || '<entry>'
-                    );
-                    __operitScriptFactory(module, exports, require);
-                    
-                    // 返回模块环境
-                    return {
-                        module: module,
-                        exports: exports,
-                        foundFunction: null
-                    };
-                })();
-                
-                // 从模块环境中获取结果
-                const module = moduleResult.module;
-                const moduleResultExports = moduleResult.exports;
-                
-                // 确保指定的函数存在 - 先查找exports，再查找module.exports，最后查找全局
-                let functionResult = null;
-                let functionFound = false;
-                
-                if (typeof moduleResultExports['${functionName}'] === 'function') {
-                    // 如果函数是作为exports导出的
-                    functionFound = true;
-                    functionResult = moduleResultExports['${functionName}'](params);
-                } else if (typeof module.exports['${functionName}'] === 'function') {
-                    // 尝试替代的导出模式
-                    functionFound = true;
-                    functionResult = module.exports['${functionName}'](params);
-                } else if (typeof window['${functionName}'] === 'function') {
-                    // 全局函数
-                    functionFound = true;
-                    functionResult = window['${functionName}'](params);
-                }
-                
-                if (functionFound) {
-                    // 处理函数返回结果，特别是异步Promise
-                    var handledAsync = false;
-                    try {
-                        if (typeof __handleAsync === 'function') {
-                            handledAsync = __handleAsync(functionResult);
-                        }
-                    } catch (e) {
-                        console.error("Error calling __handleAsync:", e);
-                    }
-                    if (!handledAsync) {
-                        // 如果是同步结果且没有调用complete()，使用该结果
-                        if (!window._hasCompleted) {
-                            NativeInterface.setResult(JSON.stringify(functionResult));
-                        }
-                    }
-                } else {
-                    // 如果没有找到函数，记录所有可用的函数
-                    var availableFunctions = [];
-                    for (var key in moduleResultExports) {
-                        if (typeof moduleResultExports[key] === 'function') {
-                            availableFunctions.push(key);
-                        }
-                    }
-                    for (var key in module.exports) {
-                        if (typeof module.exports[key] === 'function' && !availableFunctions.includes(key)) {
-                            availableFunctions.push(key);
-                        }
-                    }
-                    
-                    var errorMsg = "Function '${functionName}' not found in script. Available functions: " + 
-                                  (availableFunctions.length > 0 ? availableFunctions.join(", ") : "none");
-                    NativeInterface.setError(errorMsg);
-                }
-            } catch (error) {
-                try {
-                    console.error(
-                        "[compose_dsl] script execution failed:",
-                        error && error.stack ? error.stack : error
-                    );
-                } catch (logError) {
-                }
-                NativeInterface.setError("Script error: " + error.message);
-            }
-        """.trimIndent()
-
-        // 在主线程中执行脚本
-        ContextCompat.getMainExecutor(context).execute {
-            webView?.evaluateJavascript(executionScript) { result ->
-                AppLogger.d(TAG, "Script execution dispatched. Sync result: $result (final async result is handled separately)")
-            }
-        }
-
-        // 等待结果或超时
-        return try {
-            // 创建一个定时器，在超时前提醒JavaScript
-            val preTimeoutTimer = java.util.Timer()
-
-            // 只在较长的脚本执行中使用超时预警
-            preTimeoutTimer.schedule(
-                    object : java.util.TimerTask() {
-                        override fun run() {
-                            try {
-                                // 如果还没完成，尝试提前触发完成
-                                if (!future.isDone) {
-                                    AppLogger.d(TAG, "Pre-timeout warning triggered")
-                                    ContextCompat.getMainExecutor(context).execute {
-                                        webView?.evaluateJavascript(
-                                                """
-                                    if (typeof complete === 'function' && !window._hasCompleted) {
-                                        console.log("Script execution approaching timeout");
-                                        // 不强制完成，只记录警告
-                                    }
-                                """,
-                                                null
-                                        )
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                AppLogger.e(TAG, "Error in pre-timeout handler: ${e.message}", e)
-                            }
-                        }
-                    },
-                    JsTimeoutConfig.PRE_TIMEOUT_SECONDS * 1000
+        val initQuickJsStartTime = if (shouldLogTiming) messageTimingNow() else 0L
+        ensureQuickJs()
+        if (shouldLogTiming) {
+            logMessageTiming(
+                stage = "toolpkg.jsEngine.initQuickJs",
+                startTimeMs = initQuickJsStartTime,
+                details = "function=$functionName, plugin=$timingPluginId"
             )
+        }
 
-            try {
-                val result = future.get(JsTimeoutConfig.MAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                preTimeoutTimer.cancel()
-                result
-            } catch (e: Exception) {
-                preTimeoutTimer.cancel()
-                throw e
-            }
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Script execution timed out or failed: ${e.message}", e)
-            // 确保WebView的JavaScript不再继续执行
-            ContextCompat.getMainExecutor(context).execute {
-                webView?.evaluateJavascript(
-                        "window._hasCompleted = true; clearTimeout(window._safetyTimeout);",
-                        null
+        if (!jsEnvironmentInitialized) {
+            val initJavaScriptEnvironmentStartTime = if (shouldLogTiming) messageTimingNow() else 0L
+            initJavaScriptEnvironment()
+            if (shouldLogTiming) {
+                logMessageTiming(
+                    stage = "toolpkg.jsEngine.initJavaScriptEnvironment",
+                    startTimeMs = initJavaScriptEnvironmentStartTime,
+                    details = "function=$functionName, plugin=$timingPluginId"
                 )
             }
-            "Error: ${e.message}"
+        }
+
+        val callId = nextExecutionCallId()
+        val session =
+            createExecutionSession(
+                callId = callId,
+                script = script,
+                functionName = functionName,
+                params = effectiveParams,
+                envOverrides = envOverrides,
+                onIntermediateResult = onIntermediateResult
+            )
+        activeExecutionSessions[callId] = session
+
+        val buildExecutionScriptStartTime = if (shouldLogTiming) messageTimingNow() else 0L
+        val paramsObject = JSONObject(effectiveParams)
+        val paramsJson = paramsObject.toString()
+        val safeTimeoutSec = if (timeoutSec <= 0L) 1L else timeoutSec
+        val preTimeoutMs = JsTimeoutConfig.PRE_TIMEOUT_SECONDS * 1000L
+        val executionArgsJson =
+            JSONArray()
+                .put(callId)
+                .put(paramsObject)
+                .put(script)
+                .put(functionName)
+                .put(safeTimeoutSec)
+                .put(preTimeoutMs)
+                .toString()
+        if (shouldLogTiming) {
+            logMessageTiming(
+                stage = "toolpkg.jsEngine.buildExecutionScript",
+                startTimeMs = buildExecutionScriptStartTime,
+                details = "function=$functionName, plugin=$timingPluginId, scriptLength=${script.length}, paramsLength=${paramsJson.length}, argsLength=${executionArgsJson.length}, directInvoke=true"
+            )
+        }
+
+        launchQuickJsFunctionCall(
+            functionName = TOOLPKG_EXECUTION_ENTRY_FUNCTION,
+            argsJson = executionArgsJson,
+            callSite = "quickjs/runtime/execute-script.call",
+            onError = { e ->
+                AppLogger.e(
+                    TAG,
+                    "Failed to dispatch script execution: callId=$callId, function=$functionName, reason=${e.message}",
+                    e
+                )
+                removeExecutionSession(callId)
+                if (!session.future.isDone) {
+                    session.future.complete("Error: ${e.message ?: "dispatch failed"}")
+                }
+            }
+        )
+
+        val preTimeoutTimer = java.util.Timer()
+        val waitResultStartTime = if (shouldLogTiming) messageTimingNow() else 0L
+        return try {
+            preTimeoutTimer.schedule(
+                object : java.util.TimerTask() {
+                    override fun run() {
+                        if (!session.future.isDone) {
+                            AppLogger.d(
+                                TAG,
+                                "Pre-timeout warning triggered: callId=$callId, function=$functionName"
+                            )
+                        }
+                    }
+                },
+                JsTimeoutConfig.PRE_TIMEOUT_SECONDS * 1000
+            )
+
+            val result = session.future.get(safeTimeoutSec, TimeUnit.SECONDS)
+            removeExecutionSession(callId)
+            if (shouldLogTiming) {
+                logMessageTiming(
+                    stage = "toolpkg.jsEngine.waitResult",
+                    startTimeMs = waitResultStartTime,
+                    details = "function=$functionName, plugin=$timingPluginId, callId=$callId, success=true, resultType=${result?.javaClass?.simpleName ?: "null"}"
+                )
+                logMessageTiming(
+                    stage = "toolpkg.jsEngine.total",
+                    startTimeMs = totalStartTime,
+                    details = "function=$functionName, plugin=$timingPluginId, callId=$callId, success=true"
+                )
+            }
+            result
+        } catch (e: Exception) {
+            if (e is InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+            val failureReason =
+                when (e) {
+                    is java.util.concurrent.TimeoutException ->
+                        "Script execution timed out after ${if (timeoutSec <= 0L) 1L else timeoutSec} seconds"
+                    else -> e.message ?: e.javaClass.simpleName
+                }
+            AppLogger.e(
+                TAG,
+                "Script execution timed out or failed: callId=$callId, function=$functionName, reason=$failureReason",
+                e
+            )
+            removeExecutionSession(callId)
+            cancelExecutionSessionInJs(callId, failureReason)
+            if (shouldLogTiming) {
+                logMessageTiming(
+                    stage = "toolpkg.jsEngine.waitResult",
+                    startTimeMs = waitResultStartTime,
+                    details = "function=$functionName, plugin=$timingPluginId, callId=$callId, success=false, reason=$failureReason"
+                )
+                logMessageTiming(
+                    stage = "toolpkg.jsEngine.total",
+                    startTimeMs = totalStartTime,
+                    details = "function=$functionName, plugin=$timingPluginId, callId=$callId, success=false, reason=$failureReason"
+                )
+            }
+            "Error: $failureReason"
+        } finally {
+            preTimeoutTimer.cancel()
+        }
+    }
+
+    fun executeToolPkgMainRegistrationFunction(
+        script: String,
+        functionName: String,
+        params: Map<String, Any?> = emptyMap()
+    ): ToolPkgMainRegistrationCapture {
+        synchronized(toolPkgRegistrationSession) {
+            toolPkgRegistrationSession.begin()
+            try {
+                val executionResult =
+                    executeScriptFunction(
+                        script = script,
+                        functionName = functionName,
+                        params = params,
+                        timeoutSec = 12L
+                    )
+                return toolPkgRegistrationSession.finish(executionResult)
+            } finally {
+                toolPkgRegistrationSession.end()
+            }
         }
     }
 
@@ -1508,6 +738,7 @@ class JsEngine(private val context: Context) {
     fun executeComposeDslAction(
             actionId: String,
             payload: Any? = null,
+            runtimeOptions: Map<String, Any?> = emptyMap(),
             envOverrides: Map<String, String> = emptyMap(),
             onIntermediateResult: ((Any?) -> Unit)? = null
     ): Any? {
@@ -1515,7 +746,8 @@ class JsEngine(private val context: Context) {
         if (normalizedActionId.isBlank()) {
             return "Error: compose action id is required"
         }
-        val params = mutableMapOf<String, Any?>("__action_id" to normalizedActionId)
+        val params = runtimeOptions.toMutableMap()
+        params["__action_id"] = normalizedActionId
         if (payload != null) {
             params["__action_payload"] = payload
         }
@@ -1528,31 +760,10 @@ class JsEngine(private val context: Context) {
         )
     }
 
-    private fun toJsLiteral(value: Any?): String {
-        if (value == null) {
-            return "undefined"
-        }
-        return when (value) {
-            is Number, is Boolean -> value.toString()
-            is String -> JSONObject.quote(value)
-            else -> {
-                try {
-                    val wrapped = JSONObject.wrap(value)
-                    when (wrapped) {
-                        null -> JSONObject.quote(value.toString())
-                        JSONObject.NULL -> "null"
-                        else -> wrapped.toString()
-                    }
-                } catch (e: Exception) {
-                    JSONObject.quote(value.toString())
-                }
-            }
-        }
-    }
-
     fun dispatchComposeDslActionAsync(
             actionId: String,
             payload: Any? = null,
+            runtimeOptions: Map<String, Any?> = emptyMap(),
             envOverrides: Map<String, String> = emptyMap(),
             onIntermediateResult: ((Any?) -> Unit)? = null,
             onComplete: (() -> Unit)? = null,
@@ -1565,81 +776,45 @@ class JsEngine(private val context: Context) {
             return false
         }
 
-        if (onIntermediateResult != null) {
-            intermediateResultCallback = onIntermediateResult
-        }
-        this.envOverrides = envOverrides
-
-        initWebView()
-        if (!jsEnvironmentInitialized) {
-            initJavaScriptEnvironment()
-        }
-
-        val actionToken = UUID.randomUUID().toString()
-        if (onComplete != null) {
-            composeDslActionCompleteCallbacks[actionToken] = onComplete
-        }
-        if (onError != null) {
-            composeDslActionErrorCallbacks[actionToken] = onError
-        }
-
-        val actionIdJson = JSONObject.quote(normalizedActionId)
-        val actionTokenJson = JSONObject.quote(actionToken)
-        val hasPayload = payload != null
-        val payloadLiteral = if (hasPayload) toJsLiteral(payload) else "undefined"
-        val asyncDispatchScript =
-                """
-            (function() {
-                var __actionToken = $actionTokenJson;
+        Thread {
+            val result =
                 try {
-                    var __dispatchFn =
-                        (typeof window !== 'undefined' && typeof window.__operit_dispatch_compose_dsl_action === 'function')
-                            ? window.__operit_dispatch_compose_dsl_action
-                            : (typeof __operit_dispatch_compose_dsl_action === 'function'
-                                ? __operit_dispatch_compose_dsl_action
-                                : null);
-                    if (typeof __dispatchFn !== 'function') {
-                        NativeInterface.reportComposeDslActionError(__actionToken, 'compose_dsl runtime dispatch function not found');
-                        NativeInterface.reportComposeDslActionCompleted(__actionToken);
-                        return;
+                    executeComposeDslAction(
+                        actionId = normalizedActionId,
+                        payload = payload,
+                        runtimeOptions = runtimeOptions,
+                        envOverrides = envOverrides,
+                        onIntermediateResult = onIntermediateResult
+                    )
+                } catch (e: Exception) {
+                    val errorText = e.message?.trim().orEmpty().ifBlank { "compose action dispatch failed" }
+                    AppLogger.e(TAG, "dispatch compose action failed: actionId=$normalizedActionId, error=$errorText", e)
+                    ContextCompat.getMainExecutor(context).execute {
+                        onError?.invoke(errorText)
+                        onComplete?.invoke()
                     }
-
-                    var __request = { __action_id: $actionIdJson };
-                    if ($hasPayload) {
-                        __request.__action_payload = $payloadLiteral;
-                    }
-
-                    Promise.resolve(__dispatchFn(__request))
-                        .then(function(__result) {
-                            try {
-                                NativeInterface.sendIntermediateResult(JSON.stringify(__result));
-                            } catch (__ignored) {
-                            }
-                            NativeInterface.reportComposeDslActionCompleted(__actionToken);
-                        })
-                        .catch(function(__error) {
-                            var __message = (__error && __error.message) ? __error.message : String(__error);
-                            NativeInterface.reportComposeDslActionError(__actionToken, __message);
-                            NativeInterface.reportComposeDslActionCompleted(__actionToken);
-                        });
-                } catch (__e) {
-                    var __message = (__e && __e.message) ? __e.message : String(__e);
-                    NativeInterface.reportComposeDslActionError(__actionToken, __message);
-                    NativeInterface.reportComposeDslActionCompleted(__actionToken);
+                    return@Thread
                 }
-            })();
-        """.trimIndent()
 
-        ContextCompat.getMainExecutor(context).execute {
-            try {
-                webView?.evaluateJavascript(asyncDispatchScript, null)
-            } catch (e: Exception) {
-                val errorText = "dispatch compose action failed: ${e.message}"
-                AppLogger.e(TAG, errorText, e)
-                composeDslActionErrorCallbacks.remove(actionToken)?.invoke(errorText)
-                composeDslActionCompleteCallbacks.remove(actionToken)?.invoke()
+            val errorText =
+                result?.toString()
+                    ?.takeIf { it.startsWith("Error:", ignoreCase = true) }
+                    ?.removePrefix("Error:")
+                    ?.trim()
+                    ?.ifBlank { "compose action dispatch failed" }
+            ContextCompat.getMainExecutor(context).execute {
+                if (errorText != null) {
+                    AppLogger.e(
+                        TAG,
+                        "dispatch compose action failed: actionId=$normalizedActionId, error=$errorText"
+                    )
+                    onError?.invoke(errorText)
+                } else if (result != null) {
+                    onIntermediateResult?.invoke(result)
+                }
+                onComplete?.invoke()
             }
-        }
+        }.start()
 
         return true
     }
@@ -1647,76 +822,35 @@ class JsEngine(private val context: Context) {
     fun cancelCurrentExecution(reason: String = "Execution canceled: requested by caller") {
         AppLogger.d(TAG, "Cancel current JS execution: $reason")
         resetState(cancellationMessage = reason)
-        if (webView != null) {
-            ContextCompat.getMainExecutor(context).execute {
-                try {
-                    webView?.evaluateJavascript(
-                            "window._hasCompleted = true; clearTimeout(window._safetyTimeout);",
-                            null
-                    )
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error stopping current JS execution: ${e.message}", e)
-                }
-            }
-        }
     }
 
     /** 重置引擎状态，避免多次调用时的状态干扰 */
     private fun resetState(cancellationMessage: String = "Execution canceled: new execution started") {
-        // 只有当之前的回调存在时才需要完成它
-        val callback = resultCallback
-        if (callback != null && !callback.isDone) {
-            try {
-                callback.complete(cancellationMessage)
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Error completing previous callback: ${e.message}", e)
-            }
-        }
-        resultCallback = null
-        intermediateResultCallback = null
+        cancelAllExecutionSessions(cancellationMessage)
 
-        // 清理所有待处理的工具调用回调
-        toolCallbacks.forEach { (_, future) ->
-            if (!future.isDone) {
-                future.complete("Operation canceled: engine reset")
-            }
-        }
-        toolCallbacks.clear()
-        composeDslActionCompleteCallbacks.clear()
-        composeDslActionErrorCallbacks.clear()
-
-        envOverrides = emptyMap()
-
-        // 清理Bitmap注册表
         bitmapRegistry.values.forEach { it.recycle() }
         bitmapRegistry.clear()
 
-        // 清理二进制数据注册表
         binaryDataRegistry.clear()
         javaObjectRegistry.clear()
-
-        // 如果WebView已经存在，执行轻量级清理
-        if (webView != null) {
-            ContextCompat.getMainExecutor(context).execute {
-                try {
-                    // 使用更简单、更安全的清理代码
-                    webView?.evaluateJavascript(
-                            """
-                        // 清理所有定时器
+        if (quickJs != null) {
+            launchQuickJsEvaluation(
+                script =
+                    """
                         (function() {
-                            var highestTimeoutId = setTimeout(";");
-                            for (var i = 0 ; i < highestTimeoutId ; i++) {
-                                clearTimeout(i);
-                                clearInterval(i);
+                            var root = typeof globalThis !== 'undefined'
+                                ? globalThis
+                                : (typeof window !== 'undefined' ? window : this);
+                            if (typeof root.__operitClearAllTimers === 'function') {
+                                root.__operitClearAllTimers();
                             }
                         })();
-                    """,
-                            null
-                    )
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error in WebView cleanup: ${e.message}", e)
+                    """.trimIndent(),
+                fileName = "quickjs/runtime/reset-state.js",
+                onError = { e ->
+                    AppLogger.e(TAG, "Error in QuickJS cleanup: ${e.message}", e)
                 }
-            }
+            )
         }
     }
 
@@ -1724,69 +858,44 @@ class JsEngine(private val context: Context) {
     @Keep
     inner class JsToolCallInterface {
 
-        @JavascriptInterface
-        fun decompress(data: String, algorithm: String): String {
-            return try {
-                if (algorithm.lowercase() != "deflate") {
-                    throw IllegalArgumentException("Unsupported algorithm: $algorithm. Only 'deflate' is supported.")
-                }
-
-                val compressedData: ByteArray = if (data.startsWith(BINARY_HANDLE_PREFIX)) {
-                    val handle = data.substring(BINARY_HANDLE_PREFIX.length)
-                    binaryDataRegistry.remove(handle)
-                        ?: throw Exception("Invalid or expired binary handle: $handle")
-                } else {
-                    // Assume Base64 encoding if no handle is present
-                    Base64.decode(data, Base64.NO_WRAP)
-                }
-
-                if (compressedData.isEmpty()) {
-                    return ""
-                }
-
-                val inflater = java.util.zip.Inflater(true) // 使用 nowrap=true 来处理没有 zlib头的原始 DEFLATE 数据
-                inflater.setInput(compressedData)
-                val outputStream = ByteArrayOutputStream()
-                val buffer = ByteArray(1024)
-
-                while (!inflater.finished()) {
-                    val count = inflater.inflate(buffer)
-                    if (count == 0 && inflater.needsInput()) {
-                        // This indicates an incomplete or corrupt stream.
-                        throw java.util.zip.DataFormatException("Input is incomplete or corrupt")
-                    }
-                    outputStream.write(buffer, 0, count)
-                }
-
-                outputStream.close()
-                inflater.end()
-                
-                outputStream.toByteArray().toString(Charsets.UTF_8)
-
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Native decompress operation failed: ${e.message}", e)
-                "{\"nativeError\":\"${e.message?.replace("\"", "'")}\"}"
+        private val jsBridgeCallbackInvoker: (String, String, String) -> String =
+            { jsObjectId, methodName, callbackArgsJson ->
+                invokeJavaBridgeJsObjectCallbackSync(
+                    jsObjectId = jsObjectId,
+                    methodName = methodName,
+                    argsJson = callbackArgsJson
+                )
             }
+
+        init {
+            JsJavaBridgeDelegates.registerJsInterfaceReleaseInvoker(
+                callbackInvoker = jsBridgeCallbackInvoker,
+                releaseInvoker = ::releaseJavaBridgeJsObjectSync
+            )
+        }
+
+        fun detachJavaBridgeLifecycle() {
+            JsJavaBridgeDelegates.unregisterJsInterfaceReleaseInvoker(jsBridgeCallbackInvoker)
         }
 
         @JavascriptInterface
-        fun getEnv(key: String): String? {
-            return try {
-                val name = key.trim()
-                if (name.isEmpty()) {
-                    ""
-                } else {
-                    val overridden = envOverrides[name]
-                    if (!overridden.isNullOrEmpty()) {
-                        overridden
-                    } else {
-                        EnvPreferences.getInstance(context).getEnv(name) ?: ""
-                    }
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Error reading environment variable from JS: $key", e)
-                ""
-            }
+        fun decompress(data: String, algorithm: String): String {
+            return JsNativeInterfaceDelegates.decompress(
+                data = data,
+                algorithm = algorithm,
+                binaryDataRegistry = binaryDataRegistry,
+                binaryHandlePrefix = BINARY_HANDLE_PREFIX
+            )
+        }
+
+        @JavascriptInterface
+        fun getEnvForCall(callId: String, key: String): String? {
+            val session = resolveExecutionSession(callId)
+            return JsNativeInterfaceDelegates.getEnv(
+                context = context,
+                key = key,
+                envOverrides = session?.envOverrides ?: emptyMap()
+            )
         }
 
         @JavascriptInterface
@@ -1858,13 +967,16 @@ class JsEngine(private val context: Context) {
         fun readToolPkgResource(
                 packageNameOrSubpackageId: String,
                 resourceKey: String,
-                outputFileName: String
+                outputFileName: String,
+                internal: String
         ): String {
             return JsNativeInterfaceDelegates.readToolPkgResource(
+                    context = context,
                     packageManager = packageManager,
                     packageNameOrSubpackageId = packageNameOrSubpackageId,
                     resourceKey = resourceKey,
-                    outputFileName = outputFileName
+                    outputFileName = outputFileName,
+                    internal = internal
             )
         }
 
@@ -1873,6 +985,16 @@ class JsEngine(private val context: Context) {
                 packageNameOrSubpackageId: String,
                 resourcePath: String
         ): String {
+            val temporaryResolverActive = hasTemporaryToolPkgTextResourceResolver()
+            resolveTemporaryToolPkgTextResource(
+                packageNameOrSubpackageId = packageNameOrSubpackageId,
+                resourcePath = resourcePath
+            )?.let { resolved -> return resolved }
+            if (temporaryResolverActive) {
+                // During toolpkg parsing we must not fall back into PackageManager.
+                // That fallback can wait on initialization and deadlock JavaBridge thread.
+                return ""
+            }
             return JsNativeInterfaceDelegates.readToolPkgTextResource(
                     packageManager = packageManager,
                     packageNameOrSubpackageId = packageNameOrSubpackageId,
@@ -1881,60 +1003,169 @@ class JsEngine(private val context: Context) {
         }
 
         @JavascriptInterface
+        fun measureComposeText(payloadJson: String): String {
+            return JsNativeInterfaceDelegates.measureComposeText(
+                context = context,
+                payloadJson = payloadJson
+            )
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgToolboxUiModule(specJson: String) {
+            toolPkgRegistrationSession.appendToolboxUiModule(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgAppLifecycleHook(specJson: String) {
+            toolPkgRegistrationSession.appendAppLifecycleHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgMessageProcessingPlugin(specJson: String) {
+            toolPkgRegistrationSession.appendMessageProcessingPlugin(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgXmlRenderPlugin(specJson: String) {
+            toolPkgRegistrationSession.appendXmlRenderPlugin(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgInputMenuTogglePlugin(specJson: String) {
+            toolPkgRegistrationSession.appendInputMenuTogglePlugin(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgToolLifecycleHook(specJson: String) {
+            toolPkgRegistrationSession.appendToolLifecycleHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgPromptInputHook(specJson: String) {
+            toolPkgRegistrationSession.appendPromptInputHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgPromptHistoryHook(specJson: String) {
+            toolPkgRegistrationSession.appendPromptHistoryHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgSystemPromptComposeHook(specJson: String) {
+            toolPkgRegistrationSession.appendSystemPromptComposeHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgToolPromptComposeHook(specJson: String) {
+            toolPkgRegistrationSession.appendToolPromptComposeHook(specJson)
+        }
+
+        @JavascriptInterface
+        fun registerToolPkgPromptFinalizeHook(specJson: String) {
+            toolPkgRegistrationSession.appendPromptFinalizeHook(specJson)
+        }
+
+        private fun bridgeClassLoader(): ClassLoader = getJavaBridgeClassLoader()
+
+        private fun exposeJavaObject(target: Any, failureLabel: String): String {
+            return try {
+                val handle = UUID.randomUUID().toString()
+                javaObjectRegistry[handle] = target
+                JSONObject()
+                    .put("success", true)
+                    .put(
+                        "data",
+                        JSONObject()
+                            .put("__javaHandle", handle)
+                            .put("__javaClass", target.javaClass.name)
+                    )
+                    .toString()
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "$failureLabel: ${e.message}", e)
+                JSONObject()
+                    .put("success", false)
+                    .put("error", e.message ?: failureLabel.lowercase())
+                    .toString()
+            }
+        }
+
+        private fun launchSuspendJavaBridgeCall(
+            callbackId: String,
+            block: (normalizedCallbackId: String, resultCallback: (String) -> Unit) -> Unit
+        ) {
+            val normalizedCallback = callbackId.trim()
+            if (normalizedCallback.isEmpty()) {
+                return
+            }
+            Thread {
+                block(
+                    normalizedCallback,
+                    createSuspendJavaBridgeResultCallback(normalizedCallback)
+                )
+            }.start()
+        }
+
+        private fun createSuspendJavaBridgeResultCallback(callbackId: String): (String) -> Unit {
+            return { resultJson ->
+                val (error, data) = splitBridgeResult(resultJson)
+                invokeJavaBridgeJsObjectCallbackSync(
+                    jsObjectId = callbackId,
+                    methodName = "",
+                    argsJson = JSONArray().put(error).put(data).toString()
+                )
+            }
+        }
+
+        @JavascriptInterface
         fun javaClassExists(className: String): Boolean {
-            return JsJavaBridgeDelegates.classExists(className = className)
+            return JsJavaBridgeDelegates.classExists(
+                className = className,
+                bridgeClassLoader = bridgeClassLoader()
+            )
+        }
+
+        @JavascriptInterface
+        fun javaLoadDex(path: String, optionsJson: String): String {
+            return externalJavaCodeLoader.loadDex(
+                path = path,
+                optionsJson = optionsJson,
+                baseClassLoader = getJavaBridgeBaseClassLoader()
+            )
+        }
+
+        @JavascriptInterface
+        fun javaLoadJar(path: String, optionsJson: String): String {
+            return externalJavaCodeLoader.loadJar(
+                path = path,
+                optionsJson = optionsJson,
+                baseClassLoader = getJavaBridgeBaseClassLoader()
+            )
+        }
+
+        @JavascriptInterface
+        fun javaListLoadedCodePaths(): String {
+            return externalJavaCodeLoader.listLoadedArtifacts()
         }
 
         @JavascriptInterface
         fun javaGetApplicationContext(): String {
-            return try {
-                val appContext = context.applicationContext
-                val handle = UUID.randomUUID().toString()
-                javaObjectRegistry[handle] = appContext
-
-                JSONObject()
-                    .put("success", true)
-                    .put(
-                        "data",
-                        JSONObject()
-                            .put("__javaHandle", handle)
-                            .put("__javaClass", appContext.javaClass.name)
-                    )
-                    .toString()
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to expose application context: ${e.message}", e)
-                JSONObject()
-                    .put("success", false)
-                    .put("error", e.message ?: "failed to expose application context")
-                    .toString()
-            }
+            return exposeJavaObject(
+                target = context.applicationContext,
+                failureLabel = "Failed to expose application context"
+            )
         }
 
         @JavascriptInterface
         fun javaGetCurrentActivity(): String {
-            return try {
-                val activity =
-                    ActivityLifecycleManager.getCurrentActivity()
-                        ?: throw IllegalStateException("current activity is null")
-                val handle = UUID.randomUUID().toString()
-                javaObjectRegistry[handle] = activity
-
-                JSONObject()
-                    .put("success", true)
-                    .put(
-                        "data",
-                        JSONObject()
-                            .put("__javaHandle", handle)
-                            .put("__javaClass", activity.javaClass.name)
-                    )
-                    .toString()
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Failed to expose current activity: ${e.message}", e)
-                JSONObject()
+            val activity = ActivityLifecycleManager.getCurrentActivity()
+                ?: return JSONObject()
                     .put("success", false)
-                    .put("error", e.message ?: "failed to expose current activity")
+                    .put("error", "current activity is null")
                     .toString()
-            }
+            return exposeJavaObject(
+                target = activity,
+                failureLabel = "Failed to expose current activity"
+            )
         }
 
         @JavascriptInterface
@@ -1943,14 +1174,8 @@ class JsEngine(private val context: Context) {
                     className = className,
                     argsJson = argsJson,
                     objectRegistry = javaObjectRegistry,
-                    jsCallbackInvoker = { jsObjectId, methodName, callbackArgsJson ->
-                        invokeJavaBridgeJsObjectCallbackSync(
-                            jsObjectId = jsObjectId,
-                            methodName = methodName,
-                            argsJson = callbackArgsJson
-                        )
-                    },
-                    bridgeClassLoader = getJavaBridgeClassLoader()
+                    jsCallbackInvoker = jsBridgeCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader()
             )
         }
 
@@ -1961,14 +1186,8 @@ class JsEngine(private val context: Context) {
                     methodName = methodName,
                     argsJson = argsJson,
                     objectRegistry = javaObjectRegistry,
-                    jsCallbackInvoker = { jsObjectId, callbackMethod, callbackArgsJson ->
-                        invokeJavaBridgeJsObjectCallbackSync(
-                            jsObjectId = jsObjectId,
-                            methodName = callbackMethod,
-                            argsJson = callbackArgsJson
-                        )
-                    },
-                    bridgeClassLoader = getJavaBridgeClassLoader()
+                    jsCallbackInvoker = jsBridgeCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader()
             )
         }
 
@@ -1979,15 +1198,49 @@ class JsEngine(private val context: Context) {
                     methodName = methodName,
                     argsJson = argsJson,
                     objectRegistry = javaObjectRegistry,
-                    jsCallbackInvoker = { jsObjectId, callbackMethod, callbackArgsJson ->
-                        invokeJavaBridgeJsObjectCallbackSync(
-                            jsObjectId = jsObjectId,
-                            methodName = callbackMethod,
-                            argsJson = callbackArgsJson
-                        )
-                    },
-                    bridgeClassLoader = getJavaBridgeClassLoader()
+                    jsCallbackInvoker = jsBridgeCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader()
             )
+        }
+
+        @JavascriptInterface
+        fun javaCallStaticSuspend(
+                className: String,
+                methodName: String,
+                argsJson: String,
+                callbackId: String
+        ) {
+            launchSuspendJavaBridgeCall(callbackId) { _normalizedCallback, resultCallback ->
+                JsJavaBridgeDelegates.callStaticSuspend(
+                    className = className,
+                    methodName = methodName,
+                    argsJson = argsJson,
+                    objectRegistry = javaObjectRegistry,
+                    callback = resultCallback,
+                    jsCallbackInvoker = jsBridgeCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader()
+                )
+            }
+        }
+
+        @JavascriptInterface
+        fun javaCallInstanceSuspend(
+                instanceHandle: String,
+                methodName: String,
+                argsJson: String,
+                callbackId: String
+        ) {
+            launchSuspendJavaBridgeCall(callbackId) { _normalizedCallback, resultCallback ->
+                JsJavaBridgeDelegates.callInstanceSuspend(
+                    instanceHandle = instanceHandle,
+                    methodName = methodName,
+                    argsJson = argsJson,
+                    objectRegistry = javaObjectRegistry,
+                    callback = resultCallback,
+                    jsCallbackInvoker = jsBridgeCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader()
+                )
+            }
         }
 
         @JavascriptInterface
@@ -1995,7 +1248,8 @@ class JsEngine(private val context: Context) {
             return JsJavaBridgeDelegates.getStaticField(
                     className = className,
                     fieldName = fieldName,
-                    objectRegistry = javaObjectRegistry
+                    objectRegistry = javaObjectRegistry,
+                    bridgeClassLoader = bridgeClassLoader()
             )
         }
 
@@ -2006,14 +1260,8 @@ class JsEngine(private val context: Context) {
                     fieldName = fieldName,
                     valueJson = valueJson,
                     objectRegistry = javaObjectRegistry,
-                    jsCallbackInvoker = { jsObjectId, callbackMethod, callbackArgsJson ->
-                        invokeJavaBridgeJsObjectCallbackSync(
-                            jsObjectId = jsObjectId,
-                            methodName = callbackMethod,
-                            argsJson = callbackArgsJson
-                        )
-                    },
-                    bridgeClassLoader = getJavaBridgeClassLoader()
+                    jsCallbackInvoker = jsBridgeCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader()
             )
         }
 
@@ -2033,28 +1281,15 @@ class JsEngine(private val context: Context) {
                     fieldName = fieldName,
                     valueJson = valueJson,
                     objectRegistry = javaObjectRegistry,
-                    jsCallbackInvoker = { jsObjectId, callbackMethod, callbackArgsJson ->
-                        invokeJavaBridgeJsObjectCallbackSync(
-                            jsObjectId = jsObjectId,
-                            methodName = callbackMethod,
-                            argsJson = callbackArgsJson
-                        )
-                    },
-                    bridgeClassLoader = getJavaBridgeClassLoader()
+                    jsCallbackInvoker = jsBridgeCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader()
             )
         }
 
         @JavascriptInterface
-        fun javaReleaseInstance(instanceHandle: String): String {
+        fun __javaReleaseInstanceInternal(instanceHandle: String): String {
             return JsJavaBridgeDelegates.releaseInstance(
                     instanceHandle = instanceHandle,
-                    objectRegistry = javaObjectRegistry
-            )
-        }
-
-        @JavascriptInterface
-        fun javaReleaseAllInstances(): String {
-            return JsJavaBridgeDelegates.releaseAllInstances(
                     objectRegistry = javaObjectRegistry
             )
         }
@@ -2114,151 +1349,29 @@ class JsEngine(private val context: Context) {
         }
 
         @JavascriptInterface
-        fun sendIntermediateResult(result: String) {
+        fun sendCallIntermediateResult(callId: String, result: String) {
             try {
+                val session = resolveExecutionSession(callId) ?: return
                 ContextCompat.getMainExecutor(context).execute {
-                    intermediateResultCallback?.invoke(result)
+                    session.intermediateResultCallback?.invoke(result)
                 }
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Error processing intermediate result: ${e.message}", e)
+                AppLogger.e(TAG, "Error processing call intermediate result: callId=$callId, reason=${e.message}", e)
             }
         }
 
-        @JavascriptInterface
-        fun reportComposeDslActionError(actionToken: String, error: String) {
-            try {
-                AppLogger.e(
-                        TAG,
-                        "compose_dsl async action error: token=$actionToken, error=$error"
-                )
-                val callback = composeDslActionErrorCallbacks.remove(actionToken)
-                if (callback != null) {
-                    ContextCompat.getMainExecutor(context).execute {
-                        callback.invoke(error)
-                    }
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Error reporting compose_dsl action error: ${e.message}", e)
-            }
-        }
-
-        @JavascriptInterface
-        fun reportComposeDslActionCompleted(actionToken: String) {
-            try {
-                val callback = composeDslActionCompleteCallbacks.remove(actionToken)
-                composeDslActionErrorCallbacks.remove(actionToken)
-                if (callback != null) {
-                    ContextCompat.getMainExecutor(context).execute {
-                        callback.invoke()
-                    }
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "Error reporting compose_dsl action completion: ${e.message}", e)
-            }
-        }
-
-        /** 同步工具调用（旧版本，保留兼容性） */
+        /** 同步工具调用 */
         @JavascriptInterface
         fun callTool(toolType: String, toolName: String, paramsJson: String): String {
-            try {
-                // 解析参数
-                val params = mutableMapOf<String, String>()
-                val jsonObject = JSONObject(paramsJson)
-                jsonObject.keys().forEach { key ->
-                    params[key] = jsonObject.opt(key)?.toString() ?: ""
-                }
-
-                // 调用工具
-                AppLogger.d(TAG, "[Sync] JavaScript tool call: $toolType:$toolName with params: $params")
-
-                // 参数验证
-                if (toolName.isEmpty()) {
-                    AppLogger.e(TAG, "Tool name cannot be empty")
-                    return "Error: Tool name cannot be empty"
-                }
-
-                // 构建工具参数
-                val toolParameters =
-                        params.map { (name, value) -> ToolParameter(name = name, value = value) }
-
-                // 构建完整工具名称 (如果有类型则使用类型:名称格式，否则直接使用名称)
-                val fullToolName =
-                        if (toolType.isNotEmpty() && toolType != "default") {
-                            "$toolType:$toolName"
-                        } else {
-                            toolName
-                        }
-
-                // 创建工具调用对象
-                val aiTool = AITool(name = fullToolName, parameters = toolParameters)
-
-                AppLogger.d(TAG, "Executing tool (sync): $fullToolName")
-
-                // 使用 AIToolHandler 执行工具
-                val result = toolHandler.executeTool(aiTool)
-
-                // 记录执行结果
-                if (result.success) {
-                    val resultString = result.result.toString()
-                    AppLogger.d(
-                            TAG,
-                            "[Sync] Tool execution succeeded: ${resultString.take(1000)}${if (resultString.length > 1000) "..." else ""}"
-                    )
-                } else {
-                    AppLogger.e(TAG, "[Sync] Tool execution failed: ${result.error}")
-                }
-
-                // 返回结果
-                return if (result.success) {
-                    // Convert tool result to JSON for proper handling of structured data
-                    val resultJson =
-                            Json.encodeToString(
-                                    JsonElement.serializer(),
-                                    buildJsonObject {
-                                        put("success", JsonPrimitive(true))
-
-                                        // Handle different result data types
-                                        when (val resultData = result.result) {
-                                            is StringResultData ->
-                                                    put("data", JsonPrimitive(resultData.value))
-                                            is BooleanResultData ->
-                                                    put("data", JsonPrimitive(resultData.value))
-                                            is IntResultData ->
-                                                    put("data", JsonPrimitive(resultData.value))
-                                            else -> {
-                                                // 使用 toJson 方法获取 JSON 字符串
-                                                val jsonString = resultData.toJson()
-                                                // 确保获取的是有效的 JSON
-                                                try {
-                                                    put("data", Json.parseToJsonElement(jsonString))
-                                                } catch (e: Exception) {
-                                                    put("data", JsonPrimitive(jsonString))
-                                                }
-                                            }
-                                        }
-                                    }
-                            )
-                    resultJson
-                } else {
-                    // Return error as JSON
-                    Json.encodeToString(
-                            JsonElement.serializer(),
-                            buildJsonObject {
-                                put("success", JsonPrimitive(false))
-                                put("error", JsonPrimitive(result.error ?: "Unknown error"))
-                            }
-                    )
-                }
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "[Sync] Error in tool call: ${e.message}", e)
-                return Json.encodeToString(
-                        JsonElement.serializer(),
-                        buildJsonObject {
-                            put("success", JsonPrimitive(false))
-                            put("error", JsonPrimitive("Error: ${e.message}"))
-                        }
-                )
-            }
+            return JsNativeInterfaceDelegates.callToolSync(
+                toolHandler = toolHandler,
+                toolType = toolType,
+                toolName = toolName,
+                paramsJson = paramsJson,
+                binaryDataRegistry = binaryDataRegistry,
+                binaryHandlePrefix = BINARY_HANDLE_PREFIX,
+                binaryDataThreshold = BINARY_DATA_THRESHOLD
+            )
         }
 
         /** 异步工具调用（新版本，使用Promise） */
@@ -2269,347 +1382,177 @@ class JsEngine(private val context: Context) {
                 toolName: String,
                 paramsJson: String
         ) {
-            try {
-                // 解析参数
-                val params = mutableMapOf<String, String>()
-                val jsonObject = JSONObject(paramsJson)
-                jsonObject.keys().forEach { key ->
-                    params[key] = jsonObject.opt(key)?.toString() ?: ""
+            JsNativeInterfaceDelegates.callToolAsync(
+                toolHandler = toolHandler,
+                callbackId = callbackId,
+                toolType = toolType,
+                toolName = toolName,
+                paramsJson = paramsJson,
+                binaryDataRegistry = binaryDataRegistry,
+                binaryHandlePrefix = BINARY_HANDLE_PREFIX,
+                binaryDataThreshold = BINARY_DATA_THRESHOLD,
+                sendToolResult = { callback, result, isError ->
+                    sendToolResult(callback, result, isError)
                 }
-
-                // 调用工具
-                AppLogger.d(
-                        TAG,
-                        "[Async] JavaScript tool call: $toolType:$toolName with params: $params, callbackId: $callbackId"
-                )
-
-                // 参数验证
-                if (toolName.isEmpty()) {
-                    AppLogger.e(TAG, "Tool name cannot be empty")
-                    val errorJson =
-                            Json.encodeToString(
-                                    JsonElement.serializer(),
-                                    buildJsonObject {
-                                        put("success", JsonPrimitive(false))
-                                        put("error", JsonPrimitive("Tool name cannot be empty"))
-                                    }
-                            )
-                    sendToolResult(callbackId, errorJson, true)
-                    return
-                }
-
-                // 构建工具参数
-                val toolParameters =
-                        params.map { (name, value) -> ToolParameter(name = name, value = value) }
-
-                // 构建完整工具名称 (如果有类型则使用类型:名称格式，否则直接使用名称)
-                val fullToolName =
-                        if (toolType.isNotEmpty() && toolType != "default") {
-                            "$toolType:$toolName"
-                        } else {
-                            toolName
-                        }
-
-                // 创建工具调用对象
-                val aiTool = AITool(name = fullToolName, parameters = toolParameters)
-
-                AppLogger.d(TAG, "Executing tool (async): $fullToolName")
-
-                // 在后台线程中执行工具调用
-                Thread {
-                            try {
-                                // 使用 AIToolHandler 执行工具
-                                val result = toolHandler.executeTool(aiTool)
-
-                                // 记录执行结果
-                                if (result.success) {
-                                    val resultString = result.result.toString()
-                                    AppLogger.d(
-                                            TAG,
-                                            "[Async] Tool execution succeeded: ${resultString.take(1000)}${if (resultString.length > 1000) "..." else ""}"
-                                    )
-                                    // 发送成功结果回调
-                                    val resultJson =
-                                            Json.encodeToString(
-                                                    JsonElement.serializer(),
-                                                    buildJsonObject {
-                                                        put("success", JsonPrimitive(true))
-
-                                                        // Handle different result data types
-                                                        when (val resultData = result.result) {
-                                                            is BinaryResultData -> {
-                                                                if (resultData.value.size > BINARY_DATA_THRESHOLD) {
-                                                                    val handle = UUID.randomUUID().toString()
-                                                                    binaryDataRegistry[handle] = resultData.value
-                                                                    AppLogger.d(TAG, "[Async] Stored large binary data with handle: $handle")
-                                                                    put("data", JsonPrimitive("$BINARY_HANDLE_PREFIX$handle"))
-                                                                } else {
-                                                                    put("data", JsonPrimitive(Base64.encodeToString(resultData.value, Base64.NO_WRAP)))
-                                                                }
-                                                                put("dataType", JsonPrimitive("base64")) // Keep dataType for JS compatibility
-                                                            }
-                                                            is StringResultData ->
-                                                                    put(
-                                                                            "data",
-                                                                            JsonPrimitive(
-                                                                                    resultData.value
-                                                                            )
-                                                                    )
-                                                            is BooleanResultData ->
-                                                                    put(
-                                                                            "data",
-                                                                            JsonPrimitive(
-                                                                                    resultData.value
-                                                                            )
-                                                                    )
-                                                            is IntResultData ->
-                                                                    put(
-                                                                            "data",
-                                                                            JsonPrimitive(
-                                                                                    resultData.value
-                                                                            )
-                                                                    )
-                                                            else -> {
-                                                                // 使用 toJson 方法获取 JSON 字符串
-                                                                val jsonString = resultData.toJson()
-                                                                // 确保获取的是有效的 JSON
-                                                                try {
-                                                                    put(
-                                                                            "data",
-                                                                            Json.parseToJsonElement(
-                                                                                    jsonString
-                                                                            )
-                                                                    )
-                                                                } catch (e: Exception) {
-                                                                    put(
-                                                                            "data",
-                                                                            JsonPrimitive(
-                                                                                    jsonString
-                                                                            )
-                                                                    )
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                            )
-                                    sendToolResult(callbackId, resultJson, false)
-                                } else {
-                                    AppLogger.e(TAG, "[Async] Tool execution failed: ${result.error}")
-                                    // 发送错误结果回调
-                                    val errorJson =
-                                            Json.encodeToString(
-                                                    JsonElement.serializer(),
-                                                    buildJsonObject {
-                                                        put("success", JsonPrimitive(false))
-                                                        put(
-                                                                "error",
-                                                                JsonPrimitive(
-                                                                        result.error
-                                                                                ?: "Unknown error"
-                                                                )
-                                                        )
-                                                    }
-                                            )
-                                    sendToolResult(callbackId, errorJson, true)
-                                }
-                            } catch (e: Exception) {
-                                AppLogger.e(TAG, "[Async] Error in async tool execution: ${e.message}", e)
-                                // 发送异常结果回调
-                                val errorJson =
-                                        Json.encodeToString(
-                                                JsonElement.serializer(),
-                                                buildJsonObject {
-                                                    put("success", JsonPrimitive(false))
-                                                    put(
-                                                            "error",
-                                                            JsonPrimitive("Error: ${e.message}")
-                                                    )
-                                                }
-                                        )
-                                sendToolResult(callbackId, errorJson, true)
-                            }
-                        }
-                        .start()
-            } catch (e: Exception) {
-                AppLogger.e(TAG, "[Async] Error setting up async tool call: ${e.message}", e)
-                val errorJson =
-                        Json.encodeToString(
-                                JsonElement.serializer(),
-                                buildJsonObject {
-                                    put("success", JsonPrimitive(false))
-                                    put("error", JsonPrimitive("Error: ${e.message}"))
-                                }
-                        )
-                sendToolResult(callbackId, errorJson, true)
-            }
+            )
         }
 
         /** 向JavaScript发送工具调用结果 */
         private fun sendToolResult(callbackId: String, result: String, isError: Boolean) {
-            ContextCompat.getMainExecutor(context).execute {
-                try {
-                    // Check if the result is already a valid JSON literal (object, array, or quoted string).
-                    val trimmedResult = result.trim()
-                    val isJsonLiteral = (trimmedResult.startsWith("{") && trimmedResult.endsWith("}")) ||
-                                        (trimmedResult.startsWith("[") && trimmedResult.endsWith("]")) ||
-                                        (trimmedResult.startsWith("\"") && trimmedResult.endsWith("\""))
-
-                    val jsCode =
-                            if (isJsonLiteral) {
-                                """
-                            if (typeof window['$callbackId'] === 'function') {
-                                window['$callbackId']($result, $isError);
-                            } else {
-                                console.error("Callback not found: $callbackId");
-                            }
-                        """.trimIndent()
-                            } else {
-                                // For plain strings or other primitives, escape and wrap in quotes for JS.
-                                val escapedResult =
-                                        result.replace("\\", "\\\\")
-                                                .replace("\"", "\\\"")
-                                                .replace("\n", "\\n")
-                                                .replace("\r", "\\r")
-                                """
-                            if (typeof window['$callbackId'] === 'function') {
-                                window['$callbackId']("$escapedResult", $isError);
-                            } else {
-                                console.error("Callback not found: $callbackId");
-                            }
-                        """.trimIndent()
-                            }
-                    webView?.evaluateJavascript(jsCode, null)
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error sending tool result to JavaScript: ${e.message}", e)
-                }
+            ensureQuickJs()
+            try {
+                val jsCode =
+                    JsNativeInterfaceDelegates.buildToolResultCallbackScript(
+                        callbackId = callbackId,
+                        result = result,
+                        isError = isError
+                    )
+                launchQuickJsEvaluation(
+                    script = jsCode,
+                    onError = { e ->
+                        AppLogger.e(TAG, "Error sending tool result to JavaScript: ${e.message}", e)
+                    }
+                )
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error sending tool result to JavaScript: ${e.message}", e)
             }
         }
 
         @JavascriptInterface
-        fun setResult(result: String) {
+        fun setCallResult(callId: String, result: String) {
             try {
-                val callback = resultCallback
-                // 加入更详细的日志，帮助排查异步问题
+                val session = resolveExecutionSession(callId)
                 AppLogger.d(
-                        TAG,
-                        "Setting result from JavaScript: length=${result.length}, callback=${callback != null}, isDone=${callback?.isDone}"
+                    TAG,
+                    "Bridge callback from JavaScript: callId=$callId, length=${result.length}, callback=${session != null}, isDone=${session?.future?.isDone}"
                 )
-
-                // 确保回调仍然有效
-                if (callback == null) {
-                    AppLogger.e(TAG, "Result callback is null when trying to complete")
+                if (session == null) {
+                    AppLogger.e(TAG, "Result callback is null when trying to complete: callId=$callId")
                     return
                 }
-
-                if (callback.isDone) {
-                    AppLogger.w(TAG, "Result callback is already completed when trying to set result")
+                if (session.future.isDone) {
+                    AppLogger.w(TAG, "Result callback is already completed when trying to set result: callId=$callId")
                     return
                 }
-
-                // 使用主线程执行complete操作，避免可能的线程问题
-                ContextCompat.getMainExecutor(context).execute {
-                    try {
-                        // 返回成功结果
-                        if (!callback.isDone) {
-                            callback.complete(result)
-                        } else {
-                            AppLogger.w(TAG, "Callback became complete between check and execution")
-                        }
-                    } catch (e: Exception) {
-                        AppLogger.e(TAG, "Error completing result on main thread: ${e.message}", e)
-                        if (!callback.isDone) {
-                            callback.completeExceptionally(e)
-                        }
-                    }
-                }
+                completeCallFuture(
+                    session = session,
+                    value = result,
+                    failureMessage = "Error completing result callback"
+                )
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Error setting result: ${e.message}", e)
-                resultCallback?.completeExceptionally(e)
+                AppLogger.e(TAG, "Error setting result: callId=$callId, reason=${e.message}", e)
+                resolveExecutionSession(callId)?.future?.completeExceptionally(e)
             }
         }
 
         @JavascriptInterface
-        fun setError(error: String) {
+        fun setCallError(callId: String, error: String) {
             try {
-                val callback = resultCallback
-                // 加入更详细的日志
+                val session = resolveExecutionSession(callId)
                 AppLogger.d(
-                        TAG,
-                        "Setting error from JavaScript: length=${error.length}, callback=${callback != null}, isDone=${callback?.isDone}"
+                    TAG,
+                    "Bridge error from JavaScript: callId=$callId, length=${error.length}, callback=${session != null}, isDone=${session?.future?.isDone}"
                 )
-
-                // 尝试解析错误信息，看是否是JSON格式
-                var logMessage = error
-                try {
-                    if (error.startsWith("{") && error.endsWith("}")) {
-                        val errorJson = JSONObject(error)
-                        if (errorJson.has("formatted")) {
-                            // 如果是我们格式化的错误对象，使用formatted字段作为日志
-                            logMessage = errorJson.getString("formatted")
-                        } else if (errorJson.has("error") && errorJson.has("message")) {
-                            // 基本的错误对象
-                            val errorType = errorJson.getString("error")
-                            val errorMsg = errorJson.getString("message")
-                            logMessage = "$errorType: $errorMsg"
-
-                            // 添加更多详情如果有的话
-                            if (errorJson.has("details")) {
-                                val details = errorJson.getJSONObject("details")
-                                if (details.has("fileName") && details.has("lineNumber")) {
-                                    logMessage +=
-                                            "\nAt ${details.getString("fileName")}:${details.getString("lineNumber")}"
-                                }
-                                if (details.has("stack")) {
-                                    logMessage += "\nStack: ${details.getString("stack")}"
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // 不是有效的JSON或解析失败，使用原始错误字符串
-                    AppLogger.d(TAG, "Error parsing error message as JSON: ${e.message}")
+                if (session == null) {
+                    AppLogger.e(TAG, "Result callback is null when trying to complete with error: callId=$callId")
+                    return
                 }
-
-                // 记录错误日志
-                AppLogger.e(TAG, "JS ERROR: $logMessage")
-
-                // 确保回调仍然有效
-                if (callback == null) {
-                    AppLogger.e(TAG, "Result callback is null when trying to complete with error")
+                if (session.future.isDone) {
+                    AppLogger.w(TAG, "Result callback is already completed when trying to set error: callId=$callId")
                     return
                 }
 
-                if (callback.isDone) {
-                    AppLogger.w(TAG, "Result callback is already completed when trying to set error")
-                    return
-                }
+                val logMessage = extractErrorLogMessage(error)
+                val enrichedLogMessage = withToolPkgCodeContext(session, logMessage)
+                AppLogger.e(TOOLPKG_TAG, withToolPkgPluginTag(session, "JS ERROR: $enrichedLogMessage"))
 
-                // 使用主线程执行complete操作
-                ContextCompat.getMainExecutor(context).execute {
-                    // 返回错误结果
-                    if (!callback.isDone) {
-                        callback.complete("Error: $error")
-                    }
+                completeCallFuture(
+                    session = session,
+                    value = "Error: ${withToolPkgCodeContext(session, error)}",
+                    failureMessage = "Error completing error callback"
+                )
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error setting error result: callId=$callId, reason=${e.message}", e)
+                resolveExecutionSession(callId)?.future?.completeExceptionally(e)
+            }
+        }
+
+        private fun completeCallFuture(
+            session: ExecutionSession,
+            value: String,
+            failureMessage: String
+        ) {
+            try {
+                if (!session.future.isDone) {
+                    removeExecutionSession(session.callId)
+                    session.future.complete(value)
+                } else {
+                    AppLogger.w(TAG, "Callback became complete between check and execution: callId=${session.callId}")
                 }
             } catch (e: Exception) {
-                AppLogger.e(TAG, "Error setting error result: ${e.message}", e)
-                resultCallback?.completeExceptionally(e)
+                AppLogger.e(TAG, "$failureMessage: ${e.message}", e)
+                if (!session.future.isDone) {
+                    session.future.completeExceptionally(e)
+                }
+            }
+        }
+
+        private fun extractErrorLogMessage(error: String): String {
+            return try {
+                if (error.startsWith("{") && error.endsWith("}")) {
+                    val errorJson = JSONObject(error)
+                    if (errorJson.has("formatted")) {
+                        return errorJson.getString("formatted")
+                    }
+                    if (errorJson.has("error") && errorJson.has("message")) {
+                        val errorType = errorJson.getString("error")
+                        val errorMsg = errorJson.getString("message")
+                        var message = "$errorType: $errorMsg"
+                        if (errorJson.has("details")) {
+                            val details = errorJson.getJSONObject("details")
+                            if (details.has("fileName") && details.has("lineNumber")) {
+                                message +=
+                                    "\nAt ${details.getString("fileName")}:${details.getString("lineNumber")}"
+                            }
+                            if (details.has("stack")) {
+                                message += "\nStack: ${details.getString("stack")}"
+                            }
+                        }
+                        return message
+                    }
+                }
+                error
+            } catch (e: Exception) {
+                AppLogger.d(TAG, "Error parsing error message as JSON: ${e.message}")
+                error
             }
         }
 
         @JavascriptInterface
         fun logInfo(message: String) {
-            AppLogger.i(TAG, "JS: $message")
+            AppLogger.i(TOOLPKG_TAG, withToolPkgPluginTag(message))
+        }
+
+        @JavascriptInterface
+        fun logInfoForCall(callId: String, message: String) {
+            val session = resolveExecutionSession(callId)
+            AppLogger.i(TOOLPKG_TAG, withToolPkgPluginTag(session, message))
         }
 
         @JavascriptInterface
         fun logError(message: String) {
-            AppLogger.e(TAG, "JS ERROR: $message")
+            AppLogger.e(TOOLPKG_TAG, withToolPkgPluginTag(message))
+        }
+
+        @JavascriptInterface
+        fun logErrorForCall(callId: String, message: String) {
+            val session = resolveExecutionSession(callId)
+            AppLogger.e(TOOLPKG_TAG, withToolPkgPluginTag(session, message))
         }
 
         @JavascriptInterface
         fun logDebug(message: String, data: String) {
-            AppLogger.d(TAG, "JS DEBUG: $message | $data")
+            AppLogger.d(TOOLPKG_TAG, withToolPkgPluginTag("$message | $data"))
         }
 
         @JavascriptInterface
@@ -2620,8 +1563,28 @@ class JsEngine(private val context: Context) {
                 errorStack: String
         ) {
             AppLogger.e(
-                    TAG,
-                    "DETAILED JS ERROR: \nType: $errorType\nMessage: $errorMessage\nLine: $errorLine\nStack: $errorStack"
+                    TOOLPKG_TAG,
+                    withToolPkgPluginTag(
+                        "DETAILED JS ERROR: \nType: $errorType\nMessage: $errorMessage\nLine: $errorLine\nStack: $errorStack"
+                    )
+            )
+        }
+
+        @JavascriptInterface
+        fun reportErrorForCall(
+                callId: String,
+                errorType: String,
+                errorMessage: String,
+                errorLine: Int,
+                errorStack: String
+        ) {
+            val session = resolveExecutionSession(callId)
+            AppLogger.e(
+                    TOOLPKG_TAG,
+                    withToolPkgPluginTag(
+                        session,
+                        "DETAILED JS ERROR: \nType: $errorType\nMessage: $errorMessage\nLine: $errorLine\nStack: $errorStack"
+                    )
             )
         }
     }
@@ -2630,19 +1593,8 @@ class JsEngine(private val context: Context) {
     fun destroy() {
         try {
             // 确保任何挂起的回调被完成
-            resultCallback?.complete("Engine destroyed")
-            resultCallback = null
-            intermediateResultCallback = null
-
-            // 清理所有待处理的工具调用回调
-            toolCallbacks.forEach { (_, future) ->
-                if (!future.isDone) {
-                    future.complete("Engine destroyed")
-                }
-            }
-            toolCallbacks.clear()
-            composeDslActionCompleteCallbacks.clear()
-            composeDslActionErrorCallbacks.clear()
+            cancelAllExecutionSessions("Engine destroyed")
+            toolCallInterface.detachJavaBridgeLifecycle()
 
             // 清理Bitmap注册表
             bitmapRegistry.values.forEach { it.recycle() }
@@ -2652,83 +1604,24 @@ class JsEngine(private val context: Context) {
             binaryDataRegistry.clear()
             javaObjectRegistry.clear()
 
-            // 在主线程中销毁 WebView
-            ContextCompat.getMainExecutor(context).execute {
-                try {
-                    webView?.apply {
-                        removeJavascriptInterface("NativeInterface")
-                        loadUrl("about:blank")
-                        clearHistory()
-                        clearCache(true)
-                        destroy()
+            try {
+                val engine = quickJs
+                if (engine != null) {
+                    runOnQuickJsThreadBlocking {
+                        engine.close()
                     }
-                    webView = null
-                } catch (e: Exception) {
-                    AppLogger.e(TAG, "Error destroying WebView: ${e.message}", e)
                 }
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Error closing QuickJS: ${e.message}", e)
             }
+            quickJs = null
+            quickJsThread = null
+            jsEnvironmentInitialized = false
+            quickJsDispatcher.close()
+            quickJsExecutor.shutdownNow()
         } catch (e: Exception) {
             AppLogger.e(TAG, "Error during JsEngine destruction: ${e.message}", e)
         }
     }
 
-    /** 处理引擎异常 */
-    private fun handleException(e: Exception): String {
-        AppLogger.e(TAG, "JsEngine exception: ${e.message}", e)
-
-        // 尝试重置当前状态
-        try {
-            resetState()
-        } catch (resetEx: Exception) {
-            AppLogger.e(TAG, "Failed to reset state after exception: ${resetEx.message}", resetEx)
-        }
-
-        return "Error: ${e.message}"
-    }
-
-    /** 诊断引擎状态 用于调试目的，记录当前状态信息 */
-    fun diagnose() {
-        try {
-            AppLogger.d(TAG, "=== JsEngine Diagnostics ===")
-            AppLogger.d(TAG, "WebView initialized: ${webView != null}")
-            AppLogger.d(TAG, "Result callback: ${resultCallback?.isDone ?: "null"}")
-            AppLogger.d(TAG, "Tool callbacks pending: ${toolCallbacks.size}")
-
-            // 检查WebView状态
-            if (webView != null) {
-                ContextCompat.getMainExecutor(context).execute {
-                    webView?.evaluateJavascript(
-                            """
-                        (function() {
-                            var result = {
-                                memory: (window.performance && window.performance.memory) 
-                                    ? {
-                                        totalJSHeapSize: window.performance.memory.totalJSHeapSize,
-                                        usedJSHeapSize: window.performance.memory.usedJSHeapSize,
-                                        jsHeapSizeLimit: window.performance.memory.jsHeapSizeLimit
-                                      } 
-                                    : "Not available",
-                                timers: "Unable to count"
-                            };
-                            
-                            // 尝试估计定时器数量
-                            try {
-                                var count = 0;
-                                var id = setTimeout(function(){}, 0);
-                                clearTimeout(id);
-                                result.timers = id;
-                            } catch(e) {}
-                            
-                            return JSON.stringify(result);
-                        })();
-                    """
-                    ) { diagResult -> AppLogger.d(TAG, "WebView diagnostics: $diagResult") }
-                }
-            }
-
-            AppLogger.d(TAG, "=========================")
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Error during diagnostics: ${e.message}", e)
-        }
-    }
 }

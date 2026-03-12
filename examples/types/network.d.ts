@@ -12,14 +12,14 @@ export namespace Net {
      * Perform HTTP GET request
      * @param url - URL to request
      */
-    function httpGet(url: string): Promise<HttpResponseData>;
+    function httpGet(url: string, ignore_ssl?: boolean): Promise<HttpResponseData>;
 
     /**
      * Perform HTTP POST request
      * @param url - URL to request
      * @param data - Data to post
      */
-    function httpPost(url: string, body: string | object): Promise<HttpResponseData>;
+    function httpPost(url: string, body: string | object, ignore_ssl?: boolean): Promise<HttpResponseData>;
 
     /**
      * Visit a webpage and extract its content
@@ -136,6 +136,7 @@ export namespace Net {
         connect_timeout?: number;
         read_timeout?: number;
         follow_redirects?: boolean;
+        ignore_ssl?: boolean;
         responseType?: 'text' | 'json' | 'arraybuffer' | 'blob';
         validateStatus?: boolean;
     }): Promise<HttpResponseData>;
@@ -149,6 +150,7 @@ export namespace Net {
         method?: 'POST' | 'PUT';
         headers?: Record<string, string>;
         form_data?: Record<string, string>;
+        ignore_ssl?: boolean;
         files: {
             field_name: string;
             file_path: string;

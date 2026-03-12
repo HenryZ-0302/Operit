@@ -341,6 +341,7 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                 val content = renderSingleScreen(screen)
                 val rows = screen.size
                 val cols = if (rows > 0) screen[0].size else 0
+                val commandRunning = session.currentExecutingCommand?.isExecuting == true
 
                 ToolResult(
                     toolName = tool.name,
@@ -349,7 +350,8 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         sessionId = sessionId,
                         rows = rows,
                         cols = cols,
-                        content = content
+                        content = content,
+                        commandRunning = commandRunning
                     )
                 )
             } catch (e: Exception) {

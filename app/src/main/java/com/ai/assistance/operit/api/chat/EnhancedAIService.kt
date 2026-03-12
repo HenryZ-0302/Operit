@@ -12,6 +12,10 @@ import com.ai.assistance.operit.api.chat.enhance.InputProcessor
 import com.ai.assistance.operit.api.chat.enhance.MultiServiceManager
 import com.ai.assistance.operit.api.chat.enhance.ToolExecutionManager
 import com.ai.assistance.operit.api.chat.llmprovider.AIService
+import com.ai.assistance.operit.core.chat.hooks.PromptHookContext
+import com.ai.assistance.operit.core.chat.hooks.PromptHookRegistry
+import com.ai.assistance.operit.core.chat.hooks.toPromptMessages
+import com.ai.assistance.operit.core.chat.hooks.toRoleContentPairs
 import com.ai.assistance.operit.core.application.ActivityLifecycleManager
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.StringResultData
@@ -514,6 +518,7 @@ class EnhancedAIService private constructor(private val context: Context) {
         avatarUri: String? = null,
         roleCardId: String? = null,
         enableGroupOrchestrationHint: Boolean = false,
+        groupParticipantNamesText: String? = null,
         proxySenderName: String? = null,
         onToolInvocation: (suspend (String) -> Unit)? = null,
         chatModelConfigIdOverride: String? = null,
@@ -565,6 +570,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                                     enableMemoryQuery,
                                     roleCardId,
                                     enableGroupOrchestrationHint,
+                                    groupParticipantNamesText,
                                     proxySenderName,
                                     isSubTask,
                                     functionType,
@@ -614,14 +620,53 @@ class EnhancedAIService private constructor(private val context: Context) {
                     )
                     val tAfterGetTools = System.currentTimeMillis()
                     AppLogger.d(TAG, "sendMessage本地耗时: getAvailableToolsForFunction=${tAfterGetTools - tAfterGetService}ms")
+
+                    var finalProcessedInput = processedInput
+                    var finalPreparedHistory = preparedHistory
+                    val beforeFinalizeContext =
+                        PromptHookRegistry.dispatchPromptFinalizeHooks(
+                            PromptHookContext(
+                                stage = "before_finalize_prompt",
+                                functionType = functionType.name,
+                                promptFunctionType = promptFunctionType.name,
+                                rawInput = message,
+                                processedInput = finalProcessedInput,
+                                preparedHistory = finalPreparedHistory.toPromptMessages(),
+                                modelParameters = serializePromptHookModelParameters(modelParameters),
+                                availableTools = serializePromptHookToolPrompts(availableTools),
+                                metadata =
+                                    mapOf(
+                                        "chatId" to chatId,
+                                        "workspacePath" to workspacePath,
+                                        "workspaceEnv" to workspaceEnv,
+                                        "enableThinking" to enableThinking,
+                                        "stream" to stream,
+                                        "isSubTask" to isSubTask
+                                    )
+                            )
+                        )
+                    finalProcessedInput = beforeFinalizeContext.processedInput ?: finalProcessedInput
+                    finalPreparedHistory = beforeFinalizeContext.preparedHistory.toRoleContentPairs()
+                    val beforeSendContext =
+                        PromptHookRegistry.dispatchPromptFinalizeHooks(
+                            beforeFinalizeContext.copy(
+                                stage = "before_send_to_model",
+                                processedInput = finalProcessedInput,
+                                preparedHistory = finalPreparedHistory.toPromptMessages()
+                            )
+                        )
+                    finalProcessedInput = beforeSendContext.processedInput ?: finalProcessedInput
+                    finalPreparedHistory = beforeSendContext.preparedHistory.toRoleContentPairs()
+                    execContext.conversationHistory.clear()
+                    execContext.conversationHistory.addAll(finalPreparedHistory)
                     
                     // 使用新的Stream API
                     AppLogger.d(TAG, "调用AI服务，处理时间: ${tAfterGetTools - startTime}ms, 流式输出: $stream")
                     val responseStream =
                             serviceForFunction.sendMessage(
                                     context = this@EnhancedAIService.context,
-                                    message = processedInput,
-                                    chatHistory = preparedHistory,
+                                    message = finalProcessedInput,
+                                    chatHistory = finalPreparedHistory,
                                     modelParameters = modelParameters,
                                     enableThinking = enableThinking,
                                     stream = stream,
@@ -681,7 +726,7 @@ class EnhancedAIService private constructor(private val context: Context) {
 
                     // 流收集完成后，添加用户消息到对话历史
                     // 只有在成功收到响应后，才将用户消息添加到历史记录中
-                    execContext.conversationHistory.add(Pair("user", processedInput))
+                    execContext.conversationHistory.add(Pair("user", finalProcessedInput))
 
                     // Update accumulated token counts and persist them
                     val inputTokens = serviceForFunction.inputTokenCount
@@ -1537,6 +1582,7 @@ class EnhancedAIService private constructor(private val context: Context) {
             enableMemoryQuery: Boolean,
             roleCardId: String?,
             enableGroupOrchestrationHint: Boolean,
+            groupParticipantNamesText: String? = null,
             proxySenderName: String? = null,
             isSubTask: Boolean = false,
             functionType: FunctionType = FunctionType.CHAT,
@@ -1573,6 +1619,7 @@ class EnhancedAIService private constructor(private val context: Context) {
                 enableMemoryQuery,
                 roleCardId,
                 enableGroupOrchestrationHint,
+                groupParticipantNamesText,
                 proxySenderName,
                 hasImageRecognition,
                 hasAudioRecognition,
@@ -1583,6 +1630,51 @@ class EnhancedAIService private constructor(private val context: Context) {
                 strictToolCall,
                 chatModelHasDirectImage
         )
+    }
+
+    private fun serializePromptHookModelParameters(
+        modelParameters: List<com.ai.assistance.operit.data.model.ModelParameter<*>>
+    ): List<Map<String, Any?>> {
+        return modelParameters.map { parameter ->
+            mapOf(
+                "id" to parameter.id,
+                "name" to parameter.name,
+                "apiName" to parameter.apiName,
+                "description" to parameter.description,
+                "defaultValue" to parameter.defaultValue,
+                "currentValue" to parameter.currentValue,
+                "isEnabled" to parameter.isEnabled,
+                "valueType" to parameter.valueType.name,
+                "minValue" to parameter.minValue,
+                "maxValue" to parameter.maxValue,
+                "category" to parameter.category.name,
+                "isCustom" to parameter.isCustom
+            )
+        }
+    }
+
+    private fun serializePromptHookToolPrompts(
+        toolPrompts: List<ToolPrompt>?
+    ): List<Map<String, Any?>> {
+        return toolPrompts.orEmpty().map { tool ->
+            mapOf(
+                "name" to tool.name,
+                "description" to tool.description,
+                "parameters" to tool.parameters,
+                "details" to tool.details,
+                "notes" to tool.notes,
+                "parametersStructured" to
+                    tool.parametersStructured.orEmpty().map { parameter ->
+                        mapOf(
+                            "name" to parameter.name,
+                            "type" to parameter.type,
+                            "description" to parameter.description,
+                            "required" to parameter.required,
+                            "default" to parameter.default
+                        )
+                    }
+            )
+        }
     }
 
     /** Cancel the current conversation */

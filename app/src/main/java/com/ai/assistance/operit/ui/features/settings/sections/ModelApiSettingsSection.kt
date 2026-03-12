@@ -306,9 +306,10 @@ fun ModelApiSettingsSection(
     // 当API提供商改变时更新端点
     LaunchedEffect(selectedApiProvider) {
         AppLogger.d("ModelApiSettingsSection", "API提供商改变")
-        if (selectedApiProvider == ApiProviderType.OPENAI || selectedApiProvider == ApiProviderType.OPENAI_RESPONSES || selectedApiProvider == ApiProviderType.OPENAI_GENERIC || selectedApiProvider == ApiProviderType.GOOGLE
+        if (selectedApiProvider == ApiProviderType.OPENAI || selectedApiProvider == ApiProviderType.OPENAI_RESPONSES || selectedApiProvider == ApiProviderType.OPENAI_RESPONSES_GENERIC || selectedApiProvider == ApiProviderType.OPENAI_GENERIC || selectedApiProvider == ApiProviderType.GOOGLE
             || selectedApiProvider == ApiProviderType.GEMINI_GENERIC
-            || selectedApiProvider == ApiProviderType.ANTHROPIC || selectedApiProvider == ApiProviderType.ANTHROPIC_GENERIC || selectedApiProvider == ApiProviderType.MISTRAL) {
+            || selectedApiProvider == ApiProviderType.ANTHROPIC || selectedApiProvider == ApiProviderType.ANTHROPIC_GENERIC || selectedApiProvider == ApiProviderType.MISTRAL
+            || selectedApiProvider == ApiProviderType.NVIDIA) {
             val inChina = LocationUtils.isDeviceInMainlandChina(context)
             showRegionWarning = inChina
             if (inChina) {
@@ -330,6 +331,7 @@ fun ModelApiSettingsSection(
 
         // 非通用供应商（有强制端点的）切换时，强制重置为该供应商默认端点，避免从“其他供应商”等通用配置带入自定义值
         val isGenericProviderForEndpoint =
+            selectedApiProvider == ApiProviderType.OPENAI_RESPONSES_GENERIC ||
             selectedApiProvider == ApiProviderType.OPENAI_GENERIC ||
             selectedApiProvider == ApiProviderType.OTHER ||
             selectedApiProvider == ApiProviderType.GEMINI_GENERIC ||
@@ -411,6 +413,7 @@ fun ModelApiSettingsSection(
 
             // 允许自定义端点的供应商（通用类 + Ollama）
             val isGenericProvider =
+                selectedApiProvider == ApiProviderType.OPENAI_RESPONSES_GENERIC ||
                 selectedApiProvider == ApiProviderType.OPENAI_GENERIC ||
                 selectedApiProvider == ApiProviderType.OTHER ||
                 selectedApiProvider == ApiProviderType.GEMINI_GENERIC ||
@@ -1063,6 +1066,7 @@ private fun getProviderDisplayName(provider: ApiProviderType, context: android.c
     return when (provider) {
         ApiProviderType.OPENAI -> context.getString(R.string.provider_openai)
         ApiProviderType.OPENAI_RESPONSES -> context.getString(R.string.provider_openai_responses)
+        ApiProviderType.OPENAI_RESPONSES_GENERIC -> context.getString(R.string.provider_openai_responses_generic)
         ApiProviderType.OPENAI_GENERIC -> context.getString(R.string.provider_openai_generic)
         ApiProviderType.ANTHROPIC -> context.getString(R.string.provider_anthropic)
         ApiProviderType.ANTHROPIC_GENERIC -> context.getString(R.string.provider_anthropic_generic)
@@ -1082,6 +1086,7 @@ private fun getProviderDisplayName(provider: ApiProviderType, context: android.c
         ApiProviderType.INFINIAI -> context.getString(R.string.provider_infiniai)
         ApiProviderType.ALIPAY_BAILING -> context.getString(R.string.provider_alipay_bailing)
         ApiProviderType.DOUBAO -> context.getString(R.string.provider_doubao)
+        ApiProviderType.NVIDIA -> context.getString(R.string.provider_nvidia)
         ApiProviderType.LMSTUDIO -> context.getString(R.string.provider_lmstudio)
         ApiProviderType.OLLAMA -> context.getString(R.string.provider_ollama)
         ApiProviderType.MNN -> context.getString(R.string.provider_mnn)
@@ -1654,6 +1659,7 @@ private fun getProviderColor(provider: ApiProviderType): androidx.compose.ui.gra
     return when (provider) {
         ApiProviderType.OPENAI -> MaterialTheme.colorScheme.primary
         ApiProviderType.OPENAI_RESPONSES -> MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)
+        ApiProviderType.OPENAI_RESPONSES_GENERIC -> MaterialTheme.colorScheme.primary.copy(alpha = 0.88f)
         ApiProviderType.OPENAI_GENERIC -> MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
         ApiProviderType.ANTHROPIC -> MaterialTheme.colorScheme.tertiary
         ApiProviderType.ANTHROPIC_GENERIC -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.85f)
@@ -1673,6 +1679,7 @@ private fun getProviderColor(provider: ApiProviderType): androidx.compose.ui.gra
         ApiProviderType.INFINIAI -> MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
         ApiProviderType.ALIPAY_BAILING -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.45f)
         ApiProviderType.DOUBAO -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+        ApiProviderType.NVIDIA -> MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
         ApiProviderType.LMSTUDIO -> MaterialTheme.colorScheme.tertiary
         ApiProviderType.OLLAMA -> MaterialTheme.colorScheme.primary.copy(alpha = 0.78f)
         ApiProviderType.MNN -> MaterialTheme.colorScheme.secondary

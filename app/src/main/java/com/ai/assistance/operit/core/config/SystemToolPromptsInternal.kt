@@ -219,7 +219,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "web_click",
-                            description = "Click an element by snapshot ref.",
+                            description = "Click an element by snapshot ref. If the click triggers a file download, the result will include download details.",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -502,7 +502,8 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "content", type = "string", description = "required, string", required = true),
                                 ToolParameterSchema(name = "content_type", type = "string", description = "optional", required = false, default = "\"text/plain\""),
                                 ToolParameterSchema(name = "source", type = "string", description = "optional", required = false, default = "\"ai_created\""),
-                                ToolParameterSchema(name = "folder_path", type = "string", description = "optional", required = false, default = "\"\"")
+                                ToolParameterSchema(name = "folder_path", type = "string", description = "optional", required = false, default = "\"\""),
+                                ToolParameterSchema(name = "tags", type = "string", description = "optional, comma-separated string", required = false)
                             )
                         ),
                         ToolPrompt(
@@ -575,7 +576,8 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "method", type = "string", description = "GET/POST/PUT/DELETE", required = true),
                                 ToolParameterSchema(name = "headers", type = "string", description = "headers", required = false),
                                 ToolParameterSchema(name = "body", type = "string", description = "body", required = false),
-                                ToolParameterSchema(name = "body_type", type = "string", description = "json/form/text/xml", required = false)
+                                ToolParameterSchema(name = "body_type", type = "string", description = "json/form/text/xml", required = false),
+                                ToolParameterSchema(name = "ignore_ssl", type = "boolean", description = "ignore https certificate verification, true/false", required = false)
                             )
                         ),
                         ToolPrompt(
@@ -586,7 +588,8 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "method", type = "string", description = "POST/PUT", required = true),
                                 ToolParameterSchema(name = "headers", type = "string", description = "headers", required = false),
                                 ToolParameterSchema(name = "form_data", type = "string", description = "form_data", required = false),
-                                ToolParameterSchema(name = "files", type = "string", description = "JSON array string. Each item is an object: {\"field_name\": string, \"file_path\": string, \"content_type\"?: string, \"file_name\"?: string}", required = false)
+                                ToolParameterSchema(name = "files", type = "string", description = "JSON array string. Each item is an object: {\"field_name\": string, \"file_path\": string, \"content_type\"?: string, \"file_name\"?: string}", required = false),
+                                ToolParameterSchema(name = "ignore_ssl", type = "boolean", description = "ignore https certificate verification, true/false", required = false)
                             )
                         ),
                         ToolPrompt(
@@ -1081,6 +1084,97 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "send_message_to_ai_advanced",
+                            description = "Send a user message to AI with advanced runtime controls.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "message",
+                                        type = "string",
+                                        description = "message content",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "optional, target chat id",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "chat_history",
+                                        type = "string",
+                                        description = "optional, JSON array of [role, content]",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "workspace_path",
+                                        type = "string",
+                                        description = "optional workspace path",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "function_type",
+                                        type = "string",
+                                        description = "optional FunctionType enum name, default CHAT",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "prompt_function_type",
+                                        type = "string",
+                                        description = "optional PromptFunctionType enum name, default CHAT",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_thinking",
+                                        type = "boolean",
+                                        description = "optional, enable thinking mode",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "thinking_guidance",
+                                        type = "boolean",
+                                        description = "optional, enable thinking guidance",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_memory_query",
+                                        type = "boolean",
+                                        description = "optional, enable memory query",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens",
+                                        type = "integer",
+                                        description = "max token budget for this request",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "token_usage_threshold",
+                                        type = "number",
+                                        description = "token usage threshold in range 0..1",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "custom_system_prompt_template",
+                                        type = "string",
+                                        description = "optional custom system prompt template",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "is_sub_task",
+                                        type = "boolean",
+                                        description = "optional, marks this request as a sub task",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stream",
+                                        type = "boolean",
+                                        description = "optional, whether to stream output",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "list_character_cards",
                             description = "List all role cards.",
                             parametersStructured = listOf()
@@ -1560,7 +1654,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "tts_service_type",
                                         type = "string",
-                                        description = "optional, SIMPLE_TTS/HTTP_TTS/SILICONFLOW_TTS/OPENAI_TTS",
+                                        description = "optional, SIMPLE_TTS/HTTP_TTS/OPENAI_WS_TTS/SILICONFLOW_TTS/OPENAI_TTS",
                                         required = false
                                     ),
                                     ToolParameterSchema(
@@ -1674,7 +1768,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "api_provider_type",
                                         type = "string",
-                                        description = "optional, provider enum name (e.g. OPENAI_GENERIC/DEEPSEEK/GEMINI_GENERIC/OLLAMA/MNN/LLAMA_CPP)",
+                                        description = "optional, provider enum name (e.g. OPENAI_GENERIC/OPENAI_RESPONSES_GENERIC/DEEPSEEK/GEMINI_GENERIC/OLLAMA/MNN/LLAMA_CPP)",
                                         required = false
                                     ),
                                     ToolParameterSchema(
@@ -2653,7 +2747,7 @@ object SystemToolPromptsInternal {
                         ),
                         ToolPrompt(
                             name = "web_click",
-                            description = "按快照 ref 或 CSS 选择器点击元素。",
+                            description = "按快照 ref 或 CSS 选择器点击元素；如果点击触发文件下载，返回结果会包含下载信息。",
                             parametersStructured =
                                 listOf(
                                     ToolParameterSchema(
@@ -2956,7 +3050,8 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "content", type = "string", description = "必需, 字符串", required = true),
                                 ToolParameterSchema(name = "content_type", type = "string", description = "可选", required = false, default = "\"text/plain\""),
                                 ToolParameterSchema(name = "source", type = "string", description = "可选", required = false, default = "\"ai_created\""),
-                                ToolParameterSchema(name = "folder_path", type = "string", description = "可选", required = false, default = "\"\"")
+                                ToolParameterSchema(name = "folder_path", type = "string", description = "可选", required = false, default = "\"\""),
+                                ToolParameterSchema(name = "tags", type = "string", description = "可选, 逗号分隔的字符串", required = false)
                             )
                         ),
                         ToolPrompt(
@@ -3029,7 +3124,8 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "method", type = "string", description = "GET/POST/PUT/DELETE", required = true),
                                 ToolParameterSchema(name = "headers", type = "string", description = "headers", required = false),
                                 ToolParameterSchema(name = "body", type = "string", description = "body", required = false),
-                                ToolParameterSchema(name = "body_type", type = "string", description = "json/form/text/xml", required = false)
+                                ToolParameterSchema(name = "body_type", type = "string", description = "json/form/text/xml", required = false),
+                                ToolParameterSchema(name = "ignore_ssl", type = "boolean", description = "是否忽略HTTPS证书校验，true/false", required = false)
                             )
                         ),
                         ToolPrompt(
@@ -3040,7 +3136,8 @@ object SystemToolPromptsInternal {
                                 ToolParameterSchema(name = "method", type = "string", description = "POST/PUT", required = true),
                                 ToolParameterSchema(name = "headers", type = "string", description = "headers", required = false),
                                 ToolParameterSchema(name = "form_data", type = "string", description = "form_data", required = false),
-                                ToolParameterSchema(name = "files", type = "string", description = "JSON数组字符串。每个元素是对象: {\"field_name\": 字符串, \"file_path\": 字符串, 可选 \"content_type\": 字符串, 可选 \"file_name\": 字符串}", required = false)
+                                ToolParameterSchema(name = "files", type = "string", description = "JSON数组字符串。每个元素是对象: {\"field_name\": 字符串, \"file_path\": 字符串, 可选 \"content_type\": 字符串, 可选 \"file_name\": 字符串}", required = false),
+                                ToolParameterSchema(name = "ignore_ssl", type = "boolean", description = "是否忽略HTTPS证书校验，true/false", required = false)
                             )
                         ),
                         ToolPrompt(
@@ -3535,6 +3632,97 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "send_message_to_ai_advanced",
+                            description = "向 AI 发送消息（高级参数）。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "message",
+                                        type = "string",
+                                        description = "消息内容",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "chat_id",
+                                        type = "string",
+                                        description = "可选，目标对话 ID",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "chat_history",
+                                        type = "string",
+                                        description = "可选，JSON 数组，元素为 [role, content]",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "workspace_path",
+                                        type = "string",
+                                        description = "可选，工作区路径",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "function_type",
+                                        type = "string",
+                                        description = "可选，FunctionType 枚举名，默认 CHAT",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "prompt_function_type",
+                                        type = "string",
+                                        description = "可选，PromptFunctionType 枚举名，默认 CHAT",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_thinking",
+                                        type = "boolean",
+                                        description = "可选，是否启用思考模式",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "thinking_guidance",
+                                        type = "boolean",
+                                        description = "可选，是否启用思考引导",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "enable_memory_query",
+                                        type = "boolean",
+                                        description = "可选，是否启用记忆查询",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "max_tokens",
+                                        type = "integer",
+                                        description = "本次请求最大 token 预算",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "token_usage_threshold",
+                                        type = "number",
+                                        description = "token 使用阈值（0..1）",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "custom_system_prompt_template",
+                                        type = "string",
+                                        description = "可选，自定义系统提示模板",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "is_sub_task",
+                                        type = "boolean",
+                                        description = "可选，标记为子任务",
+                                        required = false
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "stream",
+                                        type = "boolean",
+                                        description = "可选，是否使用流式输出",
+                                        required = false
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "list_character_cards",
                             description = "列出所有角色卡。",
                             parametersStructured = listOf()
@@ -4014,7 +4202,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "tts_service_type",
                                         type = "string",
-                                        description = "可选，SIMPLE_TTS/HTTP_TTS/SILICONFLOW_TTS/OPENAI_TTS",
+                                        description = "可选，SIMPLE_TTS/HTTP_TTS/OPENAI_WS_TTS/SILICONFLOW_TTS/OPENAI_TTS",
                                         required = false
                                     ),
                                     ToolParameterSchema(
@@ -4128,7 +4316,7 @@ object SystemToolPromptsInternal {
                                     ToolParameterSchema(
                                         name = "api_provider_type",
                                         type = "string",
-                                        description = "可选，提供商枚举名（如 OPENAI_GENERIC/DEEPSEEK/GEMINI_GENERIC/OLLAMA/MNN/LLAMA_CPP）",
+                                        description = "可选，提供商枚举名（如 OPENAI_GENERIC/OPENAI_RESPONSES_GENERIC/DEEPSEEK/GEMINI_GENERIC/OLLAMA/MNN/LLAMA_CPP）",
                                         required = false
                                     ),
                                     ToolParameterSchema(

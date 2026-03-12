@@ -33,8 +33,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
-import com.ai.assistance.operit.core.tools.AIToolHandler
-import com.ai.assistance.operit.core.tools.packTool.PackageManager
+import com.ai.assistance.operit.plugins.toolbox.ToolboxScriptDefinition
+import com.ai.assistance.operit.plugins.toolbox.ToolboxScriptHookParams
+import com.ai.assistance.operit.plugins.toolbox.ToolboxScriptPluginRegistry
 import com.ai.assistance.operit.ui.features.toolbox.screens.apppermissions.AppPermissionsScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.ffmpegtoolbox.FFmpegToolboxScreen
 import com.ai.assistance.operit.ui.features.toolbox.screens.filemanager.FileManagerScreen
@@ -106,24 +107,18 @@ fun ToolboxScreen(
         // 屏幕配置信息，用于响应式布局
         val configuration = LocalConfiguration.current
         val context = LocalContext.current
-        val packageManager =
+        var dynamicScriptDefinitions by
                 remember {
-                        PackageManager.getInstance(
-                                context,
-                                AIToolHandler.getInstance(context)
-                        )
-                }
-        var dynamicUiModules by
-                remember {
-                        mutableStateOf<List<PackageManager.ToolPkgToolboxUiModule>>(emptyList())
+                        mutableStateOf(emptyList<ToolboxScriptDefinition>())
                 }
 
         LaunchedEffect(configuration) {
-                dynamicUiModules =
+                dynamicScriptDefinitions =
                         withContext(Dispatchers.IO) {
-                                packageManager.getToolPkgToolboxUiModules(
-                                        runtime = "compose_dsl",
-                                        resolveContext = context
+                                ToolboxScriptPluginRegistry.createDefinitions(
+                                        ToolboxScriptHookParams(
+                                                context = context
+                                        )
                                 )
                         }
         }
@@ -261,7 +256,7 @@ fun ToolboxScreen(
                         )
                 )
         val dynamicTools =
-                dynamicUiModules.map { module ->
+                dynamicScriptDefinitions.map { module ->
                         Tool(
                                 name = module.title,
                                 icon = Icons.Default.Extension,

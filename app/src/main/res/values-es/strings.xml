@@ -1130,6 +1130,11 @@
     <string name="chat_style_desc">Elegir estilo de interfaz de chat</string>
     <string name="chat_style_cursor">Caja de Comandos</string>
     <string name="chat_style_bubble">Caja de Diálogo</string>
+    <string name="chat_style_bubble_wide_layout">Burbujas más anchas</string>
+    <string name="chat_style_bubble_wide_layout_desc">Coloca las burbujas debajo del avatar y alinea el nombre del rol con el avatar para dejar más espacio al contenido</string>
+    <string name="chat_style_preview_user_name">Nombre de usuario</string>
+    <string name="chat_style_preview_ai_name">Nombre del rol</string>
+    <string name="chat_style_preview_ai_meta">Modelo de ejemplo por Proveedor de ejemplo</string>
     <string name="display_options_title">Opciones de Visualización</string>
     <string name="show_thinking_process">Mostrar Proceso de Pensamiento</string>
     <string name="show_thinking_process_desc">Alternar visibilidad de etiquetas &lt;think&gt; en respuestas de IA</string>
@@ -1201,6 +1206,7 @@
     <!-- API Provider names -->
     <string name="provider_openai">OpenAI (Serie GPT)</string>
     <string name="provider_openai_responses">OpenAI (API Responses)</string>
+    <string name="provider_openai_responses_generic">OpenAI Responses (Genérico)</string>
     <string name="provider_openai_generic">OpenAI genérico</string>
     <string name="provider_anthropic">Anthropic (Serie Claude)</string>
     <string name="provider_anthropic_generic">Anthropic genérico</string>
@@ -1295,6 +1301,14 @@
     <string name="chat_settings_bar_right_margin_desc">Ajustar la distancia entre el botón de configuración de chat y el borde derecho de la pantalla, en dp</string>
     <string name="chat_settings_button_end_padding">Margen Final del Botón de Configuración de Chat</string>
     <string name="chat_settings_button_end_padding_desc">Ajustar la distancia entre el botón de configuración de chat y el borde derecho de la pantalla, en dp</string>
+    <string name="global_text_line_height_multiplier">Multiplicador de Altura de Línea de AI Markdown</string>
+    <string name="global_text_line_height_multiplier_desc">Ajusta el multiplicador de altura de línea del contenido Markdown en respuestas de la IA</string>
+    <string name="global_text_letter_spacing">Espaciado entre Letras de AI Markdown</string>
+    <string name="global_text_letter_spacing_desc">Ajusta el espaciado entre letras del contenido Markdown en respuestas de la IA</string>
+    <string name="layout_adjustment_preview_title">Vista previa de AI Markdown</string>
+    <string name="layout_adjustment_preview_desc">El ejemplo de abajo refleja el interlineado y el espaciado entre letras guardados para AI Markdown.</string>
+    <string name="layout_adjustment_preview_plain_text">Esta es una vista previa de texto normal. Puedes observar la separación entre letras y la densidad entre líneas.</string>
+    <string name="layout_adjustment_preview_markdown">Este es el primer párrafo Markdown de vista previa de una respuesta de IA, para observar el interlineado y el espaciado entre letras actuales.\n\nEste es el segundo párrafo Markdown de vista previa de una respuesta de IA, para seguir observando la composición general de múltiples párrafos y listas.\n\n- Elemento de lista AI Markdown uno\n- Elemento de lista AI Markdown dos</string>
     <string name="current_value">Valor Actual</string>
     <string name="closer_to_edge">Más Cerca del Borde</string>
     <string name="farther_from_edge">Más Lejos del Borde</string>
@@ -1334,6 +1348,7 @@
     <string name="thinking_quality_desc">Solo efectivo en modo de pensamiento</string>
     
     <string name="provider_doubao">Doubao (Modelo Volcano)</string>
+    <string name="provider_nvidia">NVIDIA (API Catalog)</string>
 
     <string name="speech_services_stt_type_openai">OpenAI STT (Remoto)</string>
     <string name="speech_services_stt_type_deepgram">Deepgram STT (Remoto)</string>

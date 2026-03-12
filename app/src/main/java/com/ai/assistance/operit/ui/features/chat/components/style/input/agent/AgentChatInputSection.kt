@@ -66,9 +66,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -90,6 +88,12 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -129,6 +133,10 @@ import com.ai.assistance.operit.ui.features.chat.components.AttachmentChip
 import com.ai.assistance.operit.ui.features.chat.components.AttachmentSelectorPopupPanel
 import com.ai.assistance.operit.ui.features.chat.components.FullscreenInputDialog
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.CharacterCardModelBindingSwitchConfirmDialog
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuToggleHookParams
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuTogglePluginRegistry
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.PendingMessageQueuePanel
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.PendingQueueMessageItem
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.ToolPromptManagerDialog
 import com.ai.assistance.operit.ui.features.chat.viewmodel.ChatViewModel
 import com.ai.assistance.operit.ui.floating.FloatingMode
@@ -142,7 +150,9 @@ fun AgentChatInputSection(
     actualViewModel: ChatViewModel,
     userMessage: TextFieldValue,
     onUserMessageChange: (TextFieldValue) -> Unit,
+    enableEnterToSend: Boolean = false,
     onSendMessage: () -> Unit,
+    onQueueMessage: () -> Unit,
     onCancelMessage: () -> Unit,
     isLoading: Boolean,
     inputState: InputProcessingState = InputProcessingState.Idle,
@@ -172,8 +182,8 @@ fun AgentChatInputSection(
     onToggleThinkingGuidance: () -> Unit = {},
     enableMaxContextMode: Boolean = false,
     onToggleEnableMaxContextMode: () -> Unit = {},
-    enableAiPlanning: Boolean = false,
-    onToggleAiPlanning: () -> Unit = {},
+    featureStates: Map<String, Boolean> = emptyMap(),
+    onToggleFeature: (String) -> Unit = {},
     permissionLevel: PermissionLevel = PermissionLevel.ASK,
     onTogglePermission: () -> Unit = {},
     enableMemoryQuery: Boolean = false,
@@ -195,13 +205,18 @@ fun AgentChatInputSection(
     onNavigateToModelConfig: () -> Unit = {},
     characterCardBoundChatModelConfigId: String? = null,
     characterCardBoundChatModelIndex: Int = 0,
+    pendingQueueMessages: List<PendingQueueMessageItem> = emptyList(),
+    isPendingQueueExpanded: Boolean = true,
+    onPendingQueueExpandedChange: (Boolean) -> Unit = {},
+    onDeletePendingQueueMessage: (Long) -> Unit = {},
+    onEditPendingQueueMessage: (Long) -> Unit = {},
+    onSendPendingQueueMessage: (Long) -> Unit = {},
 ) {
     val showTokenLimitDialog = remember { mutableStateOf(false) }
     val showFullscreenInput = remember { mutableStateOf(false) }
     val showModelSelectorPopup = remember { mutableStateOf(false) }
     val showExtraSettingsPopup = remember { mutableStateOf(false) }
     var showCharacterCardBindingSwitchConfirm by remember { mutableStateOf(false) }
-    var pendingInterruptSend by remember { mutableStateOf(false) }
     var pendingCharacterCardModelSelection by remember { mutableStateOf<Pair<String, Int>?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -219,13 +234,10 @@ fun AgentChatInputSection(
             inputState is InputProcessingState.ProcessingToolResult ||
             inputState is InputProcessingState.Summarizing ||
             inputState is InputProcessingState.Receiving
-    val isProcessingState = rememberUpdatedState(isProcessing)
-
     if (showTokenLimitDialog.value) {
         AlertDialog(
             onDismissRequest = {
                 showTokenLimitDialog.value = false
-                pendingInterruptSend = false
             },
             title = { Text(context.getString(R.string.token_limit_warning)) },
             text = { Text(context.getString(R.string.token_limit_warning_message)) },
@@ -233,19 +245,7 @@ fun AgentChatInputSection(
                 TextButton(
                     onClick = {
                         showTokenLimitDialog.value = false
-                        val shouldInterrupt = pendingInterruptSend
-                        pendingInterruptSend = false
-                        if (shouldInterrupt) {
-                            scope.launch {
-                                if (isProcessingState.value) {
-                                    onCancelMessage()
-                                    snapshotFlow { isProcessingState.value }.first { !it }
-                                }
-                                onSendMessage()
-                            }
-                        } else {
-                            onSendMessage()
-                        }
+                        onSendMessage()
                     },
                 ) { Text(context.getString(R.string.continue_send)) }
             },
@@ -253,7 +253,6 @@ fun AgentChatInputSection(
                 TextButton(
                     onClick = {
                         showTokenLimitDialog.value = false
-                        pendingInterruptSend = false
                     },
                 ) {
                     Text(context.getString(R.string.cancel))
@@ -360,9 +359,10 @@ fun AgentChatInputSection(
             false
         }
 
-    val canSendMessage = userMessage.text.isNotBlank() || attachments.isNotEmpty()
-    val canInterruptSend = isProcessing && canSendMessage
-    val showCancelAction = isProcessing && !canSendMessage
+    val hasDraftText = userMessage.text.isNotBlank()
+    val canSendMessage = hasDraftText || attachments.isNotEmpty()
+    val showQueueAction = isProcessing && hasDraftText
+    val showCancelAction = isProcessing && !showQueueAction
     val sendButtonEnabled = true
 
     val voicePermissionLauncher =
@@ -386,6 +386,34 @@ fun AgentChatInputSection(
     LaunchedEffect(showAttachmentPanel) {
         onAttachmentPanelStateChange?.invoke(showAttachmentPanel)
     }
+    fun handleEnterSendAction() {
+        if (!canSendMessage) return
+        if (showQueueAction) {
+            onQueueMessage()
+            setShowAttachmentPanel(false)
+            return
+        }
+        if (isOverTokenLimit) {
+            showTokenLimitDialog.value = true
+            return
+        }
+        onSendMessage()
+        setShowAttachmentPanel(false)
+    }
+    val onEnterToSendKeyEvent: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = { keyEvent ->
+        if (!enableEnterToSend) {
+            false
+        } else if (
+            keyEvent.type == KeyEventType.KeyDown &&
+            keyEvent.key == Key.Enter &&
+            !keyEvent.isShiftPressed
+        ) {
+            handleEnterSendAction()
+            true
+        } else {
+            false
+        }
+    }
 
     val isDarkTheme = MaterialTheme.colorScheme.onSurface.luminance() > 0.5f
     val darkModeInputColor =
@@ -408,6 +436,17 @@ fun AgentChatInputSection(
             isDarkTheme && chatInputTransparent -> darkModeInputColor
             isDarkTheme -> inputContainerColor
             else -> MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)
+        }
+    val queueContainerColor =
+        when {
+            chatInputTransparent -> MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+            else -> inputContainerColor
+        }
+    val queueItemColor =
+        when {
+            chatInputTransparent -> MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+            isDarkTheme -> MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+            else -> MaterialTheme.colorScheme.surface
         }
     val modelLabel =
         if (displayModelName.isBlank()) {
@@ -575,6 +614,18 @@ fun AgentChatInputSection(
                 }
             }
 
+            PendingMessageQueuePanel(
+                queuedMessages = pendingQueueMessages,
+                expanded = isPendingQueueExpanded,
+                onExpandedChange = onPendingQueueExpandedChange,
+                onDeleteMessage = onDeletePendingQueueMessage,
+                onEditMessage = onEditPendingQueueMessage,
+                onSendMessage = onSendPendingQueueMessage,
+                containerColor = queueContainerColor,
+                itemColor = queueItemColor,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+
             SimpleAnimatedVisibility(
                 visible = showProcessingStatus,
             ) {
@@ -657,13 +708,21 @@ fun AgentChatInputSection(
                                 style = inputTextStyle,
                             )
                         },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).onPreviewKeyEvent(onEnterToSendKeyEvent),
                         textStyle = inputTextStyle,
                         maxLines = 6,
                         minLines = 1,
                         singleLine = false,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                        keyboardActions = KeyboardActions(),
+                        keyboardOptions =
+                            KeyboardOptions(
+                                imeAction = if (enableEnterToSend) ImeAction.Send else ImeAction.Default
+                            ),
+                        keyboardActions =
+                            if (enableEnterToSend) {
+                                KeyboardActions(onSend = { handleEnterSendAction() })
+                            } else {
+                                KeyboardActions()
+                            },
                         colors =
                             OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color.Transparent,
@@ -675,14 +734,12 @@ fun AgentChatInputSection(
                             ),
                         shape = RoundedCornerShape(14.dp),
                         trailingIcon = {
-                            if (userMessage.text.contains("\n")) {
-                                IconButton(onClick = { showFullscreenInput.value = true }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Fullscreen,
-                                        contentDescription = "Fullscreen input",
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
+                            IconButton(onClick = { showFullscreenInput.value = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Fullscreen,
+                                    contentDescription = stringResource(R.string.chat_fullscreen_input),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         },
                         enabled = !isProcessing || allowTextInputWhileProcessing,
@@ -800,6 +857,7 @@ fun AgentChatInputSection(
                         val actionButtonBackground =
                             when {
                                 showCancelAction -> MaterialTheme.colorScheme.error
+                                showQueueAction -> MaterialTheme.colorScheme.tertiary
                                 canSendMessage ->
                                     if (isOverTokenLimit) {
                                         MaterialTheme.colorScheme.secondary
@@ -812,6 +870,7 @@ fun AgentChatInputSection(
                         val actionButtonIconTint =
                             when {
                                 showCancelAction -> MaterialTheme.colorScheme.onError
+                                showQueueAction -> MaterialTheme.colorScheme.onTertiary
                                 canSendMessage ->
                                     if (isOverTokenLimit) {
                                         MaterialTheme.colorScheme.onSecondary
@@ -845,26 +904,16 @@ fun AgentChatInputSection(
                                             onClick = {
                                                 when {
                                                     showCancelAction -> onCancelMessage()
+                                                    showQueueAction -> {
+                                                        onQueueMessage()
+                                                        setShowAttachmentPanel(false)
+                                                    }
                                                     canSendMessage -> {
                                                         if (isOverTokenLimit) {
-                                                            pendingInterruptSend = canInterruptSend
                                                             showTokenLimitDialog.value = true
                                                         } else {
-                                                            pendingInterruptSend = false
-                                                            if (canInterruptSend) {
-                                                                scope.launch {
-                                                                    if (isProcessingState.value) {
-                                                                        onCancelMessage()
-                                                                        snapshotFlow { isProcessingState.value }
-                                                                            .first { !it }
-                                                                    }
-                                                                    onSendMessage()
-                                                                    setShowAttachmentPanel(false)
-                                                                }
-                                                            } else {
-                                                                onSendMessage()
-                                                                setShowAttachmentPanel(false)
-                                                            }
+                                                            onSendMessage()
+                                                            setShowAttachmentPanel(false)
                                                         }
                                                     }
                                                     else -> {
@@ -884,12 +933,14 @@ fun AgentChatInputSection(
                                     imageVector =
                                         when {
                                             showCancelAction -> Icons.Default.Close
+                                            showQueueAction -> Icons.Default.Add
                                             canSendMessage -> Icons.AutoMirrored.Filled.Send
                                             else -> Icons.Default.Mic
                                         },
                                     contentDescription =
                                         when {
                                             showCancelAction -> context.getString(R.string.cancel)
+                                            showQueueAction -> context.getString(R.string.chat_queue_add_message)
                                             canSendMessage -> context.getString(R.string.send)
                                             else -> context.getString(R.string.voice_input)
                                         },
@@ -931,13 +982,21 @@ fun AgentChatInputSection(
                                     style = inputTextStyle,
                                 )
                             },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp).onPreviewKeyEvent(onEnterToSendKeyEvent),
                             textStyle = inputTextStyle,
                             maxLines = 6,
                             minLines = 1,
                             singleLine = false,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
-                            keyboardActions = KeyboardActions(),
+                            keyboardOptions =
+                                KeyboardOptions(
+                                    imeAction = if (enableEnterToSend) ImeAction.Send else ImeAction.Default
+                                ),
+                            keyboardActions =
+                                if (enableEnterToSend) {
+                                    KeyboardActions(onSend = { handleEnterSendAction() })
+                                } else {
+                                    KeyboardActions()
+                                },
                             colors =
                                 OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = Color.Transparent,
@@ -949,14 +1008,12 @@ fun AgentChatInputSection(
                                 ),
                             shape = RoundedCornerShape(14.dp),
                             trailingIcon = {
-                                if (userMessage.text.contains("\n")) {
-                                    IconButton(onClick = { showFullscreenInput.value = true }) {
-                                        Icon(
-                                            imageVector = Icons.Default.Fullscreen,
-                                            contentDescription = "Fullscreen input",
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
+                                IconButton(onClick = { showFullscreenInput.value = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Fullscreen,
+                                        contentDescription = stringResource(R.string.chat_fullscreen_input),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 }
                             },
                             enabled = !isProcessing || allowTextInputWhileProcessing,
@@ -1074,6 +1131,7 @@ fun AgentChatInputSection(
                             val actionButtonBackground =
                                 when {
                                     showCancelAction -> MaterialTheme.colorScheme.error
+                                    showQueueAction -> MaterialTheme.colorScheme.tertiary
                                     canSendMessage ->
                                         if (isOverTokenLimit) {
                                             MaterialTheme.colorScheme.secondary
@@ -1086,6 +1144,7 @@ fun AgentChatInputSection(
                             val actionButtonIconTint =
                                 when {
                                     showCancelAction -> MaterialTheme.colorScheme.onError
+                                    showQueueAction -> MaterialTheme.colorScheme.onTertiary
                                     canSendMessage ->
                                         if (isOverTokenLimit) {
                                             MaterialTheme.colorScheme.onSecondary
@@ -1119,26 +1178,16 @@ fun AgentChatInputSection(
                                                 onClick = {
                                                     when {
                                                         showCancelAction -> onCancelMessage()
+                                                        showQueueAction -> {
+                                                            onQueueMessage()
+                                                            setShowAttachmentPanel(false)
+                                                        }
                                                         canSendMessage -> {
                                                             if (isOverTokenLimit) {
-                                                                pendingInterruptSend = canInterruptSend
                                                                 showTokenLimitDialog.value = true
                                                             } else {
-                                                                pendingInterruptSend = false
-                                                                if (canInterruptSend) {
-                                                                    scope.launch {
-                                                                        if (isProcessingState.value) {
-                                                                            onCancelMessage()
-                                                                            snapshotFlow { isProcessingState.value }
-                                                                                .first { !it }
-                                                                        }
-                                                                        onSendMessage()
-                                                                        setShowAttachmentPanel(false)
-                                                                    }
-                                                                } else {
-                                                                    onSendMessage()
-                                                                    setShowAttachmentPanel(false)
-                                                                }
+                                                                onSendMessage()
+                                                                setShowAttachmentPanel(false)
                                                             }
                                                         }
                                                         else -> {
@@ -1158,12 +1207,14 @@ fun AgentChatInputSection(
                                         imageVector =
                                             when {
                                                 showCancelAction -> Icons.Default.Close
+                                                showQueueAction -> Icons.Default.Add
                                                 canSendMessage -> Icons.AutoMirrored.Filled.Send
                                                 else -> Icons.Default.Mic
                                             },
                                         contentDescription =
                                             when {
                                                 showCancelAction -> context.getString(R.string.cancel)
+                                                showQueueAction -> context.getString(R.string.chat_queue_add_message)
                                                 canSendMessage -> context.getString(R.string.send)
                                                 else -> context.getString(R.string.voice_input)
                                             },
@@ -1210,8 +1261,8 @@ fun AgentChatInputSection(
                 },
                 enableMemoryQuery = enableMemoryQuery,
                 onToggleMemoryQuery = onToggleMemoryQuery,
-                enableAiPlanning = enableAiPlanning,
-                onToggleAiPlanning = onToggleAiPlanning,
+                featureStates = featureStates,
+                onToggleFeature = onToggleFeature,
                 isAutoReadEnabled = isAutoReadEnabled,
                 onToggleAutoRead = onToggleAutoRead,
                 permissionLevel = permissionLevel,
@@ -1231,7 +1282,7 @@ fun AgentChatInputSection(
                 onDismiss = { showExtraSettingsPopup.value = false },
             )
 
-            if (isOverTokenLimit && canSendMessage) {
+            if (isOverTokenLimit && canSendMessage && !showQueueAction) {
                 Text(
                     text =
                         context.getString(
@@ -1938,8 +1989,8 @@ private fun AgentExtraSettingsPopup(
     onManageMemory: () -> Unit,
     enableMemoryQuery: Boolean,
     onToggleMemoryQuery: () -> Unit,
-    enableAiPlanning: Boolean,
-    onToggleAiPlanning: () -> Unit,
+    featureStates: Map<String, Boolean>,
+    onToggleFeature: (String) -> Unit,
     isAutoReadEnabled: Boolean,
     onToggleAutoRead: () -> Unit,
     permissionLevel: PermissionLevel,
@@ -1965,6 +2016,15 @@ private fun AgentExtraSettingsPopup(
     var showToolPromptManagerDialog by remember { mutableStateOf(false) }
     var infoPopupContent by remember { mutableStateOf<Pair<String, String>?>(null) }
     val context = LocalContext.current
+    val inputMenuToggles = InputMenuTogglePluginRegistry.changeVersion.collectAsState().value.let {
+        InputMenuTogglePluginRegistry.createToggles(
+            params = InputMenuToggleHookParams(
+                context = context,
+                featureStates = featureStates,
+                onToggleFeature = onToggleFeature
+            )
+        )
+    }
 
     Popup(
         alignment = Alignment.TopStart,
@@ -2052,17 +2112,28 @@ private fun AgentExtraSettingsPopup(
                         },
                     )
 
-                    AgentSimpleToggleSettingItem(
-                        title = stringResource(R.string.ai_planning_mode),
-                        icon = Icons.Outlined.Hub,
-                        isChecked = enableAiPlanning,
-                        onToggle = onToggleAiPlanning,
-                        onInfoClick = {
-                            infoPopupContent =
-                                context.getString(R.string.ai_planning_mode) to
-                                    context.getString(R.string.ai_planning_desc)
-                        },
-                    )
+                    inputMenuToggles.forEach { toggle ->
+                        val toggleTitle =
+                            if (toggle.titleRes != 0) stringResource(toggle.titleRes)
+                            else toggle.title.orEmpty()
+                        AgentSimpleToggleSettingItem(
+                            title = toggleTitle,
+                            icon = Icons.Outlined.Hub,
+                            isChecked = toggle.isChecked,
+                            isEnabled = toggle.isEnabled,
+                            onToggle = toggle.onToggle,
+                            onInfoClick = {
+                                val infoTitle =
+                                    if (toggle.titleRes != 0) context.getString(toggle.titleRes)
+                                    else toggle.title.orEmpty()
+                                val infoDescription =
+                                    if (toggle.descriptionRes != 0) context.getString(toggle.descriptionRes)
+                                    else toggle.description.orEmpty()
+                                infoPopupContent =
+                                    infoTitle to infoDescription
+                            },
+                        )
+                    }
 
                     AgentSimpleToggleSettingItem(
                         title = stringResource(R.string.auto_read_message),
@@ -2414,6 +2485,7 @@ private fun AgentSimpleToggleSettingItem(
     title: String,
     icon: ImageVector,
     isChecked: Boolean,
+    isEnabled: Boolean = true,
     onToggle: () -> Unit,
     onInfoClick: () -> Unit,
 ) {
@@ -2424,6 +2496,7 @@ private fun AgentSimpleToggleSettingItem(
                 .height(36.dp)
                 .toggleable(
                     value = isChecked,
+                    enabled = isEnabled,
                     onValueChange = { onToggle() },
                     role = Role.Switch,
                 )
@@ -2434,7 +2507,9 @@ private fun AgentSimpleToggleSettingItem(
             imageVector = icon,
             contentDescription = null,
             tint =
-                if (isChecked) {
+                if (!isEnabled) {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                } else if (isChecked) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
@@ -2453,12 +2528,15 @@ private fun AgentSimpleToggleSettingItem(
         Text(
             text = title,
             fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurface,
+            color =
+                if (isEnabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             modifier = Modifier.weight(1f),
         )
         Switch(
             checked = isChecked,
             onCheckedChange = null,
+            enabled = isEnabled,
             modifier = Modifier.scale(0.65f),
             colors =
                 SwitchDefaults.colors(

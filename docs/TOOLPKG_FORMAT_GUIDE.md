@@ -30,6 +30,8 @@
 ```
 windows_control.toolpkg (ZIP 压缩包)
 ├── manifest.json                          # 清单文件（必需）
+├── main.js                                # ToolPkg 主入口脚本（必需）
+├── main.ts                                # 主入口 TypeScript 源码（建议）
 ├── packages/                              # 子包脚本目录
 │   └── windows_control.js                 # 子包脚本
 ├── ui/                                    # UI 模块目录
@@ -68,6 +70,7 @@ windows_control.toolpkg (ZIP 压缩包)
   "schema_version": 1,
   "toolpkg_id": "com.operit.windows_bundle",
   "version": "0.2.0",
+  "main": "main.js",
   "display_name": {
     "zh": "Windows 工具包",
     "en": "Windows Bundle"
@@ -91,18 +94,6 @@ windows_control.toolpkg (ZIP 压缩包)
       }
     }
   ],
-  "ui_modules": [
-    {
-      "id": "windows_setup",
-      "runtime": "compose_dsl",
-      "entry": "ui/windows_setup/index.ui.js",
-      "title": {
-        "zh": "Windows 一键配置",
-        "en": "Windows Quick Setup"
-      },
-      "show_in_package_manager": true
-    }
-  ],
   "resources": [
     {
       "key": "pc_agent_zip",
@@ -122,10 +113,10 @@ windows_control.toolpkg (ZIP 压缩包)
 | `schema_version` | number | 是 | 清单架构版本，当前为 `1` |
 | `toolpkg_id` | string | 是 | 包的唯一标识符，建议使用反向域名格式（如 `com.operit.windows_bundle`） |
 | `version` | string | 否 | 包的版本号，建议使用语义化版本（如 `0.2.0`） |
+| `main` | string | 是 | ToolPkg 主入口脚本路径（相对于 ZIP 根目录），用于执行注册函数 |
 | `display_name` | LocalizedText | 否 | 包的显示名称，支持多语言 |
 | `description` | LocalizedText | 否 | 包的描述信息，支持多语言 |
 | `subpackages` | array | 否 | 子包列表，每个子包是一个独立的工具集 |
-| `ui_modules` | array | 否 | UI 模块列表，用于提供可视化界面 |
 | `resources` | array | 否 | 资源文件列表，可以是任意类型的文件 |
 
 #### 3.2.2 LocalizedText 类型
@@ -187,30 +178,127 @@ windows_control.toolpkg (ZIP 压缩包)
 - 必须包含 `METADATA` 注释块（参考 [SCRIPT_DEV_GUIDE.md](./SCRIPT_DEV_GUIDE.md)）
 - 脚本中定义的工具会被注册为 `<subpackage_id>:<tool_name>` 格式
 
-#### 3.2.4 UI Modules（UI 模块）
+#### 3.2.4 Main 脚本注册
 
-UI 模块提供可视化界面，用于配置、管理或展示包的功能。
+ToolPkg 的 UI 模块和生命周期钩子不再写在 `manifest` 里，而是由 `main` 脚本通过注册函数声明。
 
-```json
-{
-  "id": "windows_setup",
-  "runtime": "compose_dsl",
-  "entry": "ui/windows_setup/index.ui.js",
-  "title": {
-    "zh": "Windows 一键配置",
-    "en": "Windows Quick Setup"
-  },
-  "show_in_package_manager": true
+`main.js` 示例：
+
+```javascript
+const toolboxUI = require("./ui/windows_setup/index.ui.js").default;
+
+function registerToolPkg() {
+  ToolPkg.registerToolboxUiModule({
+    id: "windows_setup",
+    runtime: "compose_dsl",
+    screen: toolboxUI,
+    params: {},
+    title: {
+      zh: "Windows 一键配置",
+      en: "Windows Quick Setup"
+    }
+  });
+
+  ToolPkg.registerAppLifecycleHook({
+    id: "windows_app_create",
+    event: "application_on_create",
+    function: onApplicationCreate
+  });
+
+  ToolPkg.registerMessageProcessingPlugin({
+    id: "windows_message_processing",
+    function: onMessageProcessing
+  });
+
+  ToolPkg.registerXmlRenderPlugin({
+    id: "windows_xml_status",
+    tag: "windows_status",
+    function: onXmlRender
+  });
+
+  ToolPkg.registerInputMenuTogglePlugin({
+    id: "windows_input_menu_toggle",
+    function: onInputMenuToggle
+  });
+
+  return true;
 }
+
+function onApplicationCreate() {
+  return { ok: true };
+}
+
+function onMessageProcessing(params) {
+  return { matched: false };
+}
+
+function onXmlRender(params) {
+  if (params.tagName !== "windows_status") {
+    return { handled: false };
+  }
+  return { handled: true, text: "Windows status ready" };
+}
+
+function onInputMenuToggle(params) {
+  if (params.action === "create") {
+    return {
+      toggles: [
+        {
+          id: "windows_mode",
+          title: "Windows Mode",
+          description: "Enable Windows mode",
+          isChecked: false
+        }
+      ]
+    };
+  }
+  if (params.action === "toggle" && params.toggleId === "windows_mode") {
+    return { ok: true };
+  }
+  return { ok: false };
+}
+
+exports.registerToolPkg = registerToolPkg;
+exports.onApplicationCreate = onApplicationCreate;
+exports.onMessageProcessing = onMessageProcessing;
+exports.onXmlRender = onXmlRender;
+exports.onInputMenuToggle = onInputMenuToggle;
 ```
 
-| 字段 | 类型 | 必需 | 说明 |
+注册项字段：
+
+| 注册函数 | 字段 | 必需 | 说明 |
 |------|------|------|------|
-| `id` | string | 是 | UI 模块的唯一标识符 |
-| `runtime` | string | 否 | 运行时类型，当前支持 `compose_dsl` |
-| `entry` | string | 否 | UI 模块脚本的入口文件路径 |
-| `title` | LocalizedText | 否 | UI 模块的标题 |
-| `show_in_package_manager` | boolean | 否 | 是否在包管理器中显示，默认为 `false` |
+| `ToolPkg.registerToolboxUiModule` | `id` | 是 | UI 模块唯一标识 |
+| `ToolPkg.registerToolboxUiModule` | `runtime` | 否 | 运行时类型，默认 `compose_dsl` |
+| `ToolPkg.registerToolboxUiModule` | `screen` | 是 | UI 模块函数（推荐 `import/require ... default` 后传入） |
+| `ToolPkg.registerToolboxUiModule` | `params` | 否 | UI 模块初始化参数对象 |
+| `ToolPkg.registerToolboxUiModule` | `title` | 否 | 模块标题（支持 `LocalizedText`） |
+| `ToolPkg.registerAppLifecycleHook` | `id` | 是 | 生命周期钩子唯一标识 |
+| `ToolPkg.registerAppLifecycleHook` | `event` | 是 | 生命周期事件名（见下方完整列表） |
+| `ToolPkg.registerAppLifecycleHook` | `function` | 是 | 函数引用（支持箭头函数） |
+| `ToolPkg.registerMessageProcessingPlugin` | `id` | 是 | 消息处理插件唯一标识 |
+| `ToolPkg.registerMessageProcessingPlugin` | `function` | 是 | 函数引用（支持箭头函数） |
+| `ToolPkg.registerXmlRenderPlugin` | `id` | 是 | XML 渲染插件唯一标识 |
+| `ToolPkg.registerXmlRenderPlugin` | `tag` | 是 | 目标 XML 标签名 |
+| `ToolPkg.registerXmlRenderPlugin` | `function` | 是 | 函数引用（支持箭头函数） |
+| `ToolPkg.registerInputMenuTogglePlugin` | `id` | 是 | 输入菜单开关插件唯一标识 |
+| `ToolPkg.registerInputMenuTogglePlugin` | `function` | 是 | 函数引用（支持箭头函数） |
+
+`ToolPkg.registerAppLifecycleHook` 支持的 `event`：
+
+- `application_on_create`
+- `application_on_foreground`
+- `application_on_background`
+- `application_on_low_memory`
+- `application_on_trim_memory`
+- `application_on_terminate`
+- `activity_on_create`
+- `activity_on_start`
+- `activity_on_resume`
+- `activity_on_pause`
+- `activity_on_stop`
+- `activity_on_destroy`
 
 **Compose DSL 运行时**：
 - 使用 JavaScript 编写声明式 UI
@@ -238,7 +326,7 @@ UI 模块提供可视化界面，用于配置、管理或展示包的功能。
 
 **访问资源**：
 - 在子包脚本中：通过 PackageManager API 访问
-- 在 UI 模块中：通过 `ctx.readResource(key)` 访问
+- 在 UI 模块中：通过 `ToolPkg.readResource(key)` 访问
 
 ## 4. 创建 ToolPkg
 
@@ -522,7 +610,7 @@ await ctx.setEnvs({ API_KEY: 'value1', TOKEN: 'value2' });
 
 #### 资源访问
 ```javascript
-const filePath = await ctx.readResource('resource_key');
+const filePath = await ToolPkg.readResource('resource_key');
 ```
 
 #### 包管理
@@ -553,7 +641,7 @@ ctx.reportError(error);
 
 #### 其他
 ```javascript
-const locale = ctx.getLocale(); // 'zh' 或 'en'
+const locale = getLang(); // 'zh' 或 'en'
 const text = ctx.formatTemplate('Hello {name}!', { name: 'World' });
 const packageName = ctx.getCurrentPackageName();
 const toolPkgId = ctx.getCurrentToolPkgId();
@@ -586,7 +674,7 @@ const spec = ctx.getModuleSpec();
 
 **在 UI 模块中**：
 ```javascript
-const iconPath = await ctx.readResource('icon');
+const iconPath = await ToolPkg.readResource('icon');
 // iconPath 是资源文件在设备上的临时路径
 ```
 
@@ -692,8 +780,10 @@ my_toolpkg/
 - 验证资源文件没有损坏
 
 **问题 4：UI 模块不显示**
-- 检查 `show_in_package_manager` 是否为 `true`
+- 检查 `main.js` 是否导出 `registerToolPkg`
+- 检查是否调用了 `ToolPkg.registerToolboxUiModule(...)`
 - 确认 `runtime` 类型正确
+- 确认 `screen` 传的是已导入的模块函数（例如 `const ui = require(...).default`）
 - 验证 UI 脚本语法正确
 
 ### 10.2 调试技巧

@@ -18,6 +18,7 @@ import com.ai.assistance.operit.data.model.ParameterValueType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -41,6 +42,36 @@ class ApiPreferences private constructor(private val context: Context) {
                 instance
             }
         }
+        @JvmStatic
+        fun getFeatureToggleBlocking(
+            context: Context,
+            featureKey: String,
+            defaultValue: Boolean = false
+        ): Boolean {
+            val normalized = featureKey.trim()
+            if (normalized.isEmpty()) {
+                return defaultValue
+            }
+            return runBlocking {
+                getInstance(context).featureToggleFlow(normalized, defaultValue).first()
+            }
+        }
+
+        @JvmStatic
+        fun setFeatureToggleBlocking(
+            context: Context,
+            featureKey: String,
+            enabled: Boolean
+        ) {
+            val normalized = featureKey.trim()
+            if (normalized.isEmpty()) {
+                return
+            }
+            runBlocking {
+                getInstance(context).saveFeatureToggle(normalized, enabled)
+            }
+        }
+
         // 动态生成供应商:模型的Token键
         fun getTokenInputKey(providerModel: String) =
                 intPreferencesKey("token_input_${providerModel.replace(":", "_")}")
@@ -94,10 +125,10 @@ class ApiPreferences private constructor(private val context: Context) {
 
         val USD_TO_CNY_EXCHANGE_RATE = floatPreferencesKey("usd_to_cny_exchange_rate")
 
-        val ENABLE_AI_PLANNING = booleanPreferencesKey("enable_ai_planning")
         val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+        val FEATURE_TOGGLES_JSON = stringPreferencesKey("feature_toggles_json")
         // Default values
-        const val DEFAULT_ENABLE_AI_PLANNING = false
+        const val DEFAULT_FEATURE_TOGGLE_STATE = false
         const val DEFAULT_KEEP_SCREEN_ON = true
         // Keys for Thinking Mode and Thinking Guidance
         val ENABLE_THINKING_MODE = booleanPreferencesKey("enable_thinking_mode")
@@ -180,6 +211,7 @@ class ApiPreferences private constructor(private val context: Context) {
         const val DEFAULT_CUSTOM_PARAMETERS = "[]"
         const val DEFAULT_CUSTOM_HEADERS = "{}"
         const val DEFAULT_TOOL_PROMPT_VISIBILITY_JSON = "{}"
+        const val DEFAULT_FEATURE_TOGGLES_JSON = "{}"
 
         // API 配置默认值
         const val DEFAULT_API_ENDPOINT = "https://api.deepseek.com/v1/chat/completions"
@@ -236,11 +268,23 @@ class ApiPreferences private constructor(private val context: Context) {
         }
     }
 
-    // Get AI Planning setting as Flow
-    val enableAiPlanningFlow: Flow<Boolean> =
-            context.apiDataStore.data.map { preferences ->
-                preferences[ENABLE_AI_PLANNING] ?: DEFAULT_ENABLE_AI_PLANNING
-            }
+    val featureTogglesFlow: Flow<Map<String, Boolean>> =
+        context.apiDataStore.data.map { preferences ->
+            val json = preferences[FEATURE_TOGGLES_JSON] ?: DEFAULT_FEATURE_TOGGLES_JSON
+            runCatching {
+                Json.decodeFromString<Map<String, Boolean>>(json)
+            }.getOrElse { emptyMap() }
+        }
+
+    fun featureToggleFlow(featureKey: String, defaultValue: Boolean = false): Flow<Boolean> {
+        val normalizedKey = featureKey.trim()
+        if (normalizedKey.isEmpty()) {
+            return featureTogglesFlow.map { defaultValue }
+        }
+        return featureTogglesFlow.map { toggles ->
+            toggles[normalizedKey] ?: defaultValue
+        }
+    }
 
     // Get Keep Screen On setting as Flow
     val keepScreenOnFlow: Flow<Boolean> =
@@ -348,9 +392,20 @@ class ApiPreferences private constructor(private val context: Context) {
             preferences[MAX_MEDIA_HISTORY_USER_TURNS] ?: DEFAULT_MAX_MEDIA_HISTORY_USER_TURNS
         }
 
-    // Save AI Planning setting
-    suspend fun saveEnableAiPlanning(isEnabled: Boolean) {
-        context.apiDataStore.edit { preferences -> preferences[ENABLE_AI_PLANNING] = isEnabled }
+    suspend fun saveFeatureToggle(featureKey: String, isEnabled: Boolean) {
+        val normalizedKey = featureKey.trim()
+        if (normalizedKey.isEmpty()) return
+
+        context.apiDataStore.edit { preferences ->
+            val currentMap =
+                runCatching {
+                    val json = preferences[FEATURE_TOGGLES_JSON] ?: DEFAULT_FEATURE_TOGGLES_JSON
+                    Json.decodeFromString<Map<String, Boolean>>(json)
+                }.getOrElse { emptyMap() }
+
+            preferences[FEATURE_TOGGLES_JSON] =
+                Json.encodeToString(currentMap + (normalizedKey to isEnabled))
+        }
     }
 
     // Save Keep Screen On setting

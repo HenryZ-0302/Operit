@@ -1,5 +1,6 @@
 package com.ai.assistance.operit.ui.features.chat.components.style.bubble
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
@@ -45,14 +46,22 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import com.ai.assistance.operit.ui.theme.ProvideAiMarkdownTextLayoutSettings
 import kotlinx.coroutines.runBlocking
 
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BubbleAiMessageComposable(
     message: ChatMessage,
     backgroundColor: Color,
     textColor: Color,
+    bubbleImageStyle: BubbleImageStyleConfig? = null,
+    bubbleRoundedCornersEnabled: Boolean = true,
+    bubbleContentPaddingLeft: Float = 12f,
+    bubbleContentPaddingRight: Float = 12f,
     onLinkClick: ((String) -> Unit)? = null,
     isHidden: Boolean = false,
     enableDialogs: Boolean = true,
@@ -63,6 +72,7 @@ fun BubbleAiMessageComposable(
     val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
     val characterCardManager = remember { CharacterCardManager.getInstance(context) }
     val bubbleShowAvatar by preferencesManager.bubbleShowAvatar.collectAsState(initial = true)
+    val bubbleWideLayoutEnabled by preferencesManager.bubbleWideLayoutEnabled.collectAsState(initial = false)
     val showThinkingProcess by preferencesManager.showThinkingProcess.collectAsState(initial = true)
     val showStatusTags by preferencesManager.showStatusTags.collectAsState(initial = true)
     val avatarShapePref by preferencesManager.avatarShape.collectAsState(initial = UserPreferencesManager.AVATAR_SHAPE_CIRCLE)
@@ -99,6 +109,21 @@ fun BubbleAiMessageComposable(
             RoundedCornerShape(avatarCornerRadius.dp)
         } else {
             CircleShape
+        }
+    }
+    val roleNameText = if (showRoleName && message.roleName.isNotEmpty()) message.roleName else ""
+    val metadataText = buildString {
+        if (showModelName && message.modelName.isNotEmpty()) {
+            append(message.modelName)
+        }
+
+        if (showModelProvider && message.provider.isNotEmpty()) {
+            if (showModelName && message.modelName.isNotEmpty()) {
+                append(" by ")
+            } else if (isNotEmpty()) {
+                append(" | ")
+            }
+            append(message.provider)
         }
     }
 
@@ -155,6 +180,178 @@ fun BubbleAiMessageComposable(
         }
     }
 
+    ProvideAiMarkdownTextLayoutSettings {
+        if (bubbleWideLayoutEnabled) {
+        val headerVisible = bubbleShowAvatar || roleNameText.isNotEmpty() || metadataText.isNotEmpty()
+        val avatarModifier = Modifier
+            .size(32.dp)
+            .clip(avatarShape)
+            .combinedClickable(
+                onClick = {},
+                onLongClick = {
+                    val roleName = message.roleName.trim()
+                    if (roleName.isNotEmpty()) {
+                        onAvatarLongPressMention?.invoke(roleName)
+                    }
+                },
+            )
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = if (bubbleShowAvatar) 0.dp else 8.dp,
+                    top = 4.dp,
+                    end = 0.dp,
+                    bottom = 4.dp,
+                )
+                .alpha(alpha)
+                .offset(y = offsetY.dp),
+        ) {
+            if (headerVisible) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (bubbleShowAvatar) {
+                        if (!aiAvatarUri.isNullOrEmpty()) {
+                            Image(
+                                painter = rememberAsyncImagePainter(model = Uri.parse(aiAvatarUri)),
+                                contentDescription = "AI Avatar",
+                                modifier = avatarModifier,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Assistant,
+                                contentDescription = "AI Avatar",
+                                modifier = avatarModifier,
+                                tint = MaterialTheme.colorScheme.secondary,
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f, fill = false),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        if (roleNameText.isNotEmpty()) {
+                            Text(
+                                text = roleNameText,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+
+                        if (metadataText.isNotEmpty()) {
+                            Text(
+                                text = metadataText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val maxBubbleWidth = maxWidth
+                if (imageUrl != null) {
+                    AsyncImage(
+                        model = Uri.parse(imageUrl),
+                        contentDescription = "Image from AI",
+                        modifier = Modifier
+                            .widthIn(max = maxBubbleWidth)
+                            .heightIn(max = 80.dp)
+                            .clip(RoundedCornerShape(16.dp)),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else {
+                    val bubbleShape =
+                        if (bubbleRoundedCornersEnabled) {
+                            RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp)
+                        } else {
+                            RoundedCornerShape(0.dp)
+                        }
+                    val bubbleModifier =
+                        Modifier
+                            .widthIn(max = maxBubbleWidth)
+                            .defaultMinSize(minHeight = 44.dp)
+                    val renderContent: @Composable () -> Unit = {
+                        key(message.timestamp) {
+                            val stream = message.contentStream
+                            if (stream != null) {
+                                val charStream = remember(stream) { stream.toCharStream() }
+                                StreamMarkdownRenderer(
+                                    markdownStream = charStream,
+                                    textColor = textColor,
+                                    backgroundColor = backgroundColor,
+                                    onLinkClick = rememberedOnLinkClick,
+                                    xmlRenderer = xmlRenderer,
+                                    nodeGrouper = nodeGrouper,
+                                    enableDialogs = enableDialogs,
+                                    modifier =
+                                        Modifier.padding(
+                                            start = bubbleContentPaddingLeft.dp,
+                                            top = 12.dp,
+                                            end = bubbleContentPaddingRight.dp,
+                                            bottom = 12.dp,
+                                        ),
+                                    state = rendererState,
+                                    fillMaxWidth = false,
+                                )
+                            } else {
+                                StreamMarkdownRenderer(
+                                    content = message.content,
+                                    textColor = textColor,
+                                    backgroundColor = backgroundColor,
+                                    onLinkClick = rememberedOnLinkClick,
+                                    xmlRenderer = xmlRenderer,
+                                    nodeGrouper = nodeGrouper,
+                                    enableDialogs = enableDialogs,
+                                    modifier =
+                                        Modifier.padding(
+                                            start = bubbleContentPaddingLeft.dp,
+                                            top = 12.dp,
+                                            end = bubbleContentPaddingRight.dp,
+                                            bottom = 12.dp,
+                                        ),
+                                    state = rendererState,
+                                    fillMaxWidth = false,
+                                )
+                            }
+                        }
+                    }
+
+                    if (bubbleImageStyle != null) {
+                        BubbleImageBackgroundSurface(
+                            imageStyle = bubbleImageStyle,
+                            shape = bubbleShape,
+                            modifier = bubbleModifier,
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            renderContent()
+                        }
+                    } else {
+                        Surface(
+                            modifier = bubbleModifier,
+                            shape = bubbleShape,
+                            color = backgroundColor,
+                            tonalElevation = 2.dp,
+                        ) {
+                            renderContent()
+                        }
+                    }
+                }
+            }
+        }
+    } else {
     Row(
         modifier = Modifier
             .padding(horizontal = 0.dp, vertical = 4.dp)
@@ -232,7 +429,7 @@ fun BubbleAiMessageComposable(
                 Text(
                     text = displayText,
                     style = MaterialTheme.typography.labelSmall,
-                    color = textColor.copy(alpha = 0.6f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
                 )
             }
@@ -251,51 +448,90 @@ fun BubbleAiMessageComposable(
                     )
                 } else {
                     // Message bubble
-                    Surface(
-                        modifier = Modifier
-                            .widthIn(max = maxBubbleWidth)
-                            .defaultMinSize(minHeight = 44.dp),
-                        shape = RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp),
-                        color = backgroundColor,
-                        tonalElevation = 2.dp
-                    ) {
-                    // 使用 message.timestamp 作为 key，确保在重组期间，
-                    // 只要是同一条消息，StreamMarkdownRenderer就不会被销毁和重建。
-                    key(message.timestamp) {
-                        val stream = message.contentStream
-                        if (stream != null) {
-                            val charStream = remember(stream) { stream.toCharStream() }
-                            StreamMarkdownRenderer(
-                                markdownStream = charStream,
-                                textColor = textColor,
-                                backgroundColor = backgroundColor,
-                                onLinkClick = rememberedOnLinkClick,
-                                xmlRenderer = xmlRenderer,
-                                nodeGrouper = nodeGrouper,
-                                modifier = Modifier.padding(12.dp),
-                                state = rendererState,
-                                fillMaxWidth = false  // bubble模式：横向缩紧
-                            )
+                    val bubbleShape =
+                        if (bubbleRoundedCornersEnabled) {
+                            RoundedCornerShape(4.dp, 20.dp, 20.dp, 20.dp)
                         } else {
-                            // 对于已完成的静态消息，使用 content 参数的渲染器以支持Markdown
-                            // 共享相同的state，避免重新计算nodes等状态
-                            StreamMarkdownRenderer(
-                                content = message.content,
-                                textColor = textColor,
-                                backgroundColor = backgroundColor,
-                                onLinkClick = rememberedOnLinkClick,
-                                xmlRenderer = xmlRenderer,
-                                nodeGrouper = nodeGrouper,
-                                modifier = Modifier.padding(12.dp),
-                                state = rendererState,
-                                fillMaxWidth = false  // bubble模式：横向缩紧
-                            )
+                            RoundedCornerShape(0.dp)
+                        }
+                    val bubbleModifier =
+                        Modifier
+                            .widthIn(max = maxBubbleWidth)
+                            .defaultMinSize(minHeight = 44.dp)
+                    val renderContent: @Composable () -> Unit = {
+                        // 使用 message.timestamp 作为 key，确保在重组期间，
+                        // 只要是同一条消息，StreamMarkdownRenderer就不会被销毁和重建。
+                        key(message.timestamp) {
+                            val stream = message.contentStream
+                            if (stream != null) {
+                                val charStream = remember(stream) { stream.toCharStream() }
+                                StreamMarkdownRenderer(
+                                    markdownStream = charStream,
+                                    textColor = textColor,
+                                    backgroundColor = backgroundColor,
+                                    onLinkClick = rememberedOnLinkClick,
+                                    xmlRenderer = xmlRenderer,
+                                    nodeGrouper = nodeGrouper,
+                                    enableDialogs = enableDialogs,
+                                    modifier =
+                                        Modifier.padding(
+                                            start = bubbleContentPaddingLeft.dp,
+                                            top = 12.dp,
+                                            end = bubbleContentPaddingRight.dp,
+                                            bottom = 12.dp,
+                                        ),
+                                    state = rendererState,
+                                    fillMaxWidth = false  // bubble模式：横向缩紧
+                                )
+                            } else {
+                                // 对于已完成的静态消息，使用 content 参数的渲染器以支持Markdown
+                                // 共享相同的state，避免重新计算nodes等状态
+                                StreamMarkdownRenderer(
+                                    content = message.content,
+                                    textColor = textColor,
+                                    backgroundColor = backgroundColor,
+                                    onLinkClick = rememberedOnLinkClick,
+                                    xmlRenderer = xmlRenderer,
+                                    nodeGrouper = nodeGrouper,
+                                    enableDialogs = enableDialogs,
+                                    modifier =
+                                        Modifier.padding(
+                                            start = bubbleContentPaddingLeft.dp,
+                                            top = 12.dp,
+                                            end = bubbleContentPaddingRight.dp,
+                                            bottom = 12.dp,
+                                        ),
+                                    state = rendererState,
+                                    fillMaxWidth = false  // bubble模式：横向缩紧
+                                )
+                            }
                         }
                     }
+
+                    if (bubbleImageStyle != null) {
+                        BubbleImageBackgroundSurface(
+                            imageStyle = bubbleImageStyle,
+                            shape = bubbleShape,
+                            modifier = bubbleModifier,
+                            contentPadding = PaddingValues(0.dp),
+                        ) {
+                            renderContent()
+                        }
+                    } else {
+                        Surface(
+                            modifier = bubbleModifier,
+                            shape = bubbleShape,
+                            color = backgroundColor,
+                            tonalElevation = 2.dp
+                        ) {
+                            renderContent()
+                        }
                     }
                 }
             }
         }
+    }
+    }
     }
 
     // 链接预览弹窗

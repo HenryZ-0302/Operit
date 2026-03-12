@@ -337,13 +337,20 @@ class MemoryQueryToolExecutor(private val context: Context) : ToolExecutor {
             val contentType = tool.parameters.find { it.name == "content_type" }?.value ?: "text/plain"
             val source = tool.parameters.find { it.name == "source" }?.value ?: "ai_created"
             val folderPath = tool.parameters.find { it.name == "folder_path" }?.value ?: ""
-            
+            val tagsParam = tool.parameters.find { it.name == "tags" }?.value
+            val tags = tagsParam
+                ?.split(",")
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?.distinct()
+             
             val memory = memoryRepository.createMemory(
                 title = title,
                 content = content,
                 contentType = contentType,
                 source = source,
-                folderPath = folderPath
+                folderPath = folderPath,
+                tags = tags
             )
             
             if (memory != null) {

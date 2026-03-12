@@ -12,6 +12,7 @@ import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
+import android.webkit.SslErrorHandler
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.LinearLayout
@@ -67,6 +68,7 @@ import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.StringResultData
 import com.ai.assistance.operit.core.tools.ToolExecutor
 import com.ai.assistance.operit.core.tools.VisitWebResultData
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.data.model.ToolValidationResult
@@ -879,6 +881,7 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
         val pageLoaded = remember { mutableStateOf(false) } // 页面是否已加载完成
         val currentUrl = remember { mutableStateOf(url) } // 当前URL
         val pageTitle = remember { mutableStateOf("") } // 页面标题
+        val hasSslError = remember { mutableStateOf(false) }
 
         // 内容状态
         val pageContent = remember { mutableStateOf("") } // 提取的页面内容
@@ -886,11 +889,13 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
 
         val extractionRequested = remember { mutableStateOf(false) }
         val loadToken = remember { mutableStateOf(0) }
+        val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
+        val visitWebWaitSeconds by displayPreferencesManager.visitWebWaitSeconds.collectAsState(initial = 0)
 
         // 自动模式状态
         val autoModeEnabled = remember { mutableStateOf(true) } // 是否启用自动模式
         val autoCountdownActive = remember { mutableStateOf(false) } // 倒计时是否激活
-        val autoCountdownSeconds = remember { mutableStateOf(5) } // 倒计时秒数
+        val autoCountdownSeconds = remember { mutableStateOf(0) } // 倒计时秒数
         val isCaptchaVerification = remember { mutableStateOf(false) } // 是否需要人机验证
 
         LaunchedEffect(isCaptchaVerification.value) {
@@ -900,7 +905,7 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
         // 修改LaunchedEffect部分，使滚动和倒计时同时进行
         LaunchedEffect(autoCountdownActive.value, isCaptchaVerification.value) {
             if (autoCountdownActive.value) {
-                val countdownDuration = if (isCaptchaVerification.value) 60 else 5
+                val countdownDuration = if (isCaptchaVerification.value) 60 else visitWebWaitSeconds
                 autoCountdownSeconds.value = countdownDuration
 
                 for (i in countdownDuration downTo 1) {
@@ -943,7 +948,7 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
 
                         if (autoModeEnabled.value) {
                             autoCountdownActive.value = true
-                            autoScrollToBottom(webView) {
+                            autoScrollToBottom(webView, visitWebWaitSeconds) {
                                 AppLogger.d(TAG, "页面滚动完成")
                             }
                         }
@@ -1016,13 +1021,31 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
                                                 .padding(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Column {
-                                Text(
-                                        text = currentUrl.value,
-                                        fontSize = 13.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (hasSslError.value) {
+                                        Surface(
+                                                shape = RoundedCornerShape(999.dp),
+                                                color = Color(0xFFFFE6CC)
+                                        ) {
+                                            Text(
+                                                    text = stringResource(R.string.web_ssl_error_badge),
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF7A3E00),
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                    }
+
+                                    Text(
+                                            text = currentUrl.value,
+                                            fontSize = 13.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.weight(1f)
+                                    )
+                                }
 
                                 Spacer(modifier = Modifier.height(2.dp))
 
@@ -1061,6 +1084,7 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
                                                     ) {
                                                         super.onPageStarted(view, startedUrl, favicon)
                                                         currentUrl.value = startedUrl
+                                                        hasSslError.value = false
                                                         isLoading.value = true
                                                         pageLoaded.value = false
                                                         loadToken.value = loadToken.value + 1
@@ -1139,7 +1163,7 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
 
                                                                     if (autoModeEnabled.value) {
                                                                         autoCountdownActive.value = true
-                                                                        autoScrollToBottom(view) {
+                                                                        autoScrollToBottom(view, visitWebWaitSeconds) {
                                                                             AppLogger.d(TAG, "页面滚动完成")
                                                                         }
                                                                     }
@@ -1191,6 +1215,20 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
                                                                 description,
                                                                 failingUrl
                                                         )
+                                                    }
+
+                                                    override fun onReceivedSslError(
+                                                            view: WebView,
+                                                            handler: SslErrorHandler,
+                                                            error: android.net.http.SslError
+                                                    ) {
+                                                        AppLogger.w(
+                                                                TAG,
+                                                                "visit_web SSL error, proceeding anyway. " +
+                                                                        "url=${error.url}, primaryError=${error.primaryError}"
+                                                        )
+                                                        hasSslError.value = true
+                                                        handler.proceed()
                                                     }
                                                 }
 
@@ -1598,7 +1636,8 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
     }
 
     /** 自动滚动页面到底部以触发可能的懒加载内容 */
-    private fun autoScrollToBottom(webView: WebView, onScrollComplete: () -> Unit) {
+    private fun autoScrollToBottom(webView: WebView, scrollWaitSeconds: Int, onScrollComplete: () -> Unit) {
+        val scrollWaitMillis = scrollWaitSeconds.coerceAtLeast(0) * 1000L
         val scrollScript =
                 """
             (function() {
@@ -1700,8 +1739,8 @@ class StandardWebVisitTool(private val context: Context) : ToolExecutor {
                                 AppLogger.d(TAG, "自动滚动等待完成，继续处理")
                                 onScrollComplete()
                             },
-                            5000
-                    ) // 给页面5秒钟的滚动时间
+                            scrollWaitMillis
+                    )
         } catch (e: Exception) {
             AppLogger.e(TAG, "执行滚动脚本时出错", e)
             // 出错时也要继续后续流程

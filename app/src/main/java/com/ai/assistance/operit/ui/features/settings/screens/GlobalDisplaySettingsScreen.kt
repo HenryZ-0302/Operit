@@ -54,12 +54,14 @@ fun GlobalDisplaySettingsScreen(
     val toolCollapseMode by displayPreferencesManager.toolCollapseMode.collectAsState(initial = ToolCollapseMode.ALL)
     val showFpsCounter by displayPreferencesManager.showFpsCounter.collectAsState(initial = false)
     val enableReplyNotification by displayPreferencesManager.enableReplyNotification.collectAsState(initial = true)
+    val enableEnterToSend by displayPreferencesManager.enableEnterToSend.collectAsState(initial = false)
     val enableExperimentalVirtualDisplay by displayPreferencesManager.enableExperimentalVirtualDisplay.collectAsState(initial = true)
     val globalUserName by displayPreferencesManager.globalUserName.collectAsState(initial = null)
     val globalUserAvatarUri by displayPreferencesManager.globalUserAvatarUri.collectAsState(initial = null)
     val screenshotFormat by displayPreferencesManager.screenshotFormat.collectAsState(initial = "PNG")
     val screenshotQuality by displayPreferencesManager.screenshotQuality.collectAsState(initial = 90)
     val screenshotScalePercent by displayPreferencesManager.screenshotScalePercent.collectAsState(initial = 100)
+    val visitWebWaitSeconds by displayPreferencesManager.visitWebWaitSeconds.collectAsState(initial = 0)
     val virtualDisplayBitrateKbps by displayPreferencesManager.virtualDisplayBitrateKbps.collectAsState(initial = 3000)
     val keepScreenOn by apiPreferences.keepScreenOnFlow.collectAsState(initial = true)
     var currentAppIconType by remember { mutableStateOf(AppIconManager.getCurrentIconType(context)) }
@@ -75,7 +77,18 @@ fun GlobalDisplaySettingsScreen(
     val collapseModeOptions = remember {
         listOf(ToolCollapseMode.READ_ONLY, ToolCollapseMode.ALL, ToolCollapseMode.FULL)
     }
-    var collapseModeSliderValue by remember { mutableFloatStateOf(0f) }
+    var collapseModeSliderValue by remember(toolCollapseMode) {
+        mutableFloatStateOf(collapseModeOptions.indexOf(toolCollapseMode).coerceAtLeast(0).toFloat())
+    }
+    var visitWebWaitSliderValue by remember(visitWebWaitSeconds) {
+        mutableFloatStateOf(visitWebWaitSeconds.toFloat())
+    }
+    var qualitySliderValue by remember(screenshotQuality) {
+        mutableFloatStateOf(screenshotQuality.toFloat())
+    }
+    var scaleSliderValue by remember(screenshotScalePercent) {
+        mutableFloatStateOf(screenshotScalePercent.toFloat())
+    }
     val collapseModeLabelRes: (ToolCollapseMode) -> Int = { mode ->
         when (mode) {
             ToolCollapseMode.READ_ONLY -> R.string.tool_collapse_mode_read_only
@@ -111,9 +124,34 @@ fun GlobalDisplaySettingsScreen(
         customSuCommandInput = customSuCommand
     }
 
-    LaunchedEffect(toolCollapseMode) {
-        val index = collapseModeOptions.indexOf(toolCollapseMode).coerceAtLeast(0)
-        collapseModeSliderValue = index.toFloat()
+    LaunchedEffect(
+        collapseModeSliderValue,
+        visitWebWaitSliderValue,
+        qualitySliderValue,
+        scaleSliderValue
+    ) {
+        val localCollapseMode =
+            collapseModeOptions[collapseModeSliderValue.roundToInt().coerceIn(0, collapseModeOptions.lastIndex)]
+        val localVisitWebWaitSeconds = visitWebWaitSliderValue.roundToInt().coerceIn(0, 10)
+        val localScreenshotQuality = qualitySliderValue.roundToInt().coerceIn(50, 100)
+        val localScreenshotScalePercent = scaleSliderValue.roundToInt().coerceIn(50, 100)
+
+        val hasPendingSliderChanges =
+            localCollapseMode != toolCollapseMode ||
+                localVisitWebWaitSeconds != visitWebWaitSeconds ||
+                localScreenshotQuality != screenshotQuality ||
+                localScreenshotScalePercent != screenshotScalePercent
+
+        if (!hasPendingSliderChanges) return@LaunchedEffect
+
+        kotlinx.coroutines.delay(300)
+
+        displayPreferencesManager.saveDisplaySettings(
+            toolCollapseMode = if (localCollapseMode != toolCollapseMode) localCollapseMode else null,
+            visitWebWaitSeconds = if (localVisitWebWaitSeconds != visitWebWaitSeconds) localVisitWebWaitSeconds else null,
+            screenshotQuality = if (localScreenshotQuality != screenshotQuality) localScreenshotQuality else null,
+            screenshotScalePercent = if (localScreenshotScalePercent != screenshotScalePercent) localScreenshotScalePercent else null
+        )
     }
 
     val componentBackgroundColor = if (hasBackgroundImage) {
@@ -121,12 +159,18 @@ fun GlobalDisplaySettingsScreen(
     } else {
         MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
     }
+    val selectedCollapseMode =
+        collapseModeOptions[collapseModeSliderValue.roundToInt().coerceIn(0, collapseModeOptions.lastIndex)]
 
     CustomScaffold() { paddingValues ->
+        Box(
+            modifier = Modifier
+                .padding(paddingValues)
+                .fillMaxSize()
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .verticalScroll(scrollState)
         ) {
@@ -205,7 +249,7 @@ fun GlobalDisplaySettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = stringResource(id = collapseModeLabelRes(toolCollapseMode)),
+                    text = stringResource(id = collapseModeLabelRes(selectedCollapseMode)),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -215,20 +259,11 @@ fun GlobalDisplaySettingsScreen(
                     onValueChange = { collapseModeSliderValue = it },
                     valueRange = 0f..(collapseModeOptions.size - 1).toFloat(),
                     steps = collapseModeOptions.size - 2,
-                    onValueChangeFinished = {
-                        val index = collapseModeSliderValue.roundToInt().coerceIn(0, collapseModeOptions.lastIndex)
-                        val selectedMode = collapseModeOptions[index]
-                        collapseModeSliderValue = index.toFloat()
-                        if (selectedMode != toolCollapseMode) {
-                            scope.launch {
-                                displayPreferencesManager.saveDisplaySettings(toolCollapseMode = selectedMode)
-                            }
-                        }
-                    }
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
                 )
                 Row(modifier = Modifier.fillMaxWidth()) {
                     collapseModeOptions.forEachIndexed { index, mode ->
-                        val selected = toolCollapseMode == mode
+                        val selected = selectedCollapseMode == mode
                         Text(
                             text = stringResource(id = collapseModeLabelRes(mode)),
                             style = MaterialTheme.typography.labelSmall,
@@ -238,11 +273,6 @@ fun GlobalDisplaySettingsScreen(
                                 .weight(1f)
                                 .clickable {
                                     collapseModeSliderValue = index.toFloat()
-                                    if (mode != toolCollapseMode) {
-                                        scope.launch {
-                                            displayPreferencesManager.saveDisplaySettings(toolCollapseMode = mode)
-                                        }
-                                    }
                                 }
                                 .padding(top = 2.dp)
                         )
@@ -307,6 +337,18 @@ fun GlobalDisplaySettingsScreen(
             )
 
             DisplayToggleItem(
+                title = stringResource(R.string.enable_enter_to_send),
+                subtitle = stringResource(R.string.enable_enter_to_send_description),
+                checked = enableEnterToSend,
+                onCheckedChange = {
+                    scope.launch {
+                        displayPreferencesManager.saveDisplaySettings(enableEnterToSend = it)
+                    }
+                },
+                backgroundColor = componentBackgroundColor
+            )
+
+            DisplayToggleItem(
                 title = stringResource(R.string.keep_screen_on),
                 subtitle = stringResource(R.string.keep_screen_on_description),
                 checked = keepScreenOn,
@@ -317,6 +359,45 @@ fun GlobalDisplaySettingsScreen(
                 },
                 backgroundColor = componentBackgroundColor
             )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 4.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(componentBackgroundColor)
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.visit_web_wait_time_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = stringResource(R.string.visit_web_wait_time_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Slider(
+                        value = visitWebWaitSliderValue,
+                        onValueChange = { visitWebWaitSliderValue = it.roundToInt().toFloat() },
+                        valueRange = 0f..10f,
+                        steps = 9,
+                        modifier = Modifier.weight(1f).padding(vertical = 8.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.visit_web_wait_time_value, visitWebWaitSliderValue.roundToInt()),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
 
             Column(
                 modifier = Modifier
@@ -571,11 +652,6 @@ fun GlobalDisplaySettingsScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                var qualitySliderValue by remember { mutableStateOf(screenshotQuality.toFloat()) }
-                LaunchedEffect(screenshotQuality) {
-                    qualitySliderValue = screenshotQuality.toFloat()
-                }
-
                 Text(
                     text = stringResource(id = R.string.global_display_image_quality),
                     style = MaterialTheme.typography.bodySmall,
@@ -583,19 +659,14 @@ fun GlobalDisplaySettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Slider(
                         value = qualitySliderValue,
                         onValueChange = { qualitySliderValue = it },
                         valueRange = 50f..100f,
-                        modifier = Modifier.weight(1f),
-                        onValueChangeFinished = {
-                            val q = qualitySliderValue.roundToInt().coerceIn(50, 100)
-                            scope.launch {
-                                displayPreferencesManager.saveDisplaySettings(screenshotQuality = q)
-                            }
-                        }
+                        modifier = Modifier.weight(1f).padding(vertical = 8.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -606,11 +677,6 @@ fun GlobalDisplaySettingsScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                var scaleSliderValue by remember { mutableStateOf(screenshotScalePercent.toFloat()) }
-                LaunchedEffect(screenshotScalePercent) {
-                    scaleSliderValue = screenshotScalePercent.toFloat()
-                }
-
                 Text(
                     text = stringResource(id = R.string.global_display_resolution_scale),
                     style = MaterialTheme.typography.bodySmall,
@@ -618,19 +684,14 @@ fun GlobalDisplaySettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Slider(
                         value = scaleSliderValue,
                         onValueChange = { scaleSliderValue = it },
                         valueRange = 50f..100f,
-                        modifier = Modifier.weight(1f),
-                        onValueChangeFinished = {
-                            val s = scaleSliderValue.roundToInt().coerceIn(50, 100)
-                            scope.launch {
-                                displayPreferencesManager.saveDisplaySettings(screenshotScalePercent = s)
-                            }
-                        }
+                        modifier = Modifier.weight(1f).padding(vertical = 8.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
@@ -761,6 +822,7 @@ fun GlobalDisplaySettingsScreen(
 
             // 底部间距
             Spacer(modifier = Modifier.height(16.dp))
+        }
         }
 
     }

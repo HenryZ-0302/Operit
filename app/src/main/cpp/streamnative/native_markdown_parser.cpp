@@ -16,16 +16,15 @@ constexpr int MD_HORIZONTAL_RULE = 5;
 constexpr int MD_BLOCK_LATEX = 6;
 constexpr int MD_TABLE = 7;
 constexpr int MD_XML_BLOCK = 8;
-constexpr int MD_PLAN_EXECUTION = 9;
-constexpr int MD_BOLD = 10;
-constexpr int MD_ITALIC = 11;
-constexpr int MD_INLINE_CODE = 12;
-constexpr int MD_LINK = 13;
-constexpr int MD_IMAGE = 14;
-constexpr int MD_STRIKETHROUGH = 15;
-constexpr int MD_UNDERLINE = 16;
-constexpr int MD_INLINE_LATEX = 17;
-constexpr int MD_PLAIN_TEXT = 18;
+constexpr int MD_BOLD = 9;
+constexpr int MD_ITALIC = 10;
+constexpr int MD_INLINE_CODE = 11;
+constexpr int MD_LINK = 12;
+constexpr int MD_IMAGE = 13;
+constexpr int MD_STRIKETHROUGH = 14;
+constexpr int MD_UNDERLINE = 15;
+constexpr int MD_INLINE_LATEX = 16;
+constexpr int MD_PLAIN_TEXT = 17;
 
 struct Piece {
     int start;
@@ -274,27 +273,6 @@ static std::vector<BlockNode> parseMarkdown(const jchar* chars, int len) {
 
     while (i < len) {
         const bool atSol = isStartOfLine(chars, i);
-
-        // <plan...>...</plan>
-        if (chars[i] == u'<' && startsWithAscii(chars, len, i, "<plan")) {
-            int endTag = -1;
-            for (int j = i + 5; j + 6 < len; j++) {
-                if (chars[j] == u'<' && startsWithAscii(chars, len, j, "</plan>")) {
-                    endTag = j + 7;
-                    break;
-                }
-            }
-            if (endTag != -1) {
-                flushPlainAsBlock(i);
-                BlockNode b;
-                b.type = MD_PLAN_EXECUTION;
-                b.pieces.push_back({i, endTag});
-                blocks.push_back(std::move(b));
-                i = endTag;
-                plainStart = i;
-                continue;
-            }
-        }
 
         // Fenced code block ```...
         if (atSol && chars[i] == u'`') {

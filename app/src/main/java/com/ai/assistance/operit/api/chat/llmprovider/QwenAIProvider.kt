@@ -70,7 +70,7 @@ class QwenAIProvider(
         val sanitizedLogJson = sanitizeImageDataForLogging(logJson)
 
         // 使用更新后的JSONObject创建新的RequestBody
-        return jsonObject.toString().toRequestBody(JSON)
+        return createJsonRequestBody(jsonObject.toString())
     }
 
     override suspend fun sendMessage(
@@ -83,9 +83,10 @@ class QwenAIProvider(
         availableTools: List<ToolPrompt>?,
         preserveThinkInHistory: Boolean,
         onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
-        onNonFatalError: suspend (error: String) -> Unit
+        onNonFatalError: suspend (error: String) -> Unit,
+        enableRetry: Boolean
     ): Stream<String> {
         // 直接调用父类的sendMessage实现，它已经包含了续写逻辑和stream参数处理
-        return super.sendMessage(context, message, chatHistory, modelParameters, enableThinking, stream, availableTools, preserveThinkInHistory, onTokensUpdated, onNonFatalError)
+        return super.sendMessage(context, message, chatHistory, modelParameters, enableThinking, stream, availableTools, preserveThinkInHistory, onTokensUpdated, onNonFatalError, enableRetry)
     }
 }

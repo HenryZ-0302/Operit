@@ -128,7 +128,7 @@ fun PackageManagerScreen(
 
             imported
                 .mapNotNull { packageName ->
-                    packagesMap[packageName] ?: packageManager.getPackageTools(packageName)
+                    packagesMap[packageName]
                 }
                 .sortedBy { it.name }
                 .associate { toolPackage ->
@@ -573,7 +573,6 @@ fun PackageManagerScreen(
                                                 PackageListItemWithTag(
                                                     packageName = packageName,
                                                     toolPackage = packagesInCategory[packageName],
-                                                    packageManager = packageManager,
                                                     isImported = visibleImportedPackages.value.contains(
                                                         packageName
                                                     ),
@@ -1019,7 +1018,6 @@ private fun PackageEnvironmentVariablesDialog(
 private fun PackageListItemWithTag(
     packageName: String,
     toolPackage: ToolPackage?,
-    packageManager: PackageManager,
     isImported: Boolean,
     categoryTag: String?,
     category: String, // 新增分类参数
@@ -1029,25 +1027,13 @@ private fun PackageListItemWithTag(
     onToggleImport: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    val containerDisplayName =
-        if (packageManager.isToolPkgContainer(packageName)) {
-            packageManager
-                .getToolPkgContainerDetails(
-                    packageName = packageName,
-                    resolveContext = context
-                )
-                ?.displayName
-                ?.takeIf { it.isNotBlank() }
-        } else {
-            null
-        }
     val packageDisplayName =
         toolPackage
             ?.displayName
             ?.resolve(context)
             ?.trim()
             ?.takeIf { it.isNotBlank() }
-    val displayName = containerDisplayName ?: packageDisplayName ?: toolPackage?.name ?: packageName
+    val displayName = packageDisplayName ?: toolPackage?.name ?: packageName
 
     Column(modifier = Modifier.fillMaxWidth()) {
         // 分类标签（仅在有标签时显示）

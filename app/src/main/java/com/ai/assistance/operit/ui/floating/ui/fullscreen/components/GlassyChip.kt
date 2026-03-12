@@ -31,6 +31,8 @@ fun GlassyChip(
     text: String,
     icon: ImageVector,
     showIcon: Boolean,
+    showText: Boolean = true,
+    iconContentDescription: String? = null,
     onClick: () -> Unit
 ) {
     // Brighter, high-contrast cyan for better visibility
@@ -66,17 +68,21 @@ fun GlassyChip(
             if (showIcon) {
                 Icon(
                     imageVector = icon,
-                    contentDescription = null,
+                    contentDescription = iconContentDescription,
                     tint = contentColor,
                     modifier = Modifier.size(14.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                if (showText) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
             }
-            Text(
-                text = text,
-                color = contentColor,
-                style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp)
-            )
+            if (showText) {
+                Text(
+                    text = text,
+                    color = contentColor,
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp)
+                )
+            }
         }
     }
 }

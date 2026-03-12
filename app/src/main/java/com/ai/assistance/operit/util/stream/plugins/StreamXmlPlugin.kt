@@ -28,6 +28,7 @@ class StreamXmlPlugin(private val includeTagsInOutput: Boolean = true) : StreamP
 
     private val punctuationTriggers =
             setOf('，', '。', '？', '！', '：', '（', '）', '【', '】', '《', '》', ':', ',', '.', '?', '!', '~', '～', '>', '＞')
+    private val emojiContinuationChars = setOf('\u200D', '\uFE0E', '\uFE0F', '\u20E3')
 
     init {
         startTagMatcher =
@@ -94,7 +95,7 @@ class StreamXmlPlugin(private val includeTagsInOutput: Boolean = true) : StreamP
                     return finish(handleDefaultCharacter(c))
                 }
                 // Allow adjacent XML after an end tag/punctuation even if separated by spaces/tabs
-                if (c == ' ' || c == '\t') {
+                if (c == ' ' || c == '\t' || isEmojiContinuationChar(c)) {
                     return finish(handleDefaultCharacter(c))
                 }
             }
@@ -182,15 +183,26 @@ class StreamXmlPlugin(private val includeTagsInOutput: Boolean = true) : StreamP
 
     private fun updatePunctuationAllowance(c: Char) {
         when {
-            punctuationTriggers.contains(c) -> {
+            punctuationTriggers.contains(c) || isEmojiTrigger(c) -> {
                 allowStartAfterPunctuation = true
             }
-            c == ' ' || c == '\t' -> {
-                // keep current state so `<` after spaces still benefits
+            c == ' ' || c == '\t' || isEmojiContinuationChar(c) -> {
+                // Keep current state so `<` after spaces/tabs or emoji joiners/selectors still benefits.
             }
             else -> {
                 allowStartAfterPunctuation = false
             }
         }
     }
+
+    private fun isEmojiTrigger(c: Char): Boolean {
+        // Most modern emojis are surrogate pairs in UTF-16. Treat either half as a trigger.
+        if (Character.isSurrogate(c)) {
+            return true
+        }
+        // BMP emoji/symbols (e.g. ☀, ❤) are usually "OTHER_SYMBOL".
+        return Character.getType(c) == Character.OTHER_SYMBOL.toInt()
+    }
+
+    private fun isEmojiContinuationChar(c: Char): Boolean = emojiContinuationChars.contains(c)
 }

@@ -38,6 +38,7 @@ class DoubaoAIProvider(
 
     /**
      * 重写创建请求体的方法，以支持豆包的`thinking`参数。
+     * 按官方文档建议始终显式传入：enabled/disabled。
      */
     override fun createRequestBody(
         context: android.content.Context,
@@ -53,12 +54,11 @@ class DoubaoAIProvider(
         val baseRequestBodyJson = super.createRequestBodyInternal(context, message, chatHistory, modelParameters, stream, availableTools, preserveThinkInHistory)
         val jsonObject = JSONObject(baseRequestBodyJson)
 
-        // 如果启用了思考模式，则为豆包模型添加特定的`thinking`参数
-        if (enableThinking) {
-            val thinkingObject = JSONObject().put("type", "enabled")
-            jsonObject.put("thinking", thinkingObject)
-            AppLogger.d("DoubaoAIProvider", "已为豆包模型启用“思考模式”。")
-        }
+        // 豆包思考模式显式传参，避免依赖服务端默认值
+        val thinkingType = if (enableThinking) "enabled" else "disabled"
+        val thinkingObject = JSONObject().put("type", thinkingType)
+        jsonObject.put("thinking", thinkingObject)
+        AppLogger.d("DoubaoAIProvider", "已为豆包模型设置思考模式: $thinkingType")
 
         // 记录最终的请求体（省略过长的tools字段）
         val logJson = JSONObject(jsonObject.toString())
@@ -68,6 +68,6 @@ class DoubaoAIProvider(
         }
         val sanitizedLogJson = sanitizeImageDataForLogging(logJson)
         // 使用更新后的JSONObject创建新的RequestBody
-        return jsonObject.toString().toRequestBody(JSON)
+        return createJsonRequestBody(jsonObject.toString())
     }
 }

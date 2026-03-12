@@ -2,12 +2,15 @@ package com.ai.assistance.operit.core.chat
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.SystemClock
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.util.AppLogger
 import com.ai.assistance.operit.api.chat.EnhancedAIService
-import com.ai.assistance.operit.api.chat.plan.PlanModeManager
 import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkParser
 import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkBuilder
+import com.ai.assistance.operit.core.chat.plugins.MessageProcessingController
+import com.ai.assistance.operit.core.chat.plugins.MessageProcessingHookParams
+import com.ai.assistance.operit.core.chat.plugins.MessageProcessingPluginRegistry
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.MemoryQueryResultData
 import com.ai.assistance.operit.data.model.AITool
@@ -21,7 +24,7 @@ import com.ai.assistance.operit.util.ImagePoolManager
 import com.ai.assistance.operit.util.MediaPoolManager
 import com.ai.assistance.operit.util.ChatUtils
 import com.ai.assistance.operit.util.ChatMarkupRegex
-import com.ai.assistance.operit.data.model.InputProcessingState
+import com.ai.assistance.operit.util.LocaleUtils
 import com.ai.assistance.operit.util.stream.SharedStream
 import com.ai.assistance.operit.util.stream.share
 import kotlinx.coroutines.CoroutineScope
@@ -30,6 +33,20 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+
+internal const val MESSAGE_PROCESS_TIMING_TAG = "MessageProcessTiming"
+
+internal fun messageTimingNow(): Long = SystemClock.elapsedRealtime()
+
+internal fun logMessageTiming(
+    stage: String,
+    startTimeMs: Long,
+    details: String? = null
+) {
+    val elapsed = SystemClock.elapsedRealtime() - startTimeMs
+    val suffix = details?.takeIf { it.isNotBlank() }?.let { ", $it" } ?: ""
+    AppLogger.d(MESSAGE_PROCESS_TIMING_TAG, "$stage 耗时=${elapsed}ms$suffix")
+}
 
 /**
  * 单例对象，负责管理与 EnhancedAIService 的所有通信。
@@ -56,9 +73,14 @@ object AIMessageManager {
     private const val DEFAULT_CHAT_KEY = "__DEFAULT_CHAT__"
 
     private val activeEnhancedAiServiceByChatId = ConcurrentHashMap<String, EnhancedAIService>()
-    private val activePlanModeManagerByChatId = ConcurrentHashMap<String, PlanModeManager>()
+    private val activeMessageProcessingControllerByChatId = ConcurrentHashMap<String, MessageProcessingController>()
 
     @Volatile private var lastActiveChatKey: String = DEFAULT_CHAT_KEY
+
+    private data class PackageUsageStat(
+        val packageName: String,
+        val count: Int
+    )
 
     private lateinit var toolHandler: AIToolHandler
     private lateinit var context: Context
@@ -98,6 +120,7 @@ object AIMessageManager {
         enableDirectAudioProcessing: Boolean = false,
         enableDirectVideoProcessing: Boolean = false
     ): String {
+        val totalStartTime = messageTimingNow()
         val proxySenderTag =
             if (!proxySenderName.isNullOrBlank() &&
                 !messageText.contains("<proxy_sender", ignoreCase = true)
@@ -109,6 +132,7 @@ object AIMessageManager {
             }
 
         // 1. 构建回复标签（如果有回复消息）
+        val replyTagStartTime = messageTimingNow()
         val replyTag = replyToMessage?.let { message ->
             val cleanContent = message.content
                 .replace(Regex("<[^>]*>"), "") // 移除XML标签
@@ -119,8 +143,14 @@ object AIMessageManager {
             val instruction = context.getString(R.string.ai_message_replying_to_previous)
             "<reply_to sender=\"${roleName}\" timestamp=\"${message.timestamp}\">${instruction}\"${cleanContent}\"</reply_to>"
         } ?: ""
+        logMessageTiming(
+            stage = "buildUserMessageContent.replyTag",
+            startTimeMs = replyTagStartTime,
+            details = "hasReply=${replyToMessage != null}, length=${replyTag.length}"
+        )
 
         // 3. 根据开关决定是否生成工作区附着
+        val workspaceTagStartTime = messageTimingNow()
         val workspaceTag = if (enableWorkspaceAttachment && !workspacePath.isNullOrBlank() && !messageText.contains("<workspace_attachment>", ignoreCase = true)) {
             try {
                 val workspaceContent = WorkspaceAttachmentProcessor.generateWorkspaceAttachment(
@@ -134,8 +164,14 @@ object AIMessageManager {
                 ""
             }
         } else ""
+        logMessageTiming(
+            stage = "buildUserMessageContent.workspaceTag",
+            startTimeMs = workspaceTagStartTime,
+            details = "enabled=$enableWorkspaceAttachment, hasWorkspace=${!workspacePath.isNullOrBlank()}, length=${workspaceTag.length}"
+        )
 
         // 4. 构建附件标签
+        val attachmentTagsStartTime = messageTimingNow()
         val attachmentTags = if (attachments.isNotEmpty()) {
             attachments.joinToString(" ") { attachment ->
                 // 如果启用直接图片处理且附件是图片，转换为link标签
@@ -208,11 +244,22 @@ object AIMessageManager {
                 }
             }
         } else ""
+        logMessageTiming(
+            stage = "buildUserMessageContent.attachmentTags",
+            startTimeMs = attachmentTagsStartTime,
+            details = "attachments=${attachments.size}, length=${attachmentTags.length}, directImage=$enableDirectImageProcessing, directAudio=$enableDirectAudioProcessing, directVideo=$enableDirectVideoProcessing"
+        )
 
         // 5. 组合最终消息
-        return listOf(proxySenderTag, messageText, attachmentTags, workspaceTag, replyTag)
+        val finalMessageContent = listOf(proxySenderTag, messageText, attachmentTags, workspaceTag, replyTag)
             .filter { it.isNotBlank() }
             .joinToString(" ")
+        logMessageTiming(
+            stage = "buildUserMessageContent.total",
+            startTimeMs = totalStartTime,
+            details = "messageLength=${messageText.length}, finalLength=${finalMessageContent.length}, attachments=${attachments.size}"
+        )
+        return finalMessageContent
     }
 
     /**
@@ -256,19 +303,27 @@ object AIMessageManager {
         currentRoleName: String? = null,
         splitHistoryByRole: Boolean = false,
         groupOrchestrationMode: Boolean = false,
+        groupParticipantNamesText: String? = null,
         proxySenderName: String? = null,
         chatModelConfigIdOverride: String? = null,
         chatModelIndexOverride: Int? = null
     ): SharedStream<String> {
+        val totalStartTime = messageTimingNow()
         val chatKey = chatId ?: DEFAULT_CHAT_KEY
         lastActiveChatKey = chatKey
         activeEnhancedAiServiceByChatId[chatKey] = enhancedAiService
 
+        val buildMemoryStartTime = messageTimingNow()
         val memory = getMemoryFromMessages(
             messages = chatHistory,
             splitByRole = splitHistoryByRole,
             targetRoleName = currentRoleName,
             groupOrchestrationMode = groupOrchestrationMode
+        )
+        logMessageTiming(
+            stage = "sendMessage.buildMemory",
+            startTimeMs = buildMemoryStartTime,
+            details = "chatKey=$chatKey, source=${chatHistory.size}, result=${memory.size}, splitByRole=$splitHistoryByRole, groupOrchestration=$groupOrchestrationMode"
         )
         if (splitHistoryByRole && !currentRoleName.isNullOrBlank()) {
             val assistantCount = memory.count { it.first == "assistant" }
@@ -279,10 +334,8 @@ object AIMessageManager {
             )
         }
 
-        // 检查是否启用了深度搜索模式（计划模式）
-        val isDeepSearchEnabled = apiPreferences.enableAiPlanningFlow.first()
-
         return withContext(Dispatchers.IO) {
+            val limitHistoryStartTime = messageTimingNow()
             val maxImageHistoryUserTurns = apiPreferences.maxImageHistoryUserTurnsFlow.first()
             val maxMediaHistoryUserTurns = apiPreferences.maxMediaHistoryUserTurnsFlow.first()
 
@@ -305,52 +358,64 @@ object AIMessageManager {
                     "历史音视频裁剪生效: limit=$maxMediaHistoryUserTurns, before=$beforeMediaLinkCount, after=$afterMediaLinkCount"
                 )
             }
+            logMessageTiming(
+                stage = "sendMessage.limitHistory",
+                startTimeMs = limitHistoryStartTime,
+                details = "chatKey=$chatKey, before=${memory.size}, after=${memoryForRequest.size}, imageLimit=$maxImageHistoryUserTurns, mediaLimit=$maxMediaHistoryUserTurns"
+            )
 
-            if (isDeepSearchEnabled) {
-                // 创建计划模式管理器
-                val planModeManager = PlanModeManager(context, enhancedAiService)
-
-                // 检查消息是否适合使用深度搜索模式
-                val shouldUseDeepSearch = planModeManager.shouldUseDeepSearchMode(messageContent)
-
-                if (shouldUseDeepSearch) {
-                    activePlanModeManagerByChatId[chatKey] = planModeManager
-                    AppLogger.d(TAG, "启用深度搜索模式处理消息")
-
-                    // 设置执行计划的特定UI状态
-                    enhancedAiService.setInputProcessingState(
-                        InputProcessingState.ExecutingPlan(context.getString(R.string.ai_message_executing_deep_search))
-                    )
-
-                    // 使用深度搜索模式
-                    return@withContext planModeManager.executeDeepSearchMode(
-                        userMessage = messageContent,
-                        chatHistory = memoryForRequest,
-                        workspacePath = workspacePath,
-                        maxTokens = maxTokens,
-                        tokenUsageThreshold = tokenUsageThreshold,
-                        onNonFatalError = onNonFatalError
-                    ).share(
-                        scope = scope,
-                        onComplete = {
-                            activePlanModeManagerByChatId.remove(chatKey)
-                            activeEnhancedAiServiceByChatId.remove(chatKey)
-                        }
-                    )
-                } else {
-                    activePlanModeManagerByChatId.remove(chatKey)
-                    AppLogger.d(TAG, "消息不适合深度搜索模式，使用普通模式")
-                }
+            val matchPluginStartTime = messageTimingNow()
+            val pluginExecution = MessageProcessingPluginRegistry.createExecutionIfMatched(
+                params = MessageProcessingHookParams(
+                    context = context,
+                    enhancedAIService = enhancedAiService,
+                    messageContent = messageContent,
+                    chatHistory = memoryForRequest,
+                    workspacePath = workspacePath,
+                    maxTokens = maxTokens,
+                    tokenUsageThreshold = tokenUsageThreshold,
+                    onNonFatalError = onNonFatalError
+                )
+            )
+            logMessageTiming(
+                stage = "sendMessage.matchPlugin",
+                startTimeMs = matchPluginStartTime,
+                details = "chatKey=$chatKey, matched=${pluginExecution != null}"
+            )
+            if (pluginExecution != null) {
+                activeMessageProcessingControllerByChatId[chatKey] = pluginExecution.controller
+                AppLogger.d(TAG, "消息处理插件已接管消息处理")
+                val pluginStream = pluginExecution.stream.share(
+                    scope = scope,
+                    onComplete = {
+                        activeMessageProcessingControllerByChatId.remove(chatKey)
+                        activeEnhancedAiServiceByChatId.remove(chatKey)
+                    }
+                )
+                logMessageTiming(
+                    stage = "sendMessage.total",
+                    startTimeMs = totalStartTime,
+                    details = "chatKey=$chatKey, mode=plugin, history=${memoryForRequest.size}"
+                )
+                return@withContext pluginStream
             } else {
-                activePlanModeManagerByChatId.remove(chatKey)
+                activeMessageProcessingControllerByChatId.remove(chatKey)
+                AppLogger.d(TAG, "消息处理插件未接管，使用普通模式")
             }
 
             // 获取流式输出设置
+            val readStreamSettingStartTime = messageTimingNow()
             val disableStreamOutput = apiPreferences.disableStreamOutputFlow.first()
             val enableStream = !disableStreamOutput
+            logMessageTiming(
+                stage = "sendMessage.readStreamSetting",
+                startTimeMs = readStreamSettingStartTime,
+                details = "chatKey=$chatKey, enableStream=$enableStream"
+            )
 
             // 使用普通模式
-            enhancedAiService.sendMessage(
+            val prepareRequestStartTime = messageTimingNow()
+            val responseStream = enhancedAiService.sendMessage(
                 message = messageContent,
                 chatId = chatId,
                 chatHistory = memoryForRequest, // Correct parameter name is chatHistory
@@ -367,6 +432,7 @@ object AIMessageManager {
                 avatarUri = avatarUri,
                 roleCardId = roleCardId,
                 enableGroupOrchestrationHint = groupOrchestrationMode,
+                groupParticipantNamesText = groupParticipantNamesText,
                 proxySenderName = proxySenderName,
                 chatModelConfigIdOverride = chatModelConfigIdOverride,
                 chatModelIndexOverride = chatModelIndexOverride,
@@ -374,10 +440,21 @@ object AIMessageManager {
             ).share(
                 scope = scope,
                 onComplete = {
-                    activePlanModeManagerByChatId.remove(chatKey)
+                    activeMessageProcessingControllerByChatId.remove(chatKey)
                     activeEnhancedAiServiceByChatId.remove(chatKey)
                 }
             )
+            logMessageTiming(
+                stage = "sendMessage.prepareRequest",
+                startTimeMs = prepareRequestStartTime,
+                details = "chatKey=$chatKey, history=${memoryForRequest.size}, stream=$enableStream, prompt=$promptFunctionType"
+            )
+            logMessageTiming(
+                stage = "sendMessage.total",
+                startTimeMs = totalStartTime,
+                details = "chatKey=$chatKey, mode=default, history=${memoryForRequest.size}"
+            )
+            responseStream
         }
     }
 
@@ -431,7 +508,7 @@ object AIMessageManager {
 
     /**
      * 取消当前正在进行的AI操作。
-     * 这会同时尝试取消计划执行（如果正在进行）和底层的AI流。
+     * 这会同时尝试取消插件接管执行（如果正在进行）和底层的AI流。
      */
     fun cancelCurrentOperation() {
         cancelOperation(lastActiveChatKey)
@@ -441,8 +518,8 @@ object AIMessageManager {
         val chatKey = chatId.ifBlank { DEFAULT_CHAT_KEY }
         AppLogger.d(TAG, "请求取消AI操作: chatId=$chatKey")
 
-        activePlanModeManagerByChatId.remove(chatKey)?.let {
-            AppLogger.d(TAG, "正在取消计划模式执行: chatId=$chatKey")
+        activeMessageProcessingControllerByChatId.remove(chatKey)?.let {
+            AppLogger.d(TAG, "正在取消消息处理插件执行: chatId=$chatKey")
             it.cancel()
         }
 
@@ -456,7 +533,7 @@ object AIMessageManager {
 
     fun cancelAllOperations() {
         AppLogger.d(TAG, "请求取消所有AI操作...")
-        val keys = (activeEnhancedAiServiceByChatId.keys + activePlanModeManagerByChatId.keys).toSet()
+        val keys = (activeEnhancedAiServiceByChatId.keys + activeMessageProcessingControllerByChatId.keys).toSet()
         keys.forEach { cancelOperation(it) }
         AppLogger.d(TAG, "所有AI操作取消请求已发送。")
     }
@@ -735,6 +812,8 @@ object AIMessageManager {
             } else {
                 // 如果是自动续写，在总结消息尾部添加续写提示
                 val trimmedSummary = summary.trim()
+                val useEnglish = LocaleUtils.getCurrentLanguage(context).lowercase().startsWith("en")
+                val packageWarmupBlock = buildPackageWarmupBlock(messagesToSummarize, useEnglish)
                 val summaryWithQuotes = buildString {
                     append(trimmedSummary)
                     if (conversationReviewEntries.isNotEmpty()) {
@@ -746,6 +825,10 @@ object AIMessageManager {
                             append(content)
                             append("\n")
                         }
+                    }
+                    if (packageWarmupBlock.isNotBlank()) {
+                        append("\n\n")
+                        append(packageWarmupBlock)
                     }
                 }.trimEnd()
 
@@ -769,6 +852,161 @@ object AIMessageManager {
             AppLogger.e(TAG, "AI生成总结过程中发生异常", e)
             throw e
         }
+    }
+
+    private suspend fun buildPackageWarmupBlock(
+        messagesToSummarize: List<ChatMessage>,
+        useEnglish: Boolean
+    ): String {
+        val title = if (useEnglish) "[Package Warmup]" else "【工具包预热】"
+        val topPackages = extractTopPackageUsages(messagesToSummarize, limit = 2)
+
+        if (topPackages.isEmpty()) {
+            val emptyMessage =
+                if (useEnglish) {
+                    "No package-prefixed tool usage was detected in this summary window, so no package was preheated."
+                } else {
+                    "本次摘要范围内未检测到包工具调用，因此未进行工具包预热。"
+                }
+            return "$title\n$emptyMessage"
+        }
+
+        val intro =
+            if (useEnglish) {
+                "The following high-frequency packages were automatically activated from the summarized tool usage, and their use_package results are attached for the next-turn warmup."
+            } else {
+                "以下根据本次摘要范围内的工具使用频次，自动激活了最高频的工具包，并附上 use_package 的返回结果，供下一轮预热。"
+            }
+
+        val body = withContext(Dispatchers.IO) {
+            val packageManager = toolHandler.getOrCreatePackageManager()
+            buildString {
+                appendLine(intro)
+                appendLine()
+                topPackages.forEachIndexed { index, stat ->
+                    val resultText =
+                        runCatching { packageManager.usePackage(stat.packageName).trim() }
+                            .getOrElse { throwable ->
+                                if (useEnglish) {
+                                    "use_package failed: ${throwable.message ?: "unknown error"}"
+                                } else {
+                                    "use_package 调用失败: ${throwable.message ?: "未知错误"}"
+                                }
+                            }
+                            .ifBlank {
+                                if (useEnglish) {
+                                    "use_package returned empty content."
+                                } else {
+                                    "use_package 返回为空。"
+                                }
+                            }
+
+                    if (useEnglish) {
+                        appendLine("${index + 1}. Package ${stat.packageName} (${stat.count} hits)")
+                    } else {
+                        appendLine("${index + 1}. 包 ${stat.packageName}（命中 ${stat.count} 次）")
+                    }
+                    appendLine(indentBlock(resultText, "   "))
+                    if (index != topPackages.lastIndex) {
+                        appendLine()
+                    }
+                }
+            }.trimEnd()
+        }
+
+        return buildString {
+            appendLine(title)
+            append(body)
+        }.trimEnd()
+    }
+
+    private fun extractTopPackageUsages(
+        messagesToSummarize: List<ChatMessage>,
+        limit: Int
+    ): List<PackageUsageStat> {
+        if (limit <= 0) {
+            return emptyList()
+        }
+
+        data class PackageUsageCounter(
+            var count: Int,
+            val firstSeenOrder: Int
+        )
+
+        val packageUsage = linkedMapOf<String, PackageUsageCounter>()
+        var nextOrder = 0
+
+        fun recordPackageUsage(toolName: String) {
+            val normalizedToolName = toolName.trim()
+            if (normalizedToolName.isBlank() || !normalizedToolName.contains(':')) {
+                return
+            }
+
+            val packageName = normalizedToolName.substringBefore(':').trim()
+            if (packageName.isBlank()) {
+                return
+            }
+
+            val existing = packageUsage[packageName]
+            if (existing == null) {
+                packageUsage[packageName] = PackageUsageCounter(count = 1, firstSeenOrder = nextOrder)
+                nextOrder += 1
+            } else {
+                existing.count += 1
+            }
+        }
+
+        messagesToSummarize
+            .asSequence()
+            .filter { it.sender == "ai" }
+            .forEach { message ->
+                val content = ChatUtils.removeThinkingContent(message.content)
+                ChatMarkupRegex.toolCallPattern.findAll(content).forEach { match ->
+                    val toolName = match.groupValues.getOrNull(1).orEmpty().trim()
+                    val toolBody = match.groupValues.getOrNull(2).orEmpty()
+
+                    when {
+                        toolName == "package_proxy" -> {
+                            val proxiedToolName =
+                                ChatMarkupRegex.toolParamPattern
+                                    .findAll(toolBody)
+                                    .firstOrNull { it.groupValues.getOrNull(1)?.trim() == "tool_name" }
+                                    ?.groupValues
+                                    ?.getOrNull(2)
+                                    ?.trim()
+                                    .orEmpty()
+                            recordPackageUsage(proxiedToolName)
+                        }
+                        toolName == "use_package" -> Unit
+                        else -> recordPackageUsage(toolName)
+                    }
+                }
+            }
+
+        return packageUsage.entries
+            .sortedWith(
+                compareByDescending<Map.Entry<String, PackageUsageCounter>> { it.value.count }
+                    .thenBy { it.value.firstSeenOrder }
+            )
+            .take(limit)
+            .map { entry ->
+                PackageUsageStat(
+                    packageName = entry.key,
+                    count = entry.value.count
+                )
+            }
+    }
+
+    private fun indentBlock(text: String, prefix: String): String {
+        return text
+            .lines()
+            .joinToString("\n") { line ->
+                if (line.isBlank()) {
+                    line
+                } else {
+                    prefix + line
+                }
+            }
     }
 
     /**
@@ -835,6 +1073,7 @@ object AIMessageManager {
         targetRoleName: String? = null,
         groupOrchestrationMode: Boolean = false
     ): List<Pair<String, String>> {
+        val totalStartTime = messageTimingNow()
         // 1. 找到最后一条总结消息，只处理总结之后的消息
         val lastSummaryIndex = messages.indexOfLast { it.sender == "summary" }
         val relevantMessages = if (lastSummaryIndex != -1) {
@@ -854,7 +1093,7 @@ object AIMessageManager {
         }
 
         // 4. 处理每条消息
-        return relevantMessages
+        val processedMessages = relevantMessages
             .filter { it.sender == "user" || it.sender == "ai" || it.sender == "summary" }
             .mapNotNull { message ->
                 when (message.sender) {
@@ -873,6 +1112,14 @@ object AIMessageManager {
                     else -> null
                 }
             }
+        val assistantCount = processedMessages.count { it.first == "assistant" }
+        val userCount = processedMessages.count { it.first == "user" }
+        logMessageTiming(
+            stage = "getMemoryFromMessages.total",
+            startTimeMs = totalStartTime,
+            details = "source=${messages.size}, relevant=${relevantMessages.size}, result=${processedMessages.size}, assistant=$assistantCount, user=$userCount, splitByRole=$splitByRole, roleScoped=$isRoleScopedMode, groupOrchestration=$groupOrchestrationMode"
+        )
+        return processedMessages
     }
 
     private fun processAiMessage(

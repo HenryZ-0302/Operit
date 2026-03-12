@@ -57,9 +57,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.ui.common.displays.LatexCache
+import com.ai.assistance.operit.ui.theme.LocalAiMarkdownTextLayoutSettings
 import com.ai.assistance.operit.util.markdown.MarkdownNode
 import com.ai.assistance.operit.util.markdown.MarkdownNodeStable
 import com.ai.assistance.operit.util.markdown.MarkdownProcessorType
+import com.ai.assistance.operit.util.stream.Stream
 import java.util.concurrent.ConcurrentHashMap
 import android.graphics.Typeface
 import android.widget.TextView
@@ -70,6 +72,7 @@ private const val TAG = "CanvasMarkdownRenderer"
 private const val MAX_CANVAS_HEIGHT_PX = 250_000f
 private const val MAX_COMPOSE_CONSTRAINT_HEIGHT_PX = 262_000f
 private const val TYPEWRITER_WINDOW_MS = 200
+private const val DEFAULT_CANVAS_LINE_SPACING_MULTIPLIER = 1.3f
 
 private const val FALLBACK_MAX_TEXT_CHARS = 20_000
 
@@ -127,12 +130,13 @@ private object PaintCache {
     private data class PaintKey(
         val colorArgb: Int,
         val textSize: Float,
-        val typeface: Typeface
+        val typeface: Typeface,
+        val letterSpacingEm: Float = 0f
     )
-    
+
     private val paintCache = ConcurrentHashMap<PaintKey, android.graphics.Paint>()
     private val textPaintCache = ConcurrentHashMap<PaintKey, TextPaint>()
-    
+
     fun getPaint(color: Color, textSize: Float, typeface: Typeface): android.graphics.Paint {
         val key = PaintKey(color.toArgb(), textSize, typeface)
         return paintCache.getOrPut(key) {
@@ -144,19 +148,25 @@ private object PaintCache {
             }
         }
     }
-    
-    fun getTextPaint(color: Color, textSize: Float, typeface: Typeface): TextPaint {
-        val key = PaintKey(color.toArgb(), textSize, typeface)
+
+    fun getTextPaint(
+        color: Color,
+        textSize: Float,
+        typeface: Typeface,
+        letterSpacingEm: Float
+    ): TextPaint {
+        val key = PaintKey(color.toArgb(), textSize, typeface, letterSpacingEm)
         return textPaintCache.getOrPut(key) {
             TextPaint().apply {
                 this.color = key.colorArgb
                 this.textSize = textSize
                 this.isAntiAlias = true
                 this.typeface = key.typeface
+                this.letterSpacing = key.letterSpacingEm
             }
         }
     }
-    
+
     fun clear() {
         paintCache.clear()
         textPaintCache.clear()
@@ -169,23 +179,38 @@ private object PaintCache {
  */
 private fun safeLayoutWidth(width: Int): Int = width.coerceAtLeast(1)
 
+private fun calculateCanvasLetterSpacingEm(fontSize: TextUnit, letterSpacingSp: Float): Float {
+    val fontSizeSp = fontSize.value
+    if (!java.lang.Float.isFinite(fontSizeSp) || fontSizeSp <= 0f) {
+        return 0f
+    }
+    return letterSpacingSp / fontSizeSp
+}
+
+private fun calculateCanvasLineSpacingMultiplier(lineHeightMultiplier: Float): Float {
+    return DEFAULT_CANVAS_LINE_SPACING_MULTIPLIER * lineHeightMultiplier
+}
+
 private object LayoutCache {
     private data class LayoutKey(
         val text: String,
         val colorArgb: Int,
         val textSize: Float,
         val width: Int,
-        val typeface: Typeface
+        val typeface: Typeface,
+        val letterSpacing: Float,
+        val lineSpacingMultiplier: Float
     )
-    
+
     private val cache = LruCache<LayoutKey, StaticLayout>(100)
-    
+
     fun getLayout(
         text: String,
         paint: TextPaint,
         width: Int,
         color: Color,
-        typeface: Typeface
+        typeface: Typeface,
+        lineSpacingMultiplier: Float
     ): StaticLayout {
         val safeWidth = safeLayoutWidth(width)
         val key = LayoutKey(
@@ -193,24 +218,31 @@ private object LayoutCache {
             colorArgb = color.toArgb(),
             textSize = paint.textSize,
             width = safeWidth,
-            typeface = paint.typeface
+            typeface = paint.typeface,
+            letterSpacing = paint.letterSpacing,
+            lineSpacingMultiplier = lineSpacingMultiplier
         )
-        
-        return cache.get(key) ?: createStaticLayout(text, paint, safeWidth).also {
+
+        return cache.get(key) ?: createStaticLayout(text, paint, safeWidth, lineSpacingMultiplier).also {
             cache.put(key, it)
         }
     }
-    
+
     fun clear() {
         cache.evictAll()
     }
-    
-    private fun createStaticLayout(text: String, paint: TextPaint, width: Int): StaticLayout {
+
+    private fun createStaticLayout(
+        text: String,
+        paint: TextPaint,
+        width: Int,
+        lineSpacingMultiplier: Float
+    ): StaticLayout {
         val safeWidth = safeLayoutWidth(width)
         return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
             StaticLayout.Builder.obtain(text, 0, text.length, paint, safeWidth)
                 .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
-                .setLineSpacing(0f, 1.3f)
+                .setLineSpacing(0f, lineSpacingMultiplier)
                 .setIncludePad(false)
                 .build()
         } else {
@@ -220,7 +252,7 @@ private object LayoutCache {
                 paint,
                 safeWidth,
                 android.text.Layout.Alignment.ALIGN_NORMAL,
-                1.3f,
+                lineSpacingMultiplier,
                 0f,
                 false
             )
@@ -313,6 +345,8 @@ fun CanvasMarkdownNodeRenderer(
     onLinkClick: ((String) -> Unit)? = null,
     index: Int,
     xmlRenderer: XmlContentRenderer,
+    xmlStream: Stream<String>? = null,
+    enableDialogs: Boolean = true,
     fillMaxWidth: Boolean = true,
     isLastNode: Boolean = false
 ) {
@@ -358,7 +392,9 @@ fun CanvasMarkdownNodeRenderer(
         modifier = modifier,
         onLinkClick = currentOnLinkClick.value,
         xmlRenderer = currentXmlRenderer.value,
+        xmlStream = xmlStream,
         index = index,
+        enableDialogs = enableDialogs,
         fillMaxWidth = fillMaxWidth,
         isLastNode = isLastNode
     )
@@ -386,7 +422,9 @@ private fun renderNodeContent(
     modifier: Modifier,
     onLinkClick: ((String) -> Unit)?,
     xmlRenderer: XmlContentRenderer,
+    xmlStream: Stream<String>?,
     index: Int,
+    enableDialogs: Boolean,
     fillMaxWidth: Boolean,
     isLastNode: Boolean = false
 ) {
@@ -396,9 +434,28 @@ private fun renderNodeContent(
     when (stableNode.type) {
         // ========== 简单文本类型：使用单个大 Canvas 绘制 ==========
         MarkdownProcessorType.HEADER,
-        MarkdownProcessorType.PLAIN_TEXT,
         MarkdownProcessorType.ORDERED_LIST,
         MarkdownProcessorType.UNORDERED_LIST -> {
+            UnifiedCanvasRenderer(
+                nodeKey = nodeKey,
+                node = stableNode,
+                textColor = textColor,
+                bodyMediumSize = fontSizes.bodyMedium,
+                headlineLargeSize = fontSizes.headlineLarge,
+                headlineMediumSize = fontSizes.headlineMedium,
+                headlineSmallSize = fontSizes.headlineSmall,
+                titleLargeSize = fontSizes.titleLarge,
+                titleMediumSize = fontSizes.titleMedium,
+                titleSmallSize = fontSizes.titleSmall,
+                density = density,
+                modifier = modifier,
+                onLinkClick = onLinkClick,
+                fillMaxWidth = fillMaxWidth,
+                isLastNode = isLastNode
+            )
+        }
+
+        MarkdownProcessorType.PLAIN_TEXT -> {
             UnifiedCanvasRenderer(
                 nodeKey = nodeKey,
                 node = stableNode,
@@ -497,17 +554,9 @@ private fun renderNodeContent(
             xmlRenderer.RenderXmlContent(
                 xmlContent = content,
                 modifier = Modifier.fillMaxWidth(),
-                textColor = textColor
-            )
-        }
-        
-        // ========== 计划执行：保留原组件 ==========
-        MarkdownProcessorType.PLAN_EXECUTION -> {
-            // 不使用 key()，让 Compose 根据位置自然识别组件
-            // 这样可以保留用户交互状态（如缩放、拖动偏移量）
-            PlanExecutionRenderer(
-                content = content,
-                modifier = Modifier.fillMaxWidth()
+                textColor = textColor,
+                xmlStream = xmlStream,
+                renderInstanceKey = nodeKey
             )
         }
         
@@ -522,7 +571,8 @@ private fun renderNodeContent(
                     MarkdownImageRenderer(
                         imageMarkdown = imageContent,
                         modifier = Modifier.fillMaxWidth(),
-                        maxImageHeight = 140
+                        maxImageHeight = 140,
+                        enableDialogs = enableDialogs
                     )
                 }
             } else {
@@ -638,6 +688,7 @@ private fun UnifiedCanvasRenderer(
     isLastNode: Boolean = false
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
+    val textLayoutSettings = LocalAiMarkdownTextLayoutSettings.current
 
     val fontFamily = MaterialTheme.typography.bodyMedium.fontFamily
     val resolver = LocalFontFamilyResolver.current
@@ -665,7 +716,18 @@ private fun UnifiedCanvasRenderer(
         val contentKey = node.content.length
 
         // 计算布局和绘制指令（用于稳定高度/宽度）
-        val layoutResult = remember(contentKey, textColor, availableWidthPx, node.type, normalTypeface, boldTypeface, isLastNode, node.children) {
+        val layoutResult = remember(
+            contentKey,
+            textColor,
+            availableWidthPx,
+            node.type,
+            normalTypeface,
+            boldTypeface,
+            isLastNode,
+            node.children,
+            textLayoutSettings.lineHeightMultiplier,
+            textLayoutSettings.letterSpacingSp
+        ) {
             calculateLayout(
                 node = node,
                 textColor = textColor,
@@ -681,7 +743,9 @@ private fun UnifiedCanvasRenderer(
                 boldTypeface = boldTypeface,
                 density = localDensity,
                 availableWidthPx = availableWidthPx,
-                isLastNode = isLastNode
+                isLastNode = isLastNode,
+                globalLineHeightMultiplier = textLayoutSettings.lineHeightMultiplier,
+                globalLetterSpacingSp = textLayoutSettings.letterSpacingSp
             )
         }
 
@@ -1007,11 +1071,14 @@ private fun calculateLayout(
     availableWidthPx: Int,
     isLastNode: Boolean = false,
     disableLayoutCache: Boolean = false,
-    typewriterTailAlpha: Float = 1f
+    typewriterTailAlpha: Float = 1f,
+    globalLineHeightMultiplier: Float = 1f,
+    globalLetterSpacingSp: Float = 0f
 ): LayoutResult {
     if (availableWidthPx <= 0) return LayoutResult(0f, 0f, emptyList())
 
     val safeAvailableWidthPx = safeLayoutWidth(availableWidthPx)
+    val lineSpacingMultiplier = calculateCanvasLineSpacingMultiplier(globalLineHeightMultiplier)
     val content = node.content
     val instructions = mutableListOf<DrawInstruction>()
     var currentY = 0f
@@ -1049,7 +1116,12 @@ private fun calculateLayout(
             currentY += topPadding
             
             val textSizePx = with(density) { fontSize.toPx() }
-            val textPaint = PaintCache.getTextPaint(textColor, textSizePx, boldTypeface)
+            val textPaint = PaintCache.getTextPaint(
+                textColor,
+                textSizePx,
+                boldTypeface,
+                calculateCanvasLetterSpacingEm(fontSize, globalLetterSpacingSp)
+            )
 
             val layout = if (node.children.isNotEmpty()) {
                 // 处理子节点列表，去除第一个子节点中的标题标记
@@ -1066,9 +1138,16 @@ private fun calculateLayout(
                     density = density,
                     fontSize = fontSize
                 )
-                createStaticLayout(spannable, textPaint, safeAvailableWidthPx)
+                createStaticLayout(spannable, textPaint, safeAvailableWidthPx, lineSpacingMultiplier)
             } else {
-                LayoutCache.getLayout(headerText, textPaint, safeAvailableWidthPx, textColor, boldTypeface)
+                LayoutCache.getLayout(
+                    headerText,
+                    textPaint,
+                    safeAvailableWidthPx,
+                    textColor,
+                    boldTypeface,
+                    lineSpacingMultiplier
+                )
             }
             
             instructions.add(DrawInstruction.TextLayout(layout, 0f, currentY, layout.text))
@@ -1095,7 +1174,12 @@ private fun calculateLayout(
             
             val textSizePx = with(density) { bodyMediumSize.toPx() }
             val boldPaint = PaintCache.getPaint(textColor, textSizePx, boldTypeface)
-            val textPaint = PaintCache.getTextPaint(textColor, textSizePx, normalTypeface)
+            val textPaint = PaintCache.getTextPaint(
+                textColor,
+                textSizePx,
+                normalTypeface,
+                calculateCanvasLetterSpacingEm(bodyMediumSize, globalLetterSpacingSp)
+            )
             
             // 测量标记宽度
             val markerWidth = boldPaint.measureText("$numberStr.")
@@ -1126,9 +1210,16 @@ private fun calculateLayout(
                     density = density,
                     fontSize = bodyMediumSize
                 )
-                createStaticLayout(spannable, textPaint, contentWidth)
+                createStaticLayout(spannable, textPaint, contentWidth, lineSpacingMultiplier)
             } else {
-                LayoutCache.getLayout(itemText, textPaint, contentWidth, textColor, normalTypeface)
+                LayoutCache.getLayout(
+                    itemText,
+                    textPaint,
+                    contentWidth,
+                    textColor,
+                    normalTypeface,
+                    lineSpacingMultiplier
+                )
             }
             instructions.add(DrawInstruction.TextLayout(layout, contentX, currentY, layout.text))
             currentY += layout.height
@@ -1152,17 +1243,18 @@ private fun calculateLayout(
             val markerEndPadding = 4f * density.density
             
             val textSizePx = with(density) { bodyMediumSize.toPx() }
-            val boldPaint = PaintCache.getPaint(textColor, textSizePx, boldTypeface)
-            val textPaint = PaintCache.getTextPaint(textColor, textSizePx, normalTypeface)
+            val textPaint = PaintCache.getTextPaint(
+                textColor,
+                textSizePx,
+                normalTypeface,
+                calculateCanvasLetterSpacingEm(bodyMediumSize, globalLetterSpacingSp)
+            )
+            val markerPaint = PaintCache.getPaint(textColor, textSizePx, normalTypeface)
             
             // 测量标记宽度
-            val markerWidth = boldPaint.measureText("•")
+            val markerWidth = markerPaint.measureText("•")
             val contentX = startPadding + markerWidth + markerEndPadding
-            
-            // 绘制标记
-            val markerY = currentY + textSizePx + (1f * density.density)
-            instructions.add(DrawInstruction.Text("•", startPadding, markerY, boldPaint))
-            
+
             // 使用 StaticLayout 绘制内容（支持自动换行）
             val contentWidth = (safeAvailableWidthPx - contentX.toInt()).coerceAtLeast(1)
             
@@ -1184,10 +1276,21 @@ private fun calculateLayout(
                     density = density,
                     fontSize = bodyMediumSize
                 )
-                createStaticLayout(spannable, textPaint, contentWidth)
+                createStaticLayout(spannable, textPaint, contentWidth, lineSpacingMultiplier)
             } else {
-                LayoutCache.getLayout(itemText, textPaint, contentWidth, textColor, normalTypeface)
+                LayoutCache.getLayout(
+                    itemText,
+                    textPaint,
+                    contentWidth,
+                    textColor,
+                    normalTypeface,
+                    lineSpacingMultiplier
+                )
             }
+
+            // 使用首行真实基线定位圆点，避免不同字体/字重下出现垂直漂移
+            val markerY = currentY + layout.getLineBaseline(0)
+            instructions.add(DrawInstruction.Text("•", startPadding, markerY, markerPaint))
             instructions.add(DrawInstruction.TextLayout(layout, contentX, currentY, layout.text))
             currentY += layout.height
             maxWidth = maxOf(maxWidth, calculateActualWidth(layout, contentX, safeAvailableWidthPx))
@@ -1202,7 +1305,12 @@ private fun calculateLayout(
             if (content.trimAll().isEmpty()) return LayoutResult(0f, 0f, emptyList())
             
             val textSizePx = with(density) { bodyMediumSize.toPx() }
-            val textPaint = PaintCache.getTextPaint(textColor, textSizePx, normalTypeface)
+            val textPaint = PaintCache.getTextPaint(
+                textColor,
+                textSizePx,
+                normalTypeface,
+                calculateCanvasLetterSpacingEm(bodyMediumSize, globalLetterSpacingSp)
+            )
             
             val layout = if (node.children.isNotEmpty()) {
                 val spannable = buildSpannableFromChildren(
@@ -1212,7 +1320,7 @@ private fun calculateLayout(
                     density = density,
                     fontSize = bodyMediumSize
                 )
-                createStaticLayout(spannable, textPaint, safeAvailableWidthPx)
+                createStaticLayout(spannable, textPaint, safeAvailableWidthPx, lineSpacingMultiplier)
             } else {
                 if (disableLayoutCache) {
                     val trimmed = content.trimAll()
@@ -1227,12 +1335,19 @@ private fun calculateLayout(
                             lastIndex + 1,
                             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
                         )
-                        createStaticLayout(spannable, textPaint, safeAvailableWidthPx)
+                        createStaticLayout(spannable, textPaint, safeAvailableWidthPx, lineSpacingMultiplier)
                     } else {
-                        createStaticLayout(trimmed, textPaint, safeAvailableWidthPx)
+                        createStaticLayout(trimmed, textPaint, safeAvailableWidthPx, lineSpacingMultiplier)
                     }
                 } else {
-                    LayoutCache.getLayout(content.trimAll(), textPaint, safeAvailableWidthPx, textColor, normalTypeface)
+                    LayoutCache.getLayout(
+                        content.trimAll(),
+                        textPaint,
+                        safeAvailableWidthPx,
+                        textColor,
+                        normalTypeface,
+                        lineSpacingMultiplier
+                    )
                 }
             }
 
@@ -1371,6 +1486,7 @@ private fun SingleTextCanvas(
 ) {
     if (text.isEmpty()) return
 
+    val textLayoutSettings = LocalAiMarkdownTextLayoutSettings.current
     val fontFamily = MaterialTheme.typography.bodyMedium.fontFamily
     val resolver = LocalFontFamilyResolver.current
     val typeface = remember(resolver, fontFamily, fontWeight) {
@@ -1384,13 +1500,22 @@ private fun SingleTextCanvas(
         if (availableWidthPxRaw <= 0) return@BoxWithConstraints
         val availableWidthPx = safeLayoutWidth(availableWidthPxRaw)
         val textSizePx = with(localDensity) { fontSize.toPx() }
-        
-        val textPaint = remember(textColor, textSizePx, typeface) {
-            PaintCache.getTextPaint(textColor, textSizePx, typeface)
+        val letterSpacingEm = calculateCanvasLetterSpacingEm(fontSize, textLayoutSettings.letterSpacingSp)
+        val lineSpacingMultiplier = calculateCanvasLineSpacingMultiplier(textLayoutSettings.lineHeightMultiplier)
+
+        val textPaint = remember(textColor, textSizePx, typeface, letterSpacingEm) {
+            PaintCache.getTextPaint(textColor, textSizePx, typeface, letterSpacingEm)
         }
-        
-        val layout = remember(text, textPaint, availableWidthPx, textColor, typeface) {
-            LayoutCache.getLayout(text, textPaint, availableWidthPx, textColor, typeface)
+
+        val layout = remember(text, textPaint, availableWidthPx, textColor, typeface, lineSpacingMultiplier) {
+            LayoutCache.getLayout(
+                text,
+                textPaint,
+                availableWidthPx,
+                textColor,
+                typeface,
+                lineSpacingMultiplier
+            )
         }
         
         val totalHeight = layout.height.toFloat()
@@ -1491,12 +1616,17 @@ private fun extractLatexContent(content: String): String {
     }
 }
 
-private fun createStaticLayout(text: CharSequence, paint: TextPaint, width: Int): StaticLayout {
+private fun createStaticLayout(
+    text: CharSequence,
+    paint: TextPaint,
+    width: Int,
+    lineSpacingMultiplier: Float
+): StaticLayout {
     val safeWidth = safeLayoutWidth(width)
     return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
         StaticLayout.Builder.obtain(text, 0, text.length, paint, safeWidth)
             .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
-            .setLineSpacing(0f, 1.3f)
+            .setLineSpacing(0f, lineSpacingMultiplier)
             .setIncludePad(false)
             .build()
     } else {
@@ -1506,7 +1636,7 @@ private fun createStaticLayout(text: CharSequence, paint: TextPaint, width: Int)
             paint,
             safeWidth,
             android.text.Layout.Alignment.ALIGN_NORMAL,
-            1.3f,
+            lineSpacingMultiplier,
             0f,
             false
         )

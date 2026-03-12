@@ -72,7 +72,6 @@ add_library(
         streamnative/plugins/BaseJsonPlugin.cpp
         streamnative/plugins/StreamJsonPlugin.cpp
         streamnative/plugins/StreamPureJsonPlugin.cpp
-        streamnative/plugins/StreamPlanExecutionPlugin.cpp
         streamnative/plugins/StreamMarkdownPlugin.cpp
         streamnative/StreamBuilders.cpp
         streamnative/HotStream.cpp

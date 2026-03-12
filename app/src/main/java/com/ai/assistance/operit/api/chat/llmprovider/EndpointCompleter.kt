@@ -82,7 +82,8 @@ object EndpointCompleter {
         val endpointWithoutSlash = trimmedEndpoint.removeSuffix("/")
 
         when (providerType) {
-            ApiProviderType.OPENAI_RESPONSES -> {
+            ApiProviderType.OPENAI_RESPONSES,
+            ApiProviderType.OPENAI_RESPONSES_GENERIC -> {
                 return completeResponsesEndpoint(endpoint)
             }
 

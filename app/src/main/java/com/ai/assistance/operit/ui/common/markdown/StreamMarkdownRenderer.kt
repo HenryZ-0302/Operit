@@ -58,6 +58,7 @@ import com.ai.assistance.operit.util.markdown.MarkdownProcessorType
 import com.ai.assistance.operit.util.markdown.SmartString
 import com.ai.assistance.operit.util.stream.Stream
 import com.ai.assistance.operit.util.stream.StreamInterceptor
+import com.ai.assistance.operit.util.stream.share
 import com.ai.assistance.operit.util.stream.splitBy as streamSplitBy
 import com.ai.assistance.operit.util.stream.stream
 import com.ai.assistance.operit.util.streamnative.nativeMarkdownSplitByBlock
@@ -89,13 +90,36 @@ private fun MarkdownNode.toStableNode(): MarkdownNodeStable {
 
 // XML内容渲染器接口，用于自定义XML渲染
 interface XmlContentRenderer {
-    @Composable fun RenderXmlContent(xmlContent: String, modifier: Modifier, textColor: Color)
+    @Composable
+    fun RenderXmlContent(
+        xmlContent: String,
+        modifier: Modifier,
+        textColor: Color,
+        xmlStream: Stream<String>?,
+        renderInstanceKey: Any?
+    )
+}
+
+@Composable
+fun XmlContentRenderer.RenderXmlContent(
+    xmlContent: String,
+    modifier: Modifier,
+    textColor: Color,
+    renderInstanceKey: Any? = null
+) {
+    RenderXmlContent(xmlContent, modifier, textColor, null, renderInstanceKey)
 }
 
 // 默认XML渲染器
 class DefaultXmlRenderer : XmlContentRenderer {
     @Composable
-    override fun RenderXmlContent(xmlContent: String, modifier: Modifier, textColor: Color) {
+    override fun RenderXmlContent(
+        xmlContent: String,
+        modifier: Modifier,
+        textColor: Color,
+        xmlStream: Stream<String>?,
+        renderInstanceKey: Any?
+    ) {
         val xmlBlockDesc = stringResource(R.string.xml_block)
         
         Surface(
@@ -162,6 +186,8 @@ class StreamMarkdownRendererState {
     val conversionCache = mutableStateMapOf<Int, Pair<Int, MarkdownNodeStable>>()
     // 保存流式渲染收集的完整内容，用于切换时判断是否需要重新解析
     val collectedContent = SmartString()
+    // XML 节点对应的子流（仅流式渲染有效）
+    val xmlNodeStreams = mutableStateMapOf<Int, Stream<String>>()
     // 渲染器ID
     var rendererId: String = ""
         private set
@@ -182,6 +208,7 @@ class StreamMarkdownRendererState {
         nodeAnimationStates.clear()
         conversionCache.clear()
         collectedContent.clear()
+        xmlNodeStreams.clear()
     }
 }
 
@@ -196,6 +223,7 @@ fun StreamMarkdownRenderer(
         xmlRenderer: XmlContentRenderer = remember { DefaultXmlRenderer() },
         nodeGrouper: MarkdownNodeGrouper = NoopMarkdownNodeGrouper,
         state: StreamMarkdownRendererState? = null,
+        enableDialogs: Boolean = true,
         fillMaxWidth: Boolean = true
 ) {
     // 使用传入的state或创建新的state
@@ -211,6 +239,8 @@ fun StreamMarkdownRenderer(
     val scope = rememberCoroutineScope()
     // 缓存转换后的稳定节点，避免不必要的对象创建
     val conversionCache = rendererState.conversionCache
+    // XML 节点子流映射
+    val xmlNodeStreams = rendererState.xmlNodeStreams
 
     // 当流实例变化时，获得一个稳定的渲染器ID
     val rendererId = remember(markdownStream) { 
@@ -237,6 +267,7 @@ fun StreamMarkdownRenderer(
                                 renderNodes = renderNodes,
                                 conversionCache = conversionCache,
                                 nodeAnimationStates = nodeAnimationStates,
+                                xmlNodeStreams = xmlNodeStreams,
                                 rendererId = rendererId,
                                 isInterceptedStream = processor.interceptedStream,
                                 scope = scope
@@ -261,6 +292,7 @@ fun StreamMarkdownRenderer(
         nodes.clear()
         renderNodes.clear()
         rendererState.collectedContent.clear()
+        xmlNodeStreams.clear()
 
         try {
             interceptedStream.nativeMarkdownSplitByBlock(flushIntervalMs = RENDER_INTERVAL_MS).collect { blockGroup ->
@@ -278,17 +310,26 @@ fun StreamMarkdownRenderer(
                 val isInlineContainer =
                     tempBlockType != MarkdownProcessorType.CODE_BLOCK &&
                         tempBlockType != MarkdownProcessorType.BLOCK_LATEX &&
-                        tempBlockType != MarkdownProcessorType.XML_BLOCK &&
-                        tempBlockType != MarkdownProcessorType.PLAN_EXECUTION
+                        tempBlockType != MarkdownProcessorType.XML_BLOCK
 
                 val newNode = MarkdownNode(type = tempBlockType)
                 nodes.add(newNode)
                 val nodeIndex = nodes.lastIndex
+                val blockStream: Stream<String> =
+                    if (tempBlockType == MarkdownProcessorType.XML_BLOCK) {
+                        blockGroup.stream.share(scope = scope, replay = Int.MAX_VALUE)
+                    } else {
+                        blockGroup.stream
+                    }
+
+                if (tempBlockType == MarkdownProcessorType.XML_BLOCK) {
+                    xmlNodeStreams[nodeIndex] = blockStream
+                }
 
                 if (isInlineContainer) {
                     var lastCharWasNewline = false
 
-                    blockGroup.stream.nativeMarkdownSplitByInline(flushIntervalMs = RENDER_INTERVAL_MS).collect { inlineGroup ->
+                    blockStream.nativeMarkdownSplitByInline(flushIntervalMs = RENDER_INTERVAL_MS).collect { inlineGroup ->
                         val originalInlineType = inlineGroup.tag ?: MarkdownProcessorType.PLAIN_TEXT
                         val isInlineLatex = originalInlineType == MarkdownProcessorType.INLINE_LATEX
                         val tempInlineType =
@@ -346,7 +387,7 @@ fun StreamMarkdownRenderer(
                         }
                     }
                 } else {
-                    blockGroup.stream.collect { contentChunk ->
+                    blockStream.collect { contentChunk ->
                         newNode.content + contentChunk
                     }
                 }
@@ -362,7 +403,15 @@ fun StreamMarkdownRenderer(
             AppLogger.e(TAG, "【流渲染】Markdown流处理异常: ${e.message}", e)
         } finally {
             // 移除时间计算变量和日志
-            synchronizeRenderNodes(nodes, renderNodes, conversionCache, nodeAnimationStates, rendererId, scope)
+            synchronizeRenderNodes(
+                nodes,
+                renderNodes,
+                conversionCache,
+                nodeAnimationStates,
+                xmlNodeStreams,
+                rendererId,
+                scope
+            )
             // 移除最终同步耗时日志
         }
     }
@@ -377,7 +426,9 @@ fun StreamMarkdownRenderer(
                 textColor = textColor,
                 onLinkClick = onLinkClick,
                 xmlRenderer = xmlRenderer,
+                xmlStreamsByIndex = xmlNodeStreams,
                 nodeGrouper = nodeGrouper,
+                enableDialogs = enableDialogs,
                 modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
                 fillMaxWidth = fillMaxWidth
             )
@@ -410,6 +461,7 @@ fun StreamMarkdownRenderer(
         xmlRenderer: XmlContentRenderer = remember { DefaultXmlRenderer() },
         nodeGrouper: MarkdownNodeGrouper = NoopMarkdownNodeGrouper,
         state: StreamMarkdownRendererState? = null,
+        enableDialogs: Boolean = true,
         fillMaxWidth: Boolean = true
 ) {
     // 使用传入的state或创建新的state
@@ -430,15 +482,21 @@ fun StreamMarkdownRenderer(
     val scope = rememberCoroutineScope()
     // 缓存转换后的稳定节点，避免不必要的对象创建
     val conversionCache = rendererState.conversionCache
+    // XML 节点子流映射（静态渲染通常为空）
+    val xmlNodeStreams = rendererState.xmlNodeStreams
 
     // 当content字符串变化时，一次性完成解析
     LaunchedEffect(content) {
         // 先检查内容是否与流式渲染收集的内容一致，如果一致则跳过解析
         val collectedContentStr = rendererState.collectedContent.toString()
         if (collectedContentStr == content && nodes.isNotEmpty()) {
+            // 从流式渲染切到静态渲染时，避免沿用已结束的 XML 子流导致子节点渲染异常
+            xmlNodeStreams.clear()
             // 内容一致且已有节点，跳过解析
             return@LaunchedEffect
         }
+
+        xmlNodeStreams.clear()
         
         // 移除时间计算相关变量
         val cachedNodes = MarkdownNodeCache.get(content)
@@ -480,8 +538,7 @@ fun StreamMarkdownRenderer(
                     val isInlineContainer =
                         tempBlockType != MarkdownProcessorType.CODE_BLOCK &&
                             tempBlockType != MarkdownProcessorType.BLOCK_LATEX &&
-                            tempBlockType != MarkdownProcessorType.XML_BLOCK &&
-                            tempBlockType != MarkdownProcessorType.PLAN_EXECUTION
+                            tempBlockType != MarkdownProcessorType.XML_BLOCK
 
                     val newNode = MarkdownNode(type = tempBlockType)
                     parsedNodes.add(newNode)
@@ -610,7 +667,9 @@ fun StreamMarkdownRenderer(
                 textColor = textColor,
                 onLinkClick = onLinkClick,
                 xmlRenderer = xmlRenderer,
+                xmlStreamsByIndex = xmlNodeStreams,
                 nodeGrouper = nodeGrouper,
+                enableDialogs = enableDialogs,
                 modifier = if (fillMaxWidth) Modifier.fillMaxWidth() else Modifier,
                 fillMaxWidth = fillMaxWidth
             )
@@ -645,6 +704,8 @@ private fun AnimatedNode(
     textColor: Color,
     onLinkClick: ((String) -> Unit)?,
     xmlRenderer: XmlContentRenderer,
+    xmlStream: Stream<String>?,
+    enableDialogs: Boolean,
     fillMaxWidth: Boolean,
     isLastNode: Boolean = false
 ) {
@@ -669,6 +730,8 @@ private fun AnimatedNode(
             onLinkClick = onLinkClick,
             index = index,
             xmlRenderer = xmlRenderer,
+            xmlStream = xmlStream,
+            enableDialogs = enableDialogs,
             fillMaxWidth = fillMaxWidth,
             isLastNode = isLastNode
         )
@@ -683,7 +746,9 @@ private fun UnifiedMarkdownCanvas(
     textColor: Color,
     onLinkClick: ((String) -> Unit)?,
     xmlRenderer: XmlContentRenderer,
+    xmlStreamsByIndex: Map<Int, Stream<String>>,
     nodeGrouper: MarkdownNodeGrouper,
+    enableDialogs: Boolean,
     modifier: Modifier = Modifier,
     fillMaxWidth: Boolean = true
 ) {
@@ -742,6 +807,8 @@ private fun UnifiedMarkdownCanvas(
                             textColor = textColor,
                             onLinkClick = onLinkClick,
                             xmlRenderer = xmlRenderer,
+                            xmlStream = xmlStreamsByIndex[index],
+                            enableDialogs = enableDialogs,
                             fillMaxWidth = fillMaxWidth,
                             isLastNode = index == lastRenderableIndex
                         )
@@ -762,6 +829,7 @@ private fun UnifiedMarkdownCanvas(
                             textColor = textColor,
                             onLinkClick = onLinkClick,
                             xmlRenderer = xmlRenderer,
+                            xmlStreamResolver = { idx -> xmlStreamsByIndex[idx] },
                             fillMaxWidth = fillMaxWidth
                         )
                     }
@@ -777,6 +845,7 @@ private class BatchNodeUpdater(
         private val renderNodes: SnapshotStateList<MarkdownNodeStable>,
         private val conversionCache: MutableMap<Int, Pair<Int, MarkdownNodeStable>>,
         private val nodeAnimationStates: MutableMap<String, Boolean>,
+        private val xmlNodeStreams: MutableMap<Int, Stream<String>>,
         private val rendererId: String,
         private val isInterceptedStream: Stream<Char>,
         private val scope: CoroutineScope
@@ -808,7 +877,15 @@ private class BatchNodeUpdater(
 
     private fun performBatchUpdate() {
         // 使用synchronizeRenderNodes函数进行节点同步
-        synchronizeRenderNodes(nodes, renderNodes, conversionCache, nodeAnimationStates, rendererId, scope)
+        synchronizeRenderNodes(
+            nodes,
+            renderNodes,
+            conversionCache,
+            nodeAnimationStates,
+            xmlNodeStreams,
+            rendererId,
+            scope
+        )
 
         val currentNodesSize = nodes.size
         val currentRenderNodesSize = renderNodes.size
@@ -870,6 +947,7 @@ private fun synchronizeRenderNodes(
     renderNodes: SnapshotStateList<MarkdownNodeStable>,
     conversionCache: MutableMap<Int, Pair<Int, MarkdownNodeStable>>,
     nodeAnimationStates: MutableMap<String, Boolean>,
+    xmlNodeStreams: MutableMap<Int, Stream<String>>,
     rendererId: String,
     scope: CoroutineScope
 ) {
@@ -944,6 +1022,10 @@ private fun synchronizeRenderNodes(
         }
     }
 
+    // 4. 清理已被移除节点的 XML 子流
+    val keysToRemove = xmlNodeStreams.keys.filter { it !in nodes.indices }
+    keysToRemove.forEach { xmlNodeStreams.remove(it) }
+
 
     // 启动所有新标记节点的动画
     if (keysToAnimate.isNotEmpty()) {
@@ -986,4 +1068,3 @@ internal fun extractLinkUrl(linkContent: String): String {
             }
     return result
 }
-

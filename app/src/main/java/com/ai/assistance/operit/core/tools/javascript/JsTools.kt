@@ -153,12 +153,17 @@ fun getJsToolsDefinition(): String {
             },
             // 网络操作
             Net: {
-                httpGet: (url) => toolCall("http_request", { url, method: "GET" }),
-                httpPost: (url, body) => {
+                httpGet: (url, ignoreSsl) => {
+                    const params = { url, method: "GET" };
+                    if (ignoreSsl !== undefined) params.ignore_ssl = ignoreSsl ? "true" : "false";
+                    return toolCall("http_request", params);
+                },
+                httpPost: (url, body, ignoreSsl) => {
                     const params = { url, method: "POST", body };
                     if (typeof body === 'object') {
                         params.body = JSON.stringify(body);
                     }
+                    if (ignoreSsl !== undefined) params.ignore_ssl = ignoreSsl ? "true" : "false";
                     return toolCall("http_request", params);
                 },
                 visit: (params) => {
@@ -301,6 +306,9 @@ fun getJsToolsDefinition(): String {
                     if (params.headers !== undefined && typeof params.headers === 'object') {
                         params.headers = JSON.stringify(params.headers);
                     }
+                    if (params.ignore_ssl !== undefined && typeof params.ignore_ssl === 'boolean') {
+                        params.ignore_ssl = params.ignore_ssl ? "true" : "false";
+                    }
                     return toolCall("http_request", params);
                 },
                 // 新增文件上传
@@ -312,6 +320,9 @@ fun getJsToolsDefinition(): String {
                     };
                     if (options.headers !== undefined && typeof options.headers === 'object') {
                         params.headers = JSON.stringify(options.headers);
+                    }
+                    if (params.ignore_ssl !== undefined && typeof params.ignore_ssl === 'boolean') {
+                        params.ignore_ssl = params.ignore_ssl ? "true" : "false";
                     }
                     return toolCall("multipart_request", params);
                 },
@@ -562,11 +573,12 @@ fun getJsToolsDefinition(): String {
                     return toolCall("get_memory_by_title", params);
                 },
                 // 创建记忆
-                create: (title, content, contentType, source, folderPath) => {
+                create: (title, content, contentType, source, folderPath, tags) => {
                     const params = { title, content };
                     if (contentType) params.content_type = contentType;
                     if (source) params.source = source;
                     if (folderPath) params.folder_path = folderPath;
+                    if (tags) params.tags = tags;
                     return toolCall("create_memory", params);
                 },
                 // 更新记忆
@@ -757,6 +769,9 @@ fun getJsToolsDefinition(): String {
                     if (roleCardId) params.role_card_id = roleCardId;
                     if (senderName) params.sender_name = senderName;
                     return toolCall("send_message_to_ai", params);
+                },
+                sendMessageAdvanced: (params = {}) => {
+                    return toolCall("send_message_to_ai_advanced", params);
                 },
                 // 列出所有角色卡
                 listCharacterCards: () => toolCall("list_character_cards", {})

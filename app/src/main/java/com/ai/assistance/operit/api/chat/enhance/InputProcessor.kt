@@ -1,5 +1,8 @@
 package com.ai.assistance.operit.api.chat.enhance
 
+import com.ai.assistance.operit.core.chat.hooks.PromptHookContext
+import com.ai.assistance.operit.core.chat.hooks.PromptHookRegistry
+
 /**
  * Utility class for processing user input
  */
@@ -12,7 +15,22 @@ object InputProcessor {
      * @return The processed input text
      */
     suspend fun processUserInput(input: String): String {
-        // In the future, we could add more sophisticated processing here
-        return input
+        val beforeContext =
+            PromptHookRegistry.dispatchPromptInputHooks(
+                PromptHookContext(
+                    stage = "before_process",
+                    rawInput = input,
+                    processedInput = input
+                )
+            )
+        val processedInput = beforeContext.processedInput ?: beforeContext.rawInput ?: input
+        val afterContext =
+            PromptHookRegistry.dispatchPromptInputHooks(
+                beforeContext.copy(
+                    stage = "after_process",
+                    processedInput = processedInput
+                )
+            )
+        return afterContext.processedInput ?: processedInput
     }
-} 
+}

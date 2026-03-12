@@ -1,9 +1,9 @@
 [OVERALL]
-Total strings found: 1939
-Excluded logs: 1793
+Total strings found: 1989
+Excluded logs: 1841
 Excluded long prompts(>100 chars): 61
-Remaining UI strings: 85
-Files with Chinese strings: 148
+Remaining UI strings: 87
+Files with Chinese strings: 146
 
 [BY MODULE]
 
@@ -46,6 +46,18 @@ FILE: app\src\main\java\com\ai\assistance\operit\ui\features\toolbox\screens\aut
   L207:86 (3 chars) "星期六"
   L234:20 (7 chars) "💭 思考过程:"
   L246:20 (7 chars) "🎯 执行动作:"
+
+FILE: app\src\main\java\com\ai\assistance\operit\api\chat\library\ProblemLibrary.kt
+  remaining=9 total=58 excluded_logs=49 excluded_long=0
+  L599:24 (50 chars) "(?s)问题\\s*[：:]\\s*(.+?)(?:\\n\\s*解决方案\\s*[：:]|\\z)"
+  L619:52 (5 chars) "历史记录:"
+  L867:30 (54 chars) "(出生日期|出生年月日|Birth Date|Date of Birth)[:：\\s]+([\\d-]+)"
+  L868:30 (38 chars) "(出生年份|年龄|Birth year|Age)[:：\\s]+(\\d+)"
+  L869:27 (26 chars) "(性别|Gender)[:：\\s]+([^;]+)"
+  L870:32 (46 chars) "(性格(特点)?|Personality( traits)?)[:：\\s]+([^;]+)"
+  L871:29 (48 chars) "(身份(认同)?|Identity( recognition)?)[:：\\s]+([^;]+)"
+  L872:31 (30 chars) "(职业|Occupation)[:：\\s]+([^;]+)"
+  L873:28 (83 chars) "(AI风格|期待的AI风格|偏好的AI风格|AI Style|Expected AI Style|Preferred AI Style)[:：\\s]+([^;]+)"
 
 FILE: app\src\main\java\com\ai\assistance\operit\ui\features\token\preferences\UrlConfigManager.kt
   remaining=9 total=9 excluded_logs=0 excluded_long=0
@@ -92,16 +104,6 @@ FILE: app\src\main\java\com\ai\assistance\operit\ui\features\toolbox\screens\log
   L26:12 (2 chars) "静默"
   L27:13 (2 chars) "未知"
 
-FILE: app\src\main\java\com\ai\assistance\operit\api\chat\library\ProblemLibrary.kt
-  remaining=7 total=52 excluded_logs=45 excluded_long=0
-  L757:30 (54 chars) "(出生日期|出生年月日|Birth Date|Date of Birth)[:：\\s]+([\\d-]+)"
-  L758:30 (38 chars) "(出生年份|年龄|Birth year|Age)[:：\\s]+(\\d+)"
-  L759:27 (26 chars) "(性别|Gender)[:：\\s]+([^;]+)"
-  L760:32 (46 chars) "(性格(特点)?|Personality( traits)?)[:：\\s]+([^;]+)"
-  L761:29 (48 chars) "(身份(认同)?|Identity( recognition)?)[:：\\s]+([^;]+)"
-  L762:31 (30 chars) "(职业|Occupation)[:：\\s]+([^;]+)"
-  L763:28 (83 chars) "(AI风格|期待的AI风格|偏好的AI风格|AI Style|Expected AI Style|Preferred AI Style)[:：\\s]+([^;]+)"
-
 FILE: app\src\main\java\com\ai\assistance\operit\data\converter\GenericJsonConverter.kt
   remaining=3 total=3 excluded_logs=0 excluded_long=0
   L203:30 (2 chars) "用户"
@@ -137,5 +139,5 @@ FILE: app\src\main\java\com\ai\assistance\operit\data\converter\ChatFormatDetect
 
 FILE: app\src\main\java\com\ai\assistance\operit\ui\features\workflow\viewmodel\WorkflowViewModel.kt
   remaining=1 total=1 excluded_logs=0 excluded_long=0
-  L915:30 (24 chars) ".*(打开|启动).*(对话|聊天|悬浮窗).*"
+  L923:30 (24 chars) ".*(打开|启动).*(对话|聊天|悬浮窗).*"
 

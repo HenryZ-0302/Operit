@@ -21,7 +21,8 @@
                 { "name": "method", "description": { "zh": "请求方法：GET/POST/PUT/DELETE", "en": "Method: GET/POST/PUT/DELETE" }, "type": "string", "required": true },
                 { "name": "headers", "description": { "zh": "可选：headers（JSON 对象字符串）", "en": "Optional: headers (JSON object string)" }, "type": "string", "required": false },
                 { "name": "body", "description": { "zh": "可选：请求体（字符串）", "en": "Optional: body (string)" }, "type": "string", "required": false },
-                { "name": "body_type", "description": { "zh": "可选：json/form/text/xml", "en": "Optional: json/form/text/xml" }, "type": "string", "required": false }
+                { "name": "body_type", "description": { "zh": "可选：json/form/text/xml", "en": "Optional: json/form/text/xml" }, "type": "string", "required": false },
+                { "name": "ignore_ssl", "description": { "zh": "可选：是否忽略 HTTPS 证书校验（true/false）", "en": "Optional: ignore HTTPS certificate verification (true/false)" }, "type": "boolean", "required": false }
             ]
         },
         {
@@ -32,7 +33,8 @@
                 { "name": "method", "description": { "zh": "请求方法：POST/PUT", "en": "Method: POST/PUT" }, "type": "string", "required": true },
                 { "name": "headers", "description": { "zh": "可选：headers（JSON 对象字符串）", "en": "Optional: headers (JSON object string)" }, "type": "string", "required": false },
                 { "name": "form_data", "description": { "zh": "可选：form_data（字符串）", "en": "Optional: form_data (string)" }, "type": "string", "required": false },
-                { "name": "files", "description": { "zh": "可选：files（JSON 数组字符串）", "en": "Optional: files (JSON array string)" }, "type": "string", "required": false }
+                { "name": "files", "description": { "zh": "可选：files（JSON 数组字符串）", "en": "Optional: files (JSON array string)" }, "type": "string", "required": false },
+                { "name": "ignore_ssl", "description": { "zh": "可选：是否忽略 HTTPS 证书校验（true/false）", "en": "Optional: ignore HTTPS certificate verification (true/false)" }, "type": "boolean", "required": false }
             ]
         },
         {
@@ -59,6 +61,8 @@ const ExtendedHttpTools = (function () {
             toolParams.body = params.body;
         if (params.body_type !== undefined)
             toolParams.body_type = params.body_type;
+        if (params.ignore_ssl !== undefined)
+            toolParams.ignore_ssl = params.ignore_ssl;
         const result = await toolCall({ name: "http_request", params: toolParams });
         const success = result.statusCode >= 200 && result.statusCode < 400;
         const contentStr = typeof (result === null || result === void 0 ? void 0 : result.content) === "string" ? result.content : "";
@@ -108,6 +112,8 @@ const ExtendedHttpTools = (function () {
             toolParams.form_data = params.form_data;
         if (params.files !== undefined)
             toolParams.files = params.files;
+        if (params.ignore_ssl !== undefined)
+            toolParams.ignore_ssl = params.ignore_ssl;
         const result = await toolCall({ name: "multipart_request", params: toolParams });
         const success = result.statusCode >= 200 && result.statusCode < 400;
         return { success, message: '文件上传完成', data: result };

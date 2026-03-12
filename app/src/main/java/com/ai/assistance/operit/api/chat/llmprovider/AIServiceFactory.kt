@@ -105,7 +105,8 @@ object AIServiceFactory {
                     enableToolCall = enableToolCall
                 )
 
-            ApiProviderType.OPENAI_RESPONSES ->
+            ApiProviderType.OPENAI_RESPONSES,
+            ApiProviderType.OPENAI_RESPONSES_GENERIC ->
                 OpenAIResponsesProvider(
                     apiEndpoint = config.apiEndpoint,
                     apiKeyProvider = apiKeyProvider,
@@ -357,6 +358,19 @@ object AIServiceFactory {
                 )
             ApiProviderType.DOUBAO ->
                 DoubaoAIProvider(
+                    apiEndpoint = config.apiEndpoint,
+                    apiKeyProvider = apiKeyProvider,
+                    modelName = config.modelName,
+                    client = httpClient,
+                    customHeaders = customHeaders,
+                    providerType = config.apiProviderType,
+                    supportsVision = supportsVision,
+                    supportsAudio = supportsAudio,
+                    supportsVideo = supportsVideo,
+                    enableToolCall = enableToolCall
+                )
+            ApiProviderType.NVIDIA ->
+                NvidiaAIProvider(
                     apiEndpoint = config.apiEndpoint,
                     apiKeyProvider = apiKeyProvider,
                     modelName = config.modelName,

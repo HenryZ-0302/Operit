@@ -7,6 +7,9 @@ import com.ai.assistance.operit.util.AppLogger
 import android.view.WindowManager
 import com.ai.assistance.operit.api.chat.AIForegroundService
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.plugins.lifecycle.AppLifecycleEvent
+import com.ai.assistance.operit.plugins.lifecycle.AppLifecycleHookParams
+import com.ai.assistance.operit.plugins.lifecycle.AppLifecycleHookPluginRegistry
 import com.ai.assistance.operit.ui.common.displays.VirtualDisplayOverlay
 import com.ai.assistance.operit.core.tools.agent.ShowerController
 import kotlinx.coroutines.CoroutineScope
@@ -26,8 +29,11 @@ object ActivityLifecycleManager : Application.ActivityLifecycleCallbacks {
     private const val TAG = "ActivityLifecycleManager"
     private var currentActivity: WeakReference<Activity>? = null
     private lateinit var apiPreferences: ApiPreferences
+    private lateinit var appContext: android.content.Context
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var activityCount = 0
+    private var startedActivityCount = 0
+    private var isAppInForeground = false
 
     @Volatile
     private var lastMicEnsureAtMs: Long = 0L
@@ -40,6 +46,7 @@ object ActivityLifecycleManager : Application.ActivityLifecycleCallbacks {
     fun initialize(application: Application) {
         application.registerActivityLifecycleCallbacks(this)
         apiPreferences = ApiPreferences.getInstance(application.applicationContext)
+        appContext = application.applicationContext
     }
 
     /**
@@ -91,10 +98,39 @@ object ActivityLifecycleManager : Application.ActivityLifecycleCallbacks {
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         activityCount++
         AppLogger.d(TAG, "Activity created: ${activity.javaClass.simpleName}, count=$activityCount")
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.ACTIVITY_CREATE,
+            params =
+                AppLifecycleHookParams(
+                    context = appContext,
+                    extras =
+                        mapOf(
+                            "activityClassName" to activity.javaClass.name
+                        )
+                )
+        )
     }
 
     override fun onActivityStarted(activity: Activity) {
-        // Not used, but required by the interface.
+        startedActivityCount += 1
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.ACTIVITY_START,
+            params =
+                AppLifecycleHookParams(
+                    context = appContext,
+                    extras =
+                        mapOf(
+                            "activityClassName" to activity.javaClass.name
+                        )
+                )
+        )
+        if (!isAppInForeground && startedActivityCount > 0) {
+            isAppInForeground = true
+            AppLifecycleHookPluginRegistry.dispatchAsync(
+                event = AppLifecycleEvent.APPLICATION_FOREGROUND,
+                params = AppLifecycleHookParams(context = appContext)
+            )
+        }
     }
 
     override fun onActivityResumed(activity: Activity) {
@@ -109,6 +145,17 @@ object ActivityLifecycleManager : Application.ActivityLifecycleCallbacks {
             }
         } catch (_: Exception) {
         }
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.ACTIVITY_RESUME,
+            params =
+                AppLifecycleHookParams(
+                    context = appContext,
+                    extras =
+                        mapOf(
+                            "activityClassName" to activity.javaClass.name
+                        )
+                )
+        )
     }
 
     override fun onActivityPaused(activity: Activity) {
@@ -116,10 +163,39 @@ object ActivityLifecycleManager : Application.ActivityLifecycleCallbacks {
         if (currentActivity?.get() == activity) {
             currentActivity?.clear()
         }
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.ACTIVITY_PAUSE,
+            params =
+                AppLifecycleHookParams(
+                    context = appContext,
+                    extras =
+                        mapOf(
+                            "activityClassName" to activity.javaClass.name
+                        )
+                )
+        )
     }
 
     override fun onActivityStopped(activity: Activity) {
-        // Not used, but required by the interface.
+        startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.ACTIVITY_STOP,
+            params =
+                AppLifecycleHookParams(
+                    context = appContext,
+                    extras =
+                        mapOf(
+                            "activityClassName" to activity.javaClass.name
+                        )
+                )
+        )
+        if (isAppInForeground && startedActivityCount == 0) {
+            isAppInForeground = false
+            AppLifecycleHookPluginRegistry.dispatchAsync(
+                event = AppLifecycleEvent.APPLICATION_BACKGROUND,
+                params = AppLifecycleHookParams(context = appContext)
+            )
+        }
     }
 
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {
@@ -134,6 +210,17 @@ object ActivityLifecycleManager : Application.ActivityLifecycleCallbacks {
         
         activityCount--
         AppLogger.d(TAG, "Activity destroyed: ${activity.javaClass.simpleName}, count=$activityCount")
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.ACTIVITY_DESTROY,
+            params =
+                AppLifecycleHookParams(
+                    context = appContext,
+                    extras =
+                        mapOf(
+                            "activityClassName" to activity.javaClass.name
+                        )
+                )
+        )
         
         // 当最后一个 Activity 被销毁时（包括从最近任务列表滑动关闭），清理虚拟屏幕和 Shower 连接
         if (activityCount <= 0) {

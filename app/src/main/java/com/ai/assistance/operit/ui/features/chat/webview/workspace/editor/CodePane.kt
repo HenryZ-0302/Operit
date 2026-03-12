@@ -47,6 +47,7 @@ class CodePane : HVScrollView, View.OnTouchListener, ScaleGestureDetector.OnScal
     private fun init() {
         // 启用垂直滚动条
         isVerticalScrollBarEnabled = true
+        isHorizontalScrollBarEnabled = true
         
         // 设置布局参数
         val params = ViewGroup.LayoutParams(

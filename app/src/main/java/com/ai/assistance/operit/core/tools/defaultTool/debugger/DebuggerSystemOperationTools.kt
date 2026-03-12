@@ -146,6 +146,14 @@ open class DebuggerSystemOperationTools(context: Context) :
             )
         }
 
+        if (DebuggerFileSystemTools.isOperitInternalPath(apkPath)) {
+            AppLogger.d(
+                TAG,
+                "installApp detected Operit internal path, delegating to AccessibilitySystemOperationTools"
+            )
+            return super.installApp(tool)
+        }
+
         val existsResult =
             AndroidShellExecutor.executeShellCommand(
                 "test -f $apkPath && echo 'exists' || echo 'not exists'"

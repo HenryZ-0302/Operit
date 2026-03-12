@@ -281,7 +281,7 @@ class NativeCodeEditor : ViewGroup {
         
         // 如果是从外部更新（如加载文件），手动触发代码解析以显示高亮
         if (fromUpdate) {
-            codeText.triggerParse()
+            codeText.triggerParse(immediate = true)
         }
     }
 

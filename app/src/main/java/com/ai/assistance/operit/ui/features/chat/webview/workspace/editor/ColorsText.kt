@@ -17,8 +17,10 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatEditText
+import com.ai.assistance.operit.ui.features.chat.webview.workspace.editor.language.LanguageSupport
 import java.lang.reflect.Field
 import java.lang.reflect.Method
+import kotlin.math.ceil
 import java.util.HashMap
 import com.ai.assistance.operit.util.AppLogger
 
@@ -46,7 +48,7 @@ open class ColorsText : AppCompatEditText {
     private var mLineNumberBgStrokeWidth = 0
     
     // 颜色配置
-    private var defaultTextColor = 0xffffffff.toInt()
+    private var defaultTextColor = LanguageSupport.DEFAULT_COLOR
     private var lineNumberColor = 0x99ffffff.toInt()
     private var lineNumberBackgroundColor = 0x99ffffff.toInt()
     private var lineNumberSplitColor = 0x99ffffff.toInt()
@@ -197,8 +199,8 @@ open class ColorsText : AppCompatEditText {
             DpiUtils.dip2px(context, 48f)
         )
         
-        // 禁用水平滚动，启用自动换行
-        setHorizontallyScrolling(false)
+        // 启用水平滚动，禁用自动换行
+        setHorizontallyScrolling(true)
     }
     
     /**
@@ -527,7 +529,7 @@ open class ColorsText : AppCompatEditText {
                 val indentLevels = indentCount / 4
                 if (indentLevels > 0) {
                     val spaceWidth = paint.measureText(" ")
-                    paint.color = 0x80FFFFFF.toInt() // 增强透明度，使虚线更明显
+                    paint.color = 0x45FFFFFF.toInt()
                     paint.strokeWidth = 2f // 增加线宽
                     paint.style = Paint.Style.STROKE
                     
@@ -729,8 +731,9 @@ open class ColorsText : AppCompatEditText {
         
         // 计算内容高度（行数 * 行高）+ padding，确保可以滚动到底部
         fixedHeight = (lineCount + 1) * lineHeight + paddingTop + paddingBottom
-        // 固定宽度为父容器宽度，禁用横向滚动
-        fixedWidth = specSizeW
+        // 禁用自动换行后，按原始文本逐行测量最大宽度，确保可横向滚动
+        val contentWidth = calculateRawTextMaxWidth(text) + paddingLeft + paddingRight + mTextPadding
+        fixedWidth = specSizeW.coerceAtLeast(contentWidth)
         fixedHeight = fixedHeight.coerceAtLeast(specSizeH)
         
         // 初始化可视行范围
@@ -772,6 +775,33 @@ open class ColorsText : AppCompatEditText {
             return 0
         }
         return Math.ceil(max.toDouble()).toInt()
+    }
+
+    /**
+     * 计算原始文本中最长逻辑行的像素宽度（不依赖已布局结果，避免被当前宽度限制）
+     */
+    private fun calculateRawTextMaxWidth(content: CharSequence?): Int {
+        if (content.isNullOrEmpty()) return 0
+
+        var maxWidth = 0f
+        var lineStart = 0
+        val length = content.length
+
+        for (i in 0..length) {
+            if (i == length || content[i] == '\n') {
+                val lineWidth = if (i > lineStart) {
+                    paint.measureText(content, lineStart, i)
+                } else {
+                    0f
+                }
+                if (lineWidth > maxWidth) {
+                    maxWidth = lineWidth
+                }
+                lineStart = i + 1
+            }
+        }
+
+        return ceil(maxWidth.toDouble()).toInt()
     }
     
     override fun getLineCount(): Int {

@@ -63,31 +63,52 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                 if (typeof OperitComposeDslRuntime === 'undefined') {
                     throw new Error('OperitComposeDslRuntime bridge is not initialized');
                 }
-                var __bundle = OperitComposeDslRuntime.createContext(__runtimeOptions || {});
+                var __root = typeof globalThis !== 'undefined'
+                    ? globalThis
+                    : (typeof window !== 'undefined' ? window : this);
+                var __activeCallRuntime =
+                    typeof __root.__operit_call_runtime_ref === 'object' && __root.__operit_call_runtime_ref
+                        ? __root.__operit_call_runtime_ref
+                        : null;
+                var __options = __runtimeOptions && typeof __runtimeOptions === 'object'
+                    ? Object.assign({}, __runtimeOptions)
+                    : {};
+                if (__activeCallRuntime) {
+                    __options.__operit_call_runtime = __activeCallRuntime;
+                }
+                var __bundle = OperitComposeDslRuntime.createContext(__options);
                 var __entry = __operitResolveComposeEntry();
                 if (typeof __entry !== 'function') {
                     throw new Error(
                         'compose_dsl entry function not found, expected default export or Screen function'
                     );
                 }
-                if (typeof window !== 'undefined') {
-                    window.__operit_compose_bundle = __bundle;
-                    window.__operit_compose_entry = __entry;
+                if (__activeCallRuntime && typeof __bundle.setCallRuntime === 'function') {
+                    __bundle.setCallRuntime(__activeCallRuntime);
                 }
+                __root.__operit_compose_bundle = __bundle;
+                __root.__operit_compose_entry = __entry;
                 return __operit_build_compose_response(__bundle, __entry);
             }
 
             function __operit_dispatch_compose_dsl_action(__actionRequest) {
-                if (typeof window === 'undefined') {
-                    throw new Error('compose action dispatch requires window runtime');
-                }
-                var __bundle = window.__operit_compose_bundle;
-                var __entry = window.__operit_compose_entry;
+                var __root = typeof globalThis !== 'undefined'
+                    ? globalThis
+                    : (typeof window !== 'undefined' ? window : this);
+                var __bundle = __root.__operit_compose_bundle;
+                var __entry = __root.__operit_compose_entry;
                 if (!__bundle || typeof __entry !== 'function') {
                     throw new Error('compose_dsl runtime is not initialized, render first');
                 }
                 if (typeof __bundle.invokeAction !== 'function') {
                     throw new Error('compose_dsl runtime action bridge is not available');
+                }
+                var __activeCallRuntime =
+                    typeof __root.__operit_call_runtime_ref === 'object' && __root.__operit_call_runtime_ref
+                        ? __root.__operit_call_runtime_ref
+                        : null;
+                if (__activeCallRuntime && typeof __bundle.setCallRuntime === 'function') {
+                    __bundle.setCallRuntime(__activeCallRuntime);
                 }
 
                 var __request =
@@ -105,16 +126,18 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                     Object.prototype.hasOwnProperty.call(__request, '__action_payload')
                         ? __request.__action_payload
                         : __request.payload;
+                var __noRender =
+                    __payload &&
+                    typeof __payload === 'object' &&
+                    (__payload.__no_render === true ||
+                        __payload.__noRender === true ||
+                        __payload.__local === true);
 
                 function __operit_send_intermediate_result(__value) {
-                    if (
-                        typeof NativeInterface === 'undefined' ||
-                        !NativeInterface ||
-                        typeof NativeInterface.sendIntermediateResult !== 'function'
-                    ) {
+                    if (typeof sendIntermediateResult !== 'function') {
                         return;
                     }
-                    NativeInterface.sendIntermediateResult(JSON.stringify(__value));
+                    sendIntermediateResult(__value);
                 }
 
                 var __actionSettled = false;
@@ -192,9 +215,11 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                 }
 
                 if (typeof __bundle.subscribeStateChange === 'function') {
-                    __unsubscribeStateChange = __bundle.subscribeStateChange(function() {
-                        __operit_schedule_intermediate_render();
-                    });
+                    if (!__noRender) {
+                        __unsubscribeStateChange = __bundle.subscribeStateChange(function() {
+                            __operit_schedule_intermediate_render();
+                        });
+                    }
                 }
 
                 var __maybePromise;
@@ -205,11 +230,16 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                     throw __actionError;
                 }
                 if (__maybePromise && typeof __maybePromise.then === 'function') {
-                    // For async actions, schedule a render checkpoint immediately.
-                    // Additional state updates during await phases are pushed by state-change listeners.
-                    __operit_schedule_intermediate_render();
+                    if (!__noRender) {
+                        // For async actions, schedule a render checkpoint immediately.
+                        // Additional state updates during await phases are pushed by state-change listeners.
+                        __operit_schedule_intermediate_render();
+                    }
                     return __maybePromise.then(function() {
                         __operit_finalize_action();
+                        if (__noRender) {
+                            return null;
+                        }
                         return __operit_build_compose_response(__bundle, __entry);
                     }, function(__actionError) {
                         __operit_finalize_action();
@@ -217,6 +247,9 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                     });
                 }
                 __operit_finalize_action();
+                if (__noRender) {
+                    return null;
+                }
                 return __operit_build_compose_response(__bundle, __entry);
             }
 
@@ -230,11 +263,12 @@ internal fun buildComposeDslRuntimeWrappedScript(script: String): String {
                 module.exports.__operit_dispatch_compose_dsl_action =
                     __operit_dispatch_compose_dsl_action;
             }
-            if (typeof window !== 'undefined') {
-                window.__operit_render_compose_dsl = __operit_render_compose_dsl;
-                window.__operit_dispatch_compose_dsl_action =
-                    __operit_dispatch_compose_dsl_action;
-            }
+            var __root = typeof globalThis !== 'undefined'
+                ? globalThis
+                : (typeof window !== 'undefined' ? window : this);
+            __root.__operit_render_compose_dsl = __operit_render_compose_dsl;
+            __root.__operit_dispatch_compose_dsl_action =
+                __operit_dispatch_compose_dsl_action;
         })();
     """.trimIndent()
 }

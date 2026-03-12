@@ -1,5 +1,7 @@
 package com.ai.assistance.operit.core.config
 
+import com.ai.assistance.operit.core.chat.hooks.PromptHookContext
+import com.ai.assistance.operit.core.chat.hooks.PromptHookRegistry
 import com.ai.assistance.operit.data.model.SystemToolPromptCategory
 import com.ai.assistance.operit.data.model.ToolPrompt
 import com.ai.assistance.operit.data.model.ToolParameterSchema
@@ -711,6 +713,33 @@ object SystemToolPrompts {
             ?.toString()
             .orEmpty()
     }
+
+    private fun buildToolHookPayload(
+        categories: List<SystemToolPromptCategory>
+    ): List<Map<String, Any?>> {
+        return categories.flatMap { category ->
+            category.tools.map { tool ->
+                mapOf(
+                    "categoryName" to category.categoryName,
+                    "name" to tool.name,
+                    "description" to tool.description,
+                    "parameters" to tool.parameters,
+                    "details" to tool.details,
+                    "notes" to tool.notes,
+                    "parametersStructured" to
+                        tool.parametersStructured.orEmpty().map { parameter ->
+                            mapOf(
+                                "name" to parameter.name,
+                                "type" to parameter.type,
+                                "description" to parameter.description,
+                                "required" to parameter.required,
+                                "default" to parameter.default
+                            )
+                        }
+                )
+            }
+        }
+    }
     
     /**
      * 生成完整的工具提示词文本（英文）
@@ -748,8 +777,45 @@ object SystemToolPrompts {
             )
                 .filter { it.categoryName != "Memory and Memory Library Tools" }
         }
-
-        return applyToolVisibility(categories, toolVisibility).joinToString("\n\n") { it.toString() }
+        val availableTools = buildToolHookPayload(categories)
+        val beforeContext =
+            PromptHookRegistry.dispatchToolPromptComposeHooks(
+                PromptHookContext(
+                    stage = "before_compose_tool_prompt",
+                    useEnglish = true,
+                    availableTools = availableTools,
+                    metadata =
+                        mapOf(
+                            "includeMemoryTools" to includeMemoryTools,
+                            "hasBackendImageRecognition" to hasBackendImageRecognition,
+                            "chatModelHasDirectImage" to chatModelHasDirectImage,
+                            "hasBackendAudioRecognition" to hasBackendAudioRecognition,
+                            "hasBackendVideoRecognition" to hasBackendVideoRecognition,
+                            "chatModelHasDirectAudio" to chatModelHasDirectAudio,
+                            "chatModelHasDirectVideo" to chatModelHasDirectVideo,
+                            "safBookmarkNames" to safBookmarkNames,
+                            "toolVisibility" to toolVisibility
+                        )
+                )
+            )
+        var prompt = beforeContext.toolPrompt
+            ?: applyToolVisibility(categories, toolVisibility).joinToString("\n\n") { it.toString() }
+        val filterContext =
+            PromptHookRegistry.dispatchToolPromptComposeHooks(
+                beforeContext.copy(
+                    stage = "filter_tool_prompt_items",
+                    toolPrompt = prompt
+                )
+            )
+        prompt = filterContext.toolPrompt ?: prompt
+        val afterContext =
+            PromptHookRegistry.dispatchToolPromptComposeHooks(
+                filterContext.copy(
+                    stage = "after_compose_tool_prompt",
+                    toolPrompt = prompt
+                )
+            )
+        return afterContext.toolPrompt ?: prompt
     }
     
     /**
@@ -788,7 +854,44 @@ object SystemToolPrompts {
             )
                 .filter { it.categoryName != "记忆与记忆库工具" }
         }
-
-        return applyToolVisibility(categories, toolVisibility).joinToString("\n\n") { it.toString() }
+        val availableTools = buildToolHookPayload(categories)
+        val beforeContext =
+            PromptHookRegistry.dispatchToolPromptComposeHooks(
+                PromptHookContext(
+                    stage = "before_compose_tool_prompt",
+                    useEnglish = false,
+                    availableTools = availableTools,
+                    metadata =
+                        mapOf(
+                            "includeMemoryTools" to includeMemoryTools,
+                            "hasBackendImageRecognition" to hasBackendImageRecognition,
+                            "chatModelHasDirectImage" to chatModelHasDirectImage,
+                            "hasBackendAudioRecognition" to hasBackendAudioRecognition,
+                            "hasBackendVideoRecognition" to hasBackendVideoRecognition,
+                            "chatModelHasDirectAudio" to chatModelHasDirectAudio,
+                            "chatModelHasDirectVideo" to chatModelHasDirectVideo,
+                            "safBookmarkNames" to safBookmarkNames,
+                            "toolVisibility" to toolVisibility
+                        )
+                )
+            )
+        var prompt = beforeContext.toolPrompt
+            ?: applyToolVisibility(categories, toolVisibility).joinToString("\n\n") { it.toString() }
+        val filterContext =
+            PromptHookRegistry.dispatchToolPromptComposeHooks(
+                beforeContext.copy(
+                    stage = "filter_tool_prompt_items",
+                    toolPrompt = prompt
+                )
+            )
+        prompt = filterContext.toolPrompt ?: prompt
+        val afterContext =
+            PromptHookRegistry.dispatchToolPromptComposeHooks(
+                filterContext.copy(
+                    stage = "after_compose_tool_prompt",
+                    toolPrompt = prompt
+                )
+            )
+        return afterContext.toolPrompt ?: prompt
     }
 }

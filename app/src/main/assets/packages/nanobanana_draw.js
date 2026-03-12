@@ -24,7 +24,8 @@
       },
       "parameters": [
         { "name": "prompt", "description": { "zh": "绘图提示词（英文或中文皆可）", "en": "Image prompt (Chinese or English)" }, "type": "string", "required": true },
-        { "name": "model", "description": { "zh": "Nano Banana 模型名称，默认 nano-banana-pro", "en": "Nano Banana model name (default: nano-banana-pro)" }, "type": "string", "required": false },
+        { "name": "model", "description": { "zh": "Nano Banana 模型名称（优先级最高）。可填 nano-banana-pro（约1800积分）或 nano-banana（约400积分）", "en": "Nano Banana model name (highest priority). e.g. nano-banana-pro (~1800 credits) or nano-banana (~400 credits)." }, "type": "string", "required": false },
+        { "name": "model_variant", "description": { "zh": "模型档位（二选一，可选）：pro（约1800积分）或 nano（约400积分）。未传时默认 pro", "en": "Model tier (optional): pro (~1800 credits) or nano (~400 credits). Defaults to pro." }, "type": "string", "required": false },
         { "name": "aspect_ratio", "description": { "zh": "输出图像比例，如 '1:1', '16:9', 'auto' 等，可选", "en": "Output aspect ratio, e.g. '1:1', '16:9', 'auto' (optional)" }, "type": "string", "required": false },
         { "name": "image_size", "description": { "zh": "输出图像大小，仅 nano-banana-pro 支持，如 '1K', '2K', '4K'，可选", "en": "Output image size (only supported by nano-banana-pro), e.g. '1K', '2K', '4K' (optional)" }, "type": "string", "required": false },
         { "name": "image_urls", "description": { "zh": "参考图URL数组（图生图），支持格式：字符串数组['https://...'] 或 JSON字符串'[\"https://...\"]' 或逗号分隔'url1,url2'，可选", "en": "Reference image URL list for img2img. Accepts: string array ['https://...'], or JSON string '[\"https://...\"]', or comma-separated 'url1,url2' (optional)." }, "type": "array", "required": false },
@@ -47,7 +48,9 @@ const nanobananaDraw = (function () {
     // API配置
     const API_ENDPOINT = "https://grsai.dakka.com.cn/v1/draw/nano-banana";
     const RESULT_ENDPOINT = "https://grsai.dakka.com.cn/v1/draw/result";
-    const DEFAULT_MODEL = "nano-banana-pro";
+    const MODEL_PRO = "nano-banana-pro";
+    const MODEL_NANO = "nano-banana";
+    const DEFAULT_MODEL = MODEL_PRO;
     // Android 实际路径为 /sdcard/Download，对应系统中文名"下载"
     const DOWNLOAD_ROOT = "/sdcard/Download";
     const OPERIT_DIR = `${DOWNLOAD_ROOT}/Operit`;
@@ -67,6 +70,22 @@ const nanobananaDraw = (function () {
         if (error instanceof Error)
             return error.stack;
         return undefined;
+    }
+    function resolveModel(model, modelVariant) {
+        if (model && model.trim().length > 0) {
+            return model.trim();
+        }
+        if (!modelVariant || modelVariant.trim().length === 0) {
+            return DEFAULT_MODEL;
+        }
+        const normalizedVariant = modelVariant.trim().toLowerCase();
+        if (normalizedVariant === "pro") {
+            return MODEL_PRO;
+        }
+        if (normalizedVariant === "nano") {
+            return MODEL_NANO;
+        }
+        throw new Error("参数 model_variant 仅支持 'pro' 或 'nano'。");
     }
     function normalizePositiveInt(value, fallback) {
         if (value === undefined || value === null) {
@@ -190,12 +209,9 @@ const nanobananaDraw = (function () {
     async function callNanobananaApi(params) {
         var _a, _b;
         const apiKey = getApiKey();
-        const model = (params.model && params.model.trim().length > 0)
-            ? params.model.trim()
-            : DEFAULT_MODEL;
         // 构建请求体 - 使用异步模式（webHook: "-1"）
         const body = {
-            model: model,
+            model: params.model,
             prompt: params.prompt,
             webHook: "-1", // 关键：立即返回任务ID
             shutProgress: false
@@ -326,6 +342,10 @@ const nanobananaDraw = (function () {
             throw new Error("参数 prompt 不能为空。");
         }
         const prompt = params.prompt.trim();
+        const resolvedModel = resolveModel(params.model, params.model_variant);
+        if (params.image_size && params.image_size.trim().length > 0 && resolvedModel !== MODEL_PRO) {
+            throw new Error("参数 image_size 仅支持 pro 模型（model_variant='pro' 或 model='nano-banana-pro'）。");
+        }
         const pollIntervalMs = normalizePositiveInt(params.poll_interval_ms, POLL_INTERVAL);
         const normalizedImageSize = params.image_size ? params.image_size.trim().toUpperCase() : "";
         const defaultMaxWaitTimeMs = normalizedImageSize === "4K" ? 600000 : MAX_WAIT_TIME;
@@ -408,7 +428,7 @@ const nanobananaDraw = (function () {
         // 步骤1: 提交任务并获取任务ID
         const taskId = await callNanobananaApi({
             prompt,
-            model: params.model,
+            model: resolvedModel,
             aspect_ratio: params.aspect_ratio,
             image_size: params.image_size,
             image_urls: imageUrlsArray,
@@ -438,7 +458,7 @@ const nanobananaDraw = (function () {
             file_uri: fileUri,
             markdown,
             prompt,
-            model: params.model || DEFAULT_MODEL,
+            model: resolvedModel,
             aspect_ratio: params.aspect_ratio,
             image_size: params.image_size,
             image_urls: params.image_urls,

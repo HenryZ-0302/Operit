@@ -32,7 +32,6 @@ enum class MarkdownProcessorType {
     BLOCK_LATEX, // LaTeX块级公式
     TABLE, // 表格支持
     XML_BLOCK, // XML块级元素
-    PLAN_EXECUTION, // 计划执行块
  
     // 内联处理器
     BOLD,
@@ -101,7 +100,6 @@ object NestedMarkdownProcessor {
     /** 块级插件列表 */
     fun getBlockPlugins(): List<StreamPlugin> =
             listOf(
-                    StreamPlanExecutionPlugin(includeTagsInOutput = true), // 计划执行插件，优先级最高
                     StreamMarkdownHeaderPlugin(),
                     StreamMarkdownFencedCodeBlockPlugin(),
                     StreamMarkdownBlockQuotePlugin(includeMarker = false),
@@ -137,7 +135,6 @@ object NestedMarkdownProcessor {
     /** 根据插件获取对应的Markdown处理器类型 */
     internal fun getTypeForPlugin(plugin: StreamPlugin?): MarkdownProcessorType {
         return when (plugin) {
-            is StreamPlanExecutionPlugin -> MarkdownProcessorType.PLAN_EXECUTION
             is StreamMarkdownHeaderPlugin -> MarkdownProcessorType.HEADER
             is StreamMarkdownBlockQuotePlugin -> MarkdownProcessorType.BLOCK_QUOTE
             is StreamMarkdownFencedCodeBlockPlugin -> MarkdownProcessorType.CODE_BLOCK

@@ -2,6 +2,10 @@ package com.ai.assistance.operit.api.chat.enhance
 
 import android.content.Context
 import com.ai.assistance.operit.util.AppLogger
+import com.ai.assistance.operit.core.chat.hooks.PromptHookContext
+import com.ai.assistance.operit.core.chat.hooks.PromptHookRegistry
+import com.ai.assistance.operit.core.chat.hooks.toPromptMessages
+import com.ai.assistance.operit.core.chat.hooks.toRoleContentPairs
 import com.ai.assistance.operit.core.config.SystemPromptConfig
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.tools.AIToolHandler
@@ -235,6 +239,7 @@ class ConversationService(
             enableMemoryQuery: Boolean = true,
             roleCardId: String? = null,
             enableGroupOrchestrationHint: Boolean = false,
+            groupParticipantNamesText: String? = null,
             proxySenderName: String? = null,
             hasImageRecognition: Boolean = false,
             hasAudioRecognition: Boolean = false,
@@ -245,10 +250,41 @@ class ConversationService(
             strictToolCall: Boolean = false,
             chatModelHasDirectImage: Boolean = false
     ): List<Pair<String, String>> {
+        val beforeContext =
+            PromptHookRegistry.dispatchPromptHistoryHooks(
+                PromptHookContext(
+                    stage = "before_prepare_history",
+                    promptFunctionType = promptFunctionType.name,
+                    processedInput = processedInput,
+                    chatHistory = chatHistory.toPromptMessages(),
+                    metadata =
+                        mapOf(
+                            "workspacePath" to workspacePath,
+                            "workspaceEnv" to workspaceEnv,
+                            "thinkingGuidance" to thinkingGuidance,
+                            "customSystemPromptTemplate" to customSystemPromptTemplate,
+                            "enableMemoryQuery" to enableMemoryQuery,
+                            "roleCardId" to roleCardId,
+                            "enableGroupOrchestrationHint" to enableGroupOrchestrationHint,
+                            "groupParticipantNamesText" to groupParticipantNamesText,
+                            "proxySenderName" to proxySenderName,
+                            "hasImageRecognition" to hasImageRecognition,
+                            "hasAudioRecognition" to hasAudioRecognition,
+                            "hasVideoRecognition" to hasVideoRecognition,
+                            "chatModelHasDirectAudio" to chatModelHasDirectAudio,
+                            "chatModelHasDirectVideo" to chatModelHasDirectVideo,
+                            "useToolCallApi" to useToolCallApi,
+                            "strictToolCall" to strictToolCall,
+                            "chatModelHasDirectImage" to chatModelHasDirectImage
+                        )
+                )
+            )
+        val effectiveChatHistory = beforeContext.chatHistory.toRoleContentPairs()
         val preparedHistory = mutableListOf<Pair<String, String>>()
+        var resolvedUseEnglish: Boolean? = null
         conversationMutex.withLock {
             // Add system prompt if not already present
-            if (!chatHistory.any { it.first == "system" }) {
+            if (!effectiveChatHistory.any { it.first == "system" }) {
                 val safeProxySenderName = proxySenderName?.takeIf { it.isNotBlank() }
 
                 val preferencesText = if (safeProxySenderName == null) {
@@ -295,6 +331,7 @@ class ConversationService(
                 }.getOrElse { emptyList() }
 
                 val useEnglish = LocaleUtils.getCurrentLanguage(context).lowercase().startsWith("en")
+                resolvedUseEnglish = useEnglish
 
                 // 获取系统提示词，现在传入workspacePath和识图配置状态
                 val systemPrompt = SystemPromptConfig.getSystemPromptWithCustomPrompts(
@@ -320,7 +357,8 @@ class ConversationService(
                     toolVisibility = toolPromptVisibility,
                     enableGroupOrchestrationHint = enableGroupOrchestrationHint,
                     groupOrchestrationRoleName = activeCard?.name?.takeIf { it.isNotBlank() }
-                        ?: context.getString(R.string.app_name)
+                        ?: context.getString(R.string.app_name),
+                    groupParticipantNamesText = groupParticipantNamesText.orEmpty()
                 )
 
                 // 构建waifu特殊规则
@@ -350,7 +388,7 @@ class ConversationService(
             }
 
             // Process each message in chat history
-            chatHistory.forEachIndexed { index, message ->
+            effectiveChatHistory.forEachIndexed { index, message ->
                 val role = message.first
                 val content = message.second
 
@@ -359,7 +397,7 @@ class ConversationService(
                     val xmlTags = splitXmlTag(content)
                     if (xmlTags.isNotEmpty()) {
                         // Process the message with tool results
-                        processChatMessageWithTools(content, xmlTags, preparedHistory, index, chatHistory.size)
+                        processChatMessageWithTools(content, xmlTags, preparedHistory, index, effectiveChatHistory.size)
                     } else {
                         // Add the message as is
                         preparedHistory.add(message)
@@ -370,7 +408,15 @@ class ConversationService(
                 }
             }
         }
-        return preparedHistory
+        val afterContext =
+            PromptHookRegistry.dispatchPromptHistoryHooks(
+                beforeContext.copy(
+                    stage = "after_prepare_history",
+                    useEnglish = resolvedUseEnglish,
+                    preparedHistory = preparedHistory.toPromptMessages()
+                )
+            )
+        return afterContext.preparedHistory.toRoleContentPairs()
     }
 
     /**
@@ -978,4 +1024,3 @@ ${FunctionalPrompts.translationUserPrompt(targetLanguage, text)}
         }
     }
 }
-

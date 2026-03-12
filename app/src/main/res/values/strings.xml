@@ -90,6 +90,9 @@
     <string name="colorpicker_select_statusbar">选择状态栏颜色</string>
     <string name="colorpicker_select_history_icon">选择历史记录图标颜色</string>
     <string name="colorpicker_select_pip_icon">选择悬浮窗图标颜色</string>
+    <string name="colorpicker_select_cursor_user_bubble">选择命令式用户消息框颜色</string>
+    <string name="colorpicker_select_bubble_user_bubble">选择对话式用户气泡颜色</string>
+    <string name="colorpicker_select_bubble_ai_bubble">选择对话式AI气泡颜色</string>
     <string name="colorpicker_select_color">选择颜色</string>
     <string name="colorpicker_sample_text">示例文本</string>
     <string name="colorpicker_high_contrast">高对比度</string>
@@ -1403,6 +1406,29 @@
     <string name="prepare_patch_update">准备补丁更新...</string>
     <string name="patch_update_failed">补丁更新失败: %1$s</string>
     <string name="patch_update_success">补丁更新已准备完成</string>
+    <string name="patch_update_failed_simple">补丁更新失败</string>
+    <string name="patch_update_prepare_downloading">准备更新到 %1$s，正在下载补丁</string>
+    <string name="patch_update_prepare_testing_mirrors">准备更新到 %1$s，正在测速镜像</string>
+    <string name="patch_update_testing_mirrors">正在测速镜像</string>
+    <string name="patch_update_selected_mirror">已选择镜像：%1$s</string>
+    <string name="patch_update_mirror_progress">测速进度：%1$d/%2$d</string>
+    <string name="patch_update_selected_short">已选择：%1$s</string>
+    <string name="patch_update_mirror_available">可用</string>
+    <string name="patch_update_mirror_unavailable">不可用</string>
+    <string name="patch_update_mirror_test_failed">测速失败</string>
+    <string name="patch_update_launching_installer">正在拉起安装...</string>
+    <string name="patch_update_stage_selecting_mirror">正在选择镜像</string>
+    <string name="patch_update_stage_downloading_meta">正在下载补丁元信息</string>
+    <string name="patch_update_label_meta">补丁元信息</string>
+    <string name="patch_update_stage_resolving_chain">正在解析补丁链路</string>
+    <string name="patch_update_chain_progress">扫描进度：%1$d/%2$d</string>
+    <string name="patch_update_stage_downloading_meta_step">正在下载补丁元信息 (%1$d/%2$d)</string>
+    <string name="patch_update_label_meta_step">补丁元信息 %1$d/%2$d</string>
+    <string name="patch_update_stage_downloading_patch_step">正在下载补丁包 (%1$d/%2$d)</string>
+    <string name="patch_update_label_patch_step">补丁包 %1$d/%2$d</string>
+    <string name="patch_update_stage_verifying_patch_step">正在校验补丁包 (%1$d/%2$d)</string>
+    <string name="patch_update_stage_applying_patch_step">正在合并补丁 (%1$d/%2$d)</string>
+    <string name="patch_update_stage_verifying_new_apk_step">正在校验新 APK (%1$d/%2$d)</string>
     <string name="patch_install_confirm_title">安装补丁更新</string>
     <string name="patch_install_confirm_message">检测到新补丁版本：%1$s\n\n是否现在安装？</string>
     <string name="developer">开发者</string>
@@ -1543,6 +1569,7 @@
     <string name="webview_ssl_error_notyetvalid">证书尚未生效</string>
     <string name="webview_ssl_error_date_invalid">证书日期无效</string>
     <string name="webview_ssl_error_unknown">未知SSL错误</string>
+    <string name="web_ssl_error_badge">SSL异常</string>
     <string name="webview_security_warning_title">安全警告</string>
     <string name="webview_choose_file">选择文件</string>
     <string name="downloaded_file">已下载: %1$s</string>
@@ -2383,7 +2410,8 @@
     <string name="speech_services_tts_type_simple">系统 TTS (简单)</string>
     <string name="speech_services_tts_type_http">HTTP API (远程)</string>
     <string name="speech_services_tts_type_siliconflow">硅基流动 TTS</string>
-    <string name="speech_services_tts_type_openai">OpenAI 语音</string>
+    <string name="speech_services_tts_type_openai_ws">OpenAI Realtime (WebSocket)</string>
+    <string name="speech_services_tts_type_openai">OpenAI 语音 (HTTP)</string>
     
     <!-- STT Service Types -->
     <string name="speech_services_stt_type_sherpa">Sherpa NCNN (本地)</string>
@@ -2435,6 +2463,15 @@
     <string name="speech_services_siliconflow_voice_id">音色 ID</string>
     <string name="speech_services_siliconflow_voice_id_placeholder">例如：charles 或 speech:kll:32w2b3aj5b:orvmnmpjkqchqalegwvi</string>
     <string name="speech_services_siliconflow_voice_id_hint">预设音色（alex/benjamin/charles等）或自定义音色（speech:开头的URI）</string>
+
+    <string name="speech_services_openai_ws_config">OpenAI Realtime 配置</string>
+    <string name="speech_services_openai_ws_url">Realtime WebSocket URL</string>
+    <string name="speech_services_openai_ws_url_placeholder">例如：wss://api.openai.com/v1/realtime</string>
+    <string name="speech_services_openai_ws_url_hint">填写 Realtime WebSocket 地址；模型会通过下方 model 字段自动拼到连接 URL 中。</string>
+    <string name="speech_services_openai_ws_model_placeholder">例如：gpt-realtime</string>
+    <string name="speech_services_openai_ws_model_hint">推荐使用 gpt-realtime；当前实现按 OpenAI Realtime 语音输出事件协议接收 PCM 音频。</string>
+    <string name="speech_services_openai_ws_voice_id_placeholder">例如：alloy 或 voice_1234</string>
+    <string name="speech_services_openai_ws_voice_id_hint">支持官方预设音色，也支持填写自定义 voice_id（例如 voice_1234）。</string>
 
     <string name="speech_services_openai_config">OpenAI 语音 配置</string>
     <string name="speech_services_openai_url">URL</string>
@@ -2489,7 +2526,7 @@
     <!-- Info Card -->
     <string name="speech_services_info_title">关于语音服务</string>
     <string name="speech_services_info_tts_title">文本转语音 (TTS)</string>
-    <string name="speech_services_info_tts_desc">TTS 服务将文本转换为语音。您可以使用内置的系统 TTS 引擎或连接到远程 HTTP API。</string>
+    <string name="speech_services_info_tts_desc">TTS 服务将文本转换为语音。您可以使用内置系统 TTS，或连接远程 HTTP / WebSocket 语音接口。</string>
     <string name="speech_services_info_stt_title">语音转文本 (STT)</string>
     <string name="speech_services_info_stt_desc">STT 服务将语音转换为文本。支持内置的 Sherpa NCNN 和 Sherpa MNN 引擎，均可在本地设备上运行，不需要网络连接。Sherpa MNN 集成了 VAD（语音活动检测）功能，可提升识别准确性和资源利用效率。</string>
     
@@ -2784,6 +2821,9 @@
     <string name="chat_summarizing_memory">正在总结记忆...</string>
     <string name="chat_input_processing_collect_failed">输入处理状态收集失败: %1$s</string>
     <string name="chat_input_hint">输入消息...</string>
+    <string name="chat_pending_queue_title">待发送队列（%1$d）</string>
+    <string name="chat_queue_add_message">加入发送队列</string>
+    <string name="chat_queue_added">已加入发送队列</string>
     <string name="chat_use_default_config_continue">使用默认配置继续</string>
     <string name="chat_default_config_incomplete">默认配置不完整，请填写必要信息</string>
     <string name="chat_locked_cannot_delete">该聊天已锁定，无法删除</string>
@@ -2910,7 +2950,9 @@
     <string name="workspace_cmd_android_setup_env">初始化 Android 构建环境</string>
     <string name="workspace_cmd_android_gradle_tasks">初始化 Gradle</string>
     <string name="workspace_cmd_android_assemble_debug">构建 Debug APK</string>
+    <string name="workspace_cmd_android_assemble_release">构建 Release APK</string>
     <string name="workspace_cmd_android_install_debug">安装 Debug APK</string>
+    <string name="workspace_cmd_android_share_release_apk">分享 Release APK</string>
     <string name="workspace_cmd_android_lint">运行 Lint</string>
     <string name="workspace_cmd_android_test">运行测试</string>
 
@@ -2949,16 +2991,25 @@
     <string name="chat_please_create_new_chat">请新建对话</string>
     <string name="chat_processing_shared_files">正在处理分享文件...</string>
     <string name="chat_start_workspace_server_failed">启动工作区服务失败</string>
+    <string name="workspace_opening">正在打开工作区...</string>
+    <string name="workspace_opening_hint">正在启动本地预览服务，请稍候</string>
     <string name="chat_update_workspace_server_failed">更新Web工作空间失败: %1$s</string>
     <string name="chat_stop_workspace_server_failed">停止Web工作空间失败: %1$s</string>
     <string name="chat_terminal_requires_android_8">终端功能需要 Android 8.0 或更高版本</string>
     <string name="chat_create_dedicated_terminal_session_failed">无法创建独立终端会话</string>
     <string name="chat_create_workspace_terminal_session_failed">无法创建工作区终端会话</string>
     <string name="chat_execute_command_failed">命令执行失败: %1$s</string>
+    <string name="workspace_command_already_running">已有工作区命令正在运行</string>
+    <string name="workspace_command_running">命令运行中</string>
+    <string name="workspace_command_cancelling">正在取消命令...</string>
+    <string name="workspace_command_finished">命令已完成</string>
+    <string name="workspace_command_waiting_output">正在等待命令输出...</string>
+    <string name="workspace_command_no_output">命令没有输出</string>
+    <string name="workspace_command_hide">隐藏</string>
     <string name="chat_start_ai_computer_failed">启动AI电脑失败: %1$s</string>
     <string name="chat_ai_computer_closed_due_to_workspace">AI电脑已关闭（由于打开工作区）</string>
     <string name="thinking_mode">思考模式</string>
-    <string name="thinking_mode_desc">目前支持Gemini、Qwen3、Claude、豆包、硅基流动和MNN本地模型，能够启用内置的思考。</string>
+    <string name="thinking_mode_desc">目前支持Gemini、Qwen3、Claude、豆包、NVIDIA、硅基流动和MNN本地模型，能够启用内置的思考。</string>
     <string name="thinking_guidance">思考引导</string>
     <string name="thinking_guidance_desc">能够让不能思考的模型强制进行思考。该选项不建议对思考模型开启。</string>
     <string name="details">详情</string>
@@ -3051,6 +3102,14 @@
     <string name="chat_settings_button_end_padding_desc">调整聊天设置按钮距离屏幕右边缘的距离，单位为dp</string>
     <string name="chat_area_horizontal_padding">聊天区域水平内边距</string>
     <string name="chat_area_horizontal_padding_desc">调整聊天消息区域距离屏幕左右边缘的距离，单位为dp</string>
+    <string name="global_text_line_height_multiplier">AI Markdown 行距倍率</string>
+    <string name="global_text_line_height_multiplier_desc">调整 AI 回复中 Markdown 正文的行距倍率</string>
+    <string name="global_text_letter_spacing">AI Markdown 字距</string>
+    <string name="global_text_letter_spacing_desc">调整 AI 回复中 Markdown 正文的字间距</string>
+    <string name="layout_adjustment_preview_title">AI Markdown 预览</string>
+    <string name="layout_adjustment_preview_desc">下方示例会展示当前已保存的 AI Markdown 行距与字距效果。</string>
+    <string name="layout_adjustment_preview_plain_text">这是一段普通文本预览。你可以观察字与字之间的距离，以及每一行之间的疏密变化。</string>
+    <string name="layout_adjustment_preview_markdown">这是 AI 回复中的第一段 Markdown 预览，用来观察当前行距与字距。\n\n这是 AI 回复中的第二段 Markdown 预览，用来继续观察多段文本与列表的整体排版。\n\n- AI Markdown 列表项一\n- AI Markdown 列表项二</string>
     <string name="current_value">当前值</string>
     <string name="closer_to_edge">靠近边缘</string>
     <string name="farther_from_edge">远离边缘</string>
@@ -3288,6 +3347,52 @@
     <string name="input_style_agent_reserved">Agent样式正在开发中，当前仅预留入口</string>
     <string name="chat_style_bubble_show_avatar">显示头像</string>
     <string name="chat_style_bubble_show_avatar_desc">在气泡式聊天中显示用户和 AI 的头像</string>
+    <string name="chat_style_bubble_wide_layout">更宽的气泡</string>
+    <string name="chat_style_bubble_wide_layout_desc">打开后，气泡会显示在头像下方，角色名与头像同一水平线显示，从而获得更大的消息展示空间</string>
+    <string name="chat_style_bubble_image_render_mode_title">图片气泡渲染模式</string>
+    <string name="chat_style_bubble_image_render_mode_desc">可选择 .9 拉伸模式或九宫格平铺模式</string>
+    <string name="chat_style_bubble_image_render_mode_nine_patch">.9模式</string>
+    <string name="chat_style_bubble_image_render_mode_tiled">九宫格平铺</string>
+    <string name="chat_style_bubble_rounded_corners">启用圆角气泡</string>
+    <string name="chat_style_bubble_rounded_corners_desc">关闭后消息气泡使用直角矩形</string>
+    <string name="chat_style_bubble_rounded_corners_user">用户</string>
+    <string name="chat_style_bubble_rounded_corners_ai">AI</string>
+    <string name="chat_style_bubble_advanced_options">高级选项</string>
+    <string name="chat_style_bubble_padding_left">左内边距</string>
+    <string name="chat_style_bubble_padding_right">右内边距</string>
+    <string name="chat_style_cursor_user_follow_theme">命令式用户消息框跟随主题色</string>
+    <string name="chat_style_cursor_user_follow_theme_desc">关闭后可自定义命令式用户消息框颜色（支持透明度）</string>
+    <string name="chat_style_cursor_user_bubble_color">命令式用户消息框</string>
+    <string name="chat_style_bubble_color_title">对话式气泡颜色</string>
+    <string name="chat_style_bubble_user_color">用户气泡</string>
+    <string name="chat_style_bubble_ai_color">AI气泡</string>
+    <string name="chat_style_bubble_user_image_title">用户气泡图片</string>
+    <string name="chat_style_bubble_ai_image_title">AI气泡图片</string>
+    <string name="chat_style_bubble_image_desc">启用后使用图片气泡，并支持裁剪与中段重复拉伸</string>
+    <string name="chat_style_bubble_pick_image">选择图片</string>
+    <string name="chat_style_bubble_clear_image">清空图片</string>
+    <string name="chat_style_bubble_no_image_selected">未选择图片</string>
+    <string name="chat_style_bubble_image_selected">已选择图片</string>
+    <string name="chat_style_bubble_crop_left">左裁剪</string>
+    <string name="chat_style_bubble_crop_top">上裁剪</string>
+    <string name="chat_style_bubble_crop_right">右裁剪</string>
+    <string name="chat_style_bubble_crop_bottom">下裁剪</string>
+    <string name="chat_style_bubble_repeat_start">重复段起点</string>
+    <string name="chat_style_bubble_repeat_end">重复段终点</string>
+    <string name="chat_style_bubble_repeat_x_start">水平重复起点</string>
+    <string name="chat_style_bubble_repeat_x_end">水平重复终点</string>
+    <string name="chat_style_bubble_repeat_y_start">垂直重复起点</string>
+    <string name="chat_style_bubble_repeat_y_end">垂直重复终点</string>
+    <string name="chat_style_bubble_image_scale">整图缩放</string>
+    <string name="chat_style_preview_title">样式预览</string>
+    <string name="chat_style_preview_user_message">这是用户消息预览</string>
+    <string name="chat_style_preview_ai_message">这是AI消息预览</string>
+    <string name="chat_style_preview_user_name">用户名称</string>
+    <string name="chat_style_preview_ai_name">角色名称</string>
+    <string name="chat_style_preview_ai_meta">示例模型 by 示例供应商</string>
+    <string name="chat_style_preview_user_source_title">用户原图九宫格预览</string>
+    <string name="chat_style_preview_ai_source_title">AI原图九宫格预览</string>
+    <string name="chat_style_bubble_image_saved">气泡图片已保存</string>
     <string name="display_options_title">显示选项</string>
     <string name="show_thinking_process">显示思考过程</string>
     <string name="show_thinking_process_desc">切换AI响应中 &lt;think&gt; 标签的可见性</string>
@@ -3393,6 +3498,7 @@
     <!-- API Provider names -->
     <string name="provider_openai">OpenAI (GPT系列)</string>
     <string name="provider_openai_responses">OpenAI (Responses API)</string>
+    <string name="provider_openai_responses_generic">OpenAI Responses通用</string>
     <string name="provider_anthropic">Anthropic (Claude系列)</string>
     <string name="provider_anthropic_generic">Anthropic通用</string>
     <string name="provider_google">Google (Gemini系列)</string>
@@ -4579,6 +4685,8 @@
     <string name="table_block">表格</string>
     <string name="plan_execution_graph">计划执行图</string>
     <string name="image_block">图片</string>
+    <string name="audio_block">音频</string>
+    <string name="video_block">视频</string>
     <string name="image_load_failed">图片加载失败</string>
     <string name="save_image">保存图片</string>
     <string name="image_saved">图片已保存到相册</string>
@@ -4887,6 +4995,7 @@
     <string name="backup_confirm">确认</string>
     <string name="backup_cancel">取消</string>
     <string name="provider_doubao">豆包（火山模型）</string>
+    <string name="provider_nvidia">NVIDIA（API Catalog）</string>
 
     <!-- Help Screen - Mirror Selection Dialog -->
     <string name="help_loading_message">正在加载使用手册...</string>
@@ -5984,10 +6093,12 @@
     <string name="workflow_log_trigger_node_not_exist">指定的触发节点不存在: %1$s</string>
     <string name="workflow_log_scheduled_trigger">定时触发: 只执行指定触发节点 %1$s</string>
     <string name="workflow_log_manual_trigger">手动触发: 执行所有手动触发类型的节点</string>
+    <string name="workflow_log_no_manual_trigger_node">没有手动触发类型的触发节点</string>
     <string name="workflow_log_will_execute_trigger_nodes">将执行 %1$d 个触发节点: %2$s</string>
     <string name="workflow_log_mark_trigger_node">标记触发节点: %1$s (%2$s)</string>
     <string name="workflow_log_circular_dependency">工作流存在循环依赖，无法执行</string>
     <string name="workflow_log_execution_complete">工作流执行完成: %1$s</string>
+    <string name="workflow_log_execution_exception">工作流执行异常</string>
     <string name="workflow_log_node_already_executed">节点已被执行，跳过: %1$s</string>
     <string name="workflow_log_node_not_exist">节点不存在: %1$s</string>
     <string name="workflow_log_condition_not_met_skip">节点条件不满足，跳过执行: %1$s (%2$s)</string>
@@ -6063,6 +6174,11 @@
     <string name="global_display_image_format">图片格式</string>
     <string name="global_display_image_quality">画质（仅对 JPG 生效）</string>
     <string name="global_display_resolution_scale">分辨率缩放（发送前缩小截图）</string>
+    <string name="visit_web_wait_time_title">Visit Web 网页访问等待时间</string>
+    <string name="visit_web_wait_time_description">控制 visit_web 在提取页面内容后自动返回前的等待时长。设为 0 秒会立即返回。</string>
+    <string name="visit_web_wait_time_value">%1$d 秒</string>
+    <string name="enable_enter_to_send">回车发送</string>
+    <string name="enable_enter_to_send_description">开启后，聊天输入框按回车会直接发送，键盘发送键也会显示为发送。</string>
     <string name="tool_collapse_mode_title">折叠工具</string>
     <string name="tool_collapse_mode_desc">设置消息中工具调用分组的默认折叠范围</string>
     <string name="tool_collapse_mode_read_only">折叠多个只读工具</string>
@@ -6427,6 +6543,15 @@
     <string name="openai_tts_error_voice_not_set">OpenAI TTS voice 未设置，请在设置中填写（例如 alloy）。</string>
     <string name="openai_tts_error_init_failed">初始化 OpenAI TTS 服务时发生意外错误</string>
     <string name="openai_tts_error_request_failed">请求 OpenAI TTS 失败</string>
+    <string name="openai_realtime_tts_error_url_not_set">OpenAI Realtime WebSocket URL 未设置，请填写完整接口地址（例如 wss://api.openai.com/v1/realtime）。</string>
+    <string name="openai_realtime_tts_error_url_invalid_scheme">OpenAI Realtime WebSocket URL 必须以 ws:// 或 wss:// 开头。</string>
+    <string name="openai_realtime_tts_error_api_key_not_set">OpenAI Realtime API Key 未设置，请在设置中填写。</string>
+    <string name="openai_realtime_tts_error_model_not_set">OpenAI Realtime model 未设置，请在设置中填写（例如 gpt-realtime）。</string>
+    <string name="openai_realtime_tts_error_voice_not_set">OpenAI Realtime voice 未设置，请在设置中填写（例如 alloy）。</string>
+    <string name="openai_realtime_tts_error_init_failed">初始化 OpenAI Realtime TTS 服务时发生意外错误</string>
+    <string name="openai_realtime_tts_error_request_failed">请求 OpenAI Realtime TTS 失败</string>
+    <string name="openai_realtime_tts_error_send_failed">向 OpenAI Realtime WebSocket 发送消息失败</string>
+    <string name="openai_realtime_tts_error_empty_audio">OpenAI Realtime 未返回可播放音频</string>
 
     <!-- ConversationService -->
     <string name="conversation_language_chinese">中文</string>
@@ -6673,6 +6798,7 @@
     <string name="message_processing">正在处理消息...</string>
     <string name="message_workspace_backing_up">正在备份工作区...</string>
     <string name="message_role_user">用户</string>
+    <string name="role_card_chat_model_binding_parse_failed">角色卡对话模型绑定解析失败</string>
     <string name="message_workspace_sync_failed">工作区状态同步失败: %1$s</string>
     <string name="message_ai_service_not_initialized">AI服务未初始化</string>
     <string name="message_summarizing">正在总结记忆...</string>

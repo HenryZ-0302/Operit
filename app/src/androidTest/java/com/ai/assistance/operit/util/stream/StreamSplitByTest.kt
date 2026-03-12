@@ -222,4 +222,32 @@ class StreamSplitByTest {
         // 内容应该是整个XML字符串
         assertEquals("内容应该是完整的XML字符串", xmlStreamText, contents[0].second)
     }
+
+    @Test
+    fun testSplitByWithEmojiTrigger() = runBlocking {
+        // U+2600 + U+FE0F: 验证带变体选择符的 emoji 也能触发后续 XML 起始识别
+        val emoji = "\u2600\uFE0F"
+        val input = "Text $emoji <tag>Sun</tag> tail"
+        val charStream = input.asSequence().asStream()
+
+        val groupedStream = charStream.splitBy(listOf(xmlPlugin))
+        val groups = mutableListOf<StreamGroup<StreamPlugin?>>()
+        groupedStream.collect { groups.add(it) }
+
+        assertEquals("应该分割成3个组", 3, groups.size)
+
+        val contents =
+            groups.map { group ->
+                var content = ""
+                runBlocking { group.stream.collect { content += it } }
+                Pair(group.tag, content)
+            }
+
+        assertNull("第一组应该是普通文本", contents[0].first)
+        assertEquals("第一组内容应该匹配", "Text $emoji ", contents[0].second)
+        assertSame("第二组应该是XML标签", xmlPlugin, contents[1].first)
+        assertEquals("第二组内容应该匹配", "<tag>Sun</tag>", contents[1].second)
+        assertNull("第三组应该是普通文本", contents[2].first)
+        assertEquals("第三组内容应该匹配", " tail", contents[2].second)
+    }
 }

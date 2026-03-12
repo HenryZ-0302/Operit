@@ -531,6 +531,8 @@ export interface TerminalSessionScreenResultData {
     cols: number;
     /** Current visible screen text content */
     content: string;
+    /** Whether the current session has a tool-managed command still executing */
+    commandRunning?: boolean;
     /** Returns a formatted string representation */
     toString(): string;
 }

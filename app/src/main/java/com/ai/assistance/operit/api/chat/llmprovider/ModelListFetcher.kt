@@ -24,6 +24,8 @@ import org.json.JSONObject
 object ModelListFetcher {
     private const val TAG = "ModelListFetcher"
     private const val ANTHROPIC_VERSION = "2023-06-01"
+    private val ZHIPU_CODING_PLAN_MODELS =
+            listOf("glm-4.7", "glm-4.6", "glm-4.5", "glm-4.5-air")
 
     // 使用更长的超时时间
     private val client =
@@ -47,6 +49,7 @@ object ModelListFetcher {
                 when (apiProviderType) {
                     ApiProviderType.OPENAI,
                     ApiProviderType.OPENAI_RESPONSES,
+                    ApiProviderType.OPENAI_RESPONSES_GENERIC,
                     ApiProviderType.OPENAI_GENERIC -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.ANTHROPIC,
                     ApiProviderType.ANTHROPIC_GENERIC -> "${extractBaseUrl(apiEndpoint)}/v1/models"
@@ -86,6 +89,8 @@ object ModelListFetcher {
                     ApiProviderType.MOONSHOT -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.SILICONFLOW -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.IFLOW -> "${extractBaseUrl(apiEndpoint)}/v1/models"
+                    ApiProviderType.DOUBAO -> "${extractBaseUrl(apiEndpoint)}/v3/models"
+                    ApiProviderType.NVIDIA -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.BAICHUAN -> "${extractBaseUrl(apiEndpoint)}/v1/models"
                     ApiProviderType.INFINIAI -> "${extractBaseUrl(apiEndpoint)}/maas/v1/models"
                     ApiProviderType.ALIPAY_BAILING -> "${extractBaseUrl(apiEndpoint)}/llm/v1/models"
@@ -98,6 +103,16 @@ object ModelListFetcher {
 
         AppLogger.d(TAG, "生成的模型列表URL: $modelsUrl")
         return modelsUrl
+    }
+
+    private fun isZhipuCodingPlanEndpoint(apiEndpoint: String): Boolean {
+        return apiEndpoint.contains("/coding/paas/v4", ignoreCase = true)
+    }
+
+    private fun getZhipuCodingPlanModels(): List<ModelOption> {
+        return ZHIPU_CODING_PLAN_MODELS.map { modelId ->
+            ModelOption(id = modelId, name = modelId)
+        }
     }
 
     /** 从完整URL提取基本URL 例如: https://api.openai.com/v1/chat/completions -> https://api.openai.com */
@@ -152,8 +167,19 @@ object ModelListFetcher {
 
             while (retryCount <= maxRetries) {
                 try {
+                    val completedEndpoint =
+                            EndpointCompleter.completeEndpoint(apiEndpoint, apiProviderType)
+
+                    if (
+                            apiProviderType == ApiProviderType.ZHIPU &&
+                                    isZhipuCodingPlanEndpoint(completedEndpoint)
+                    ) {
+                        AppLogger.d(TAG, "检测到智谱Coding Plan端点，返回文档约束的固定模型列表")
+                        return@withContext Result.success(getZhipuCodingPlanModels())
+                    }
+
                     // 根据提供商类型获取模型列表URL
-                    val modelsUrl = getModelsListUrl(EndpointCompleter.completeEndpoint(apiEndpoint, apiProviderType), apiProviderType)
+                    val modelsUrl = getModelsListUrl(completedEndpoint, apiProviderType)
                     AppLogger.d(TAG, "准备发送请求到: $modelsUrl, 尝试次数: ${retryCount + 1}/${maxRetries + 1}")
 
                     val requestBuilder =
@@ -210,7 +236,7 @@ object ModelListFetcher {
                         val errorBody = response.body?.string() ?: context.getString(R.string.model_fetch_no_error_details)
                         val responseCode = response.code
                         response.close()
-                        if ((apiProviderType == ApiProviderType.OPENAI || apiProviderType == ApiProviderType.OPENAI_RESPONSES || apiProviderType == ApiProviderType.OPENAI_GENERIC || apiProviderType == ApiProviderType.IFLOW || apiProviderType == ApiProviderType.OLLAMA) &&
+                        if ((apiProviderType == ApiProviderType.OPENAI || apiProviderType == ApiProviderType.OPENAI_RESPONSES || apiProviderType == ApiProviderType.OPENAI_RESPONSES_GENERIC || apiProviderType == ApiProviderType.OPENAI_GENERIC || apiProviderType == ApiProviderType.IFLOW || apiProviderType == ApiProviderType.NVIDIA || apiProviderType == ApiProviderType.OLLAMA) &&
                                         modelsUrl.endsWith("/v1/models")) {
                             val fallbackUrl = modelsUrl.removeSuffix("/v1/models") + "/models"
                             AppLogger.w(TAG, "API请求失败，尝试兼容路径: $fallbackUrl")
@@ -263,11 +289,14 @@ object ModelListFetcher {
                                 when (apiProviderType) {
                                     ApiProviderType.OPENAI,
                                     ApiProviderType.OPENAI_RESPONSES,
+                                    ApiProviderType.OPENAI_RESPONSES_GENERIC,
                                     ApiProviderType.OPENAI_GENERIC,
                                     ApiProviderType.DEEPSEEK,
                                     ApiProviderType.MOONSHOT,
                                     ApiProviderType.SILICONFLOW,
                                     ApiProviderType.IFLOW,
+                                    ApiProviderType.DOUBAO,
+                                    ApiProviderType.NVIDIA,
                                     ApiProviderType.BAICHUAN,
                                     ApiProviderType.OPENROUTER,
                                     ApiProviderType.INFINIAI,

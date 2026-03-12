@@ -32,6 +32,19 @@
     <string name="attach_local_storage_repo">Attach Local Storage Repository</string>
     <string name="chat_style_bubble_show_avatar">Show avatars</string>
     <string name="chat_style_bubble_show_avatar_desc">Show user and AI avatars in bubble chat style</string>
+    <string name="chat_style_bubble_wide_layout">Wider bubbles</string>
+    <string name="chat_style_bubble_wide_layout_desc">Place bubbles below avatars and keep role names aligned with avatars to free more room for message content</string>
+    <string name="chat_style_bubble_image_render_mode_title">Image bubble render mode</string>
+    <string name="chat_style_bubble_image_render_mode_desc">Choose .9 stretch mode or 9-slice tiled mode</string>
+    <string name="chat_style_bubble_image_render_mode_nine_patch">.9 mode</string>
+    <string name="chat_style_bubble_image_render_mode_tiled">9-slice tiled</string>
+    <string name="chat_style_bubble_rounded_corners">Enable rounded bubbles</string>
+    <string name="chat_style_bubble_rounded_corners_desc">When disabled, message bubbles use square corners</string>
+    <string name="chat_style_bubble_rounded_corners_user">User</string>
+    <string name="chat_style_bubble_rounded_corners_ai">AI</string>
+    <string name="chat_style_bubble_advanced_options">Advanced options</string>
+    <string name="chat_style_bubble_padding_left">Left padding</string>
+    <string name="chat_style_bubble_padding_right">Right padding</string>
 
     <!-- Floating Window Module -->
     <string name="floating_screen_content">Screen Content</string>
@@ -85,6 +98,9 @@
     <string name="colorpicker_select_statusbar">Select status bar color</string>
     <string name="colorpicker_select_history_icon">Select history icon color</string>
     <string name="colorpicker_select_pip_icon">Select floating window icon color</string>
+    <string name="colorpicker_select_cursor_user_bubble">Select command-style user bubble color</string>
+    <string name="colorpicker_select_bubble_user_bubble">Select dialog-style user bubble color</string>
+    <string name="colorpicker_select_bubble_ai_bubble">Select dialog-style AI bubble color</string>
     <string name="colorpicker_select_color">Select color</string>
     <string name="colorpicker_sample_text">Sample text</string>
     <string name="colorpicker_high_contrast">High contrast</string>
@@ -1484,6 +1500,7 @@
     <string name="webview_ssl_error_notyetvalid">Certificate is not yet valid</string>
     <string name="webview_ssl_error_date_invalid">Invalid certificate date</string>
     <string name="webview_ssl_error_unknown">Unknown SSL error</string>
+    <string name="web_ssl_error_badge">SSL Error</string>
     <string name="webview_security_warning_title">Security warning</string>
     <string name="webview_choose_file">Choose file</string>
     <string name="downloaded_file">Downloaded: %1$s</string>
@@ -2342,7 +2359,8 @@
     <string name="speech_services_tts_type_simple">System TTS (Simple)</string>
     <string name="speech_services_tts_type_http">HTTP API (Remote)</string>
     <string name="speech_services_tts_type_siliconflow">SiliconFlow TTS</string>
-    <string name="speech_services_tts_type_openai">OpenAI Voice</string>
+    <string name="speech_services_tts_type_openai_ws">OpenAI Realtime (WebSocket)</string>
+    <string name="speech_services_tts_type_openai">OpenAI Voice (HTTP)</string>
     
     <!-- STT Service Types -->
     <string name="speech_services_stt_type_sherpa">Sherpa NCNN (Local)</string>
@@ -2394,6 +2412,15 @@
     <string name="speech_services_siliconflow_voice_id">Voice ID</string>
     <string name="speech_services_siliconflow_voice_id_placeholder">e.g.: charles or speech:kll:32w2b3aj5b:orvmnmpjkqchqalegwvi</string>
     <string name="speech_services_siliconflow_voice_id_hint">Enter voice name (e.g. charles) or full voice ID (e.g. custom voice starting with speech:)</string>
+
+    <string name="speech_services_openai_ws_config">OpenAI Realtime Configuration</string>
+    <string name="speech_services_openai_ws_url">Realtime WebSocket URL</string>
+    <string name="speech_services_openai_ws_url_placeholder">e.g.: wss://api.openai.com/v1/realtime</string>
+    <string name="speech_services_openai_ws_url_hint">Enter the Realtime WebSocket endpoint; the model below will be appended to the connection URL automatically.</string>
+    <string name="speech_services_openai_ws_model_placeholder">e.g.: gpt-realtime</string>
+    <string name="speech_services_openai_ws_model_hint">Recommended: gpt-realtime. This implementation consumes PCM audio from the OpenAI Realtime audio output events.</string>
+    <string name="speech_services_openai_ws_voice_id_placeholder">e.g.: alloy or voice_1234</string>
+    <string name="speech_services_openai_ws_voice_id_hint">Supports built-in voices and custom voice IDs such as voice_1234.</string>
 
     <string name="speech_services_openai_config">OpenAI Voice Configuration</string>
     <string name="speech_services_openai_url">URL</string>
@@ -2448,7 +2475,7 @@
     <!-- Info Card -->
     <string name="speech_services_info_title">About Speech Services</string>
     <string name="speech_services_info_tts_title">Text-to-Speech (TTS)</string>
-    <string name="speech_services_info_tts_desc">TTS service converts text to speech. You can use the built-in system TTS engine or connect to a remote HTTP API.</string>
+    <string name="speech_services_info_tts_desc">TTS service converts text to speech. You can use the built-in system TTS engine or connect to remote HTTP / WebSocket speech APIs.</string>
     <string name="speech_services_info_stt_title">Speech-to-Text (STT)</string>
     <string name="speech_services_info_stt_desc">STT service converts speech to text. Supports built-in Sherpa NCNN and Sherpa MNN engines, both run on local device without network connection. Sherpa MNN integrates VAD (Voice Activity Detection) capability for improved recognition accuracy and resource efficiency.</string>
     
@@ -2888,6 +2915,9 @@
     <string name="chat_summarizing_memory">Summarizing memory...</string>
     <string name="chat_input_processing_collect_failed">Failed to collect input processing state: %1$s</string>
     <string name="chat_input_hint">Type a message...</string>
+    <string name="chat_pending_queue_title">Pending Queue (%1$d)</string>
+    <string name="chat_queue_add_message">Queue Message</string>
+    <string name="chat_queue_added">Added to queue</string>
     <string name="chat_use_default_config_continue">Continue with default configuration</string>
     <string name="chat_default_config_incomplete">Default configuration is incomplete. Please fill in required information.</string>
     <string name="chat_locked_cannot_delete">This chat is locked and cannot be deleted</string>
@@ -3014,7 +3044,9 @@
     <string name="workspace_cmd_android_setup_env">Initialize Android Build Environment</string>
     <string name="workspace_cmd_android_gradle_tasks">Initialize Gradle</string>
     <string name="workspace_cmd_android_assemble_debug">Assemble Debug APK</string>
+    <string name="workspace_cmd_android_assemble_release">Assemble Release APK</string>
     <string name="workspace_cmd_android_install_debug">Install Debug APK</string>
+    <string name="workspace_cmd_android_share_release_apk">Share Release APK</string>
     <string name="workspace_cmd_android_lint">Run Lint</string>
     <string name="workspace_cmd_android_test">Run Tests</string>
 
@@ -3053,17 +3085,26 @@
     <string name="chat_please_create_new_chat">Please create a new chat</string>
     <string name="chat_processing_shared_files">Processing shared files...</string>
     <string name="chat_start_workspace_server_failed">Failed to start workspace service</string>
+    <string name="workspace_opening">Opening workspace...</string>
+    <string name="workspace_opening_hint">Starting the local preview service, please wait</string>
     <string name="chat_update_workspace_server_failed">Failed to update web workspace: %1$s</string>
     <string name="chat_stop_workspace_server_failed">Failed to stop web workspace: %1$s</string>
     <string name="chat_terminal_requires_android_8">Terminal features require Android 8.0 or higher</string>
     <string name="chat_create_dedicated_terminal_session_failed">Failed to create dedicated terminal session</string>
     <string name="chat_create_workspace_terminal_session_failed">Failed to create workspace terminal session</string>
     <string name="chat_execute_command_failed">Command execution failed: %1$s</string>
+    <string name="workspace_command_already_running">A workspace command is already running</string>
+    <string name="workspace_command_running">Command running</string>
+    <string name="workspace_command_cancelling">Cancelling command...</string>
+    <string name="workspace_command_finished">Command finished</string>
+    <string name="workspace_command_waiting_output">Waiting for command output...</string>
+    <string name="workspace_command_no_output">Command produced no output</string>
+    <string name="workspace_command_hide">Hide</string>
     <string name="chat_start_ai_computer_failed">Failed to start AI computer: %1$s</string>
     <string name="chat_ai_computer_closed_due_to_workspace">AI computer closed (workspace opened)</string>
     <string name="ai_planning_desc">Will perform task decomposition and trigger multiple sub-agents to collect information, then summarize. Sub-agents have the same tool-calling capabilities as the chat agent. This can be very time-consuming, only recommended when collecting information.</string>
     <string name="thinking_mode">Thinking Mode</string>
-    <string name="thinking_mode_desc">Currently supports Gemini, Qwen3, Claude, Doubao, SiliconFlow and MNN local models, enabling built-in thinking.</string>
+    <string name="thinking_mode_desc">Currently supports Gemini, Qwen3, Claude, Doubao, NVIDIA, SiliconFlow and MNN local models, enabling built-in thinking.</string>
     <string name="thinking_guidance">Thinking Guidance</string>
     <string name="thinking_guidance_desc">Can force models that can\'t think to perform thinking. This option is not recommended for thinking models.</string>
     <string name="model_selection">Model Selection</string>
@@ -3155,6 +3196,14 @@
     <string name="chat_settings_button_end_padding_desc">Adjust the distance between chat settings button and the right edge of the screen, in dp</string>
     <string name="chat_area_horizontal_padding">Chat Area Horizontal Padding</string>
     <string name="chat_area_horizontal_padding_desc">Adjust the distance between chat message area and the left/right edges of the screen, in dp</string>
+    <string name="global_text_line_height_multiplier">AI Markdown Line Height Multiplier</string>
+    <string name="global_text_line_height_multiplier_desc">Adjust the line-height multiplier for AI reply Markdown content</string>
+    <string name="global_text_letter_spacing">AI Markdown Letter Spacing</string>
+    <string name="global_text_letter_spacing_desc">Adjust the letter spacing for AI reply Markdown content</string>
+    <string name="layout_adjustment_preview_title">AI Markdown Preview</string>
+    <string name="layout_adjustment_preview_desc">The example below reflects the currently saved AI Markdown line spacing and letter spacing.</string>
+    <string name="layout_adjustment_preview_plain_text">This is a plain text preview. You can observe the spacing between letters and the density between lines.</string>
+    <string name="layout_adjustment_preview_markdown">This is the first AI reply Markdown paragraph preview, used to observe the current line spacing and letter spacing.\n\nThis is the second AI reply Markdown paragraph preview, used to continue observing the overall layout of multiple paragraphs and lists.\n\n- AI Markdown list item one\n- AI Markdown list item two</string>
     <string name="current_value">Current Value</string>
     <string name="closer_to_edge">Closer to Edge</string>
     <string name="farther_from_edge">Farther from Edge</string>
@@ -3390,6 +3439,39 @@
     <string name="input_style_classic">Classic</string>
     <string name="input_style_agent">Agent</string>
     <string name="input_style_agent_reserved">Agent style is in development; this is a reserved entry for now</string>
+    <string name="chat_style_cursor_user_follow_theme">Follow theme color for command-style user bubble</string>
+    <string name="chat_style_cursor_user_follow_theme_desc">When disabled, you can set a custom command-style user bubble color (including alpha)</string>
+    <string name="chat_style_cursor_user_bubble_color">Command-style user bubble</string>
+    <string name="chat_style_bubble_color_title">Dialog-style bubble colors</string>
+    <string name="chat_style_bubble_user_color">User bubble</string>
+    <string name="chat_style_bubble_ai_color">AI bubble</string>
+    <string name="chat_style_bubble_user_image_title">User bubble image</string>
+    <string name="chat_style_bubble_ai_image_title">AI bubble image</string>
+    <string name="chat_style_bubble_image_desc">Use an image bubble with crop and repeat-segment stretching</string>
+    <string name="chat_style_bubble_pick_image">Select image</string>
+    <string name="chat_style_bubble_clear_image">Clear image</string>
+    <string name="chat_style_bubble_no_image_selected">No image selected</string>
+    <string name="chat_style_bubble_image_selected">Image selected</string>
+    <string name="chat_style_bubble_crop_left">Crop left</string>
+    <string name="chat_style_bubble_crop_top">Crop top</string>
+    <string name="chat_style_bubble_crop_right">Crop right</string>
+    <string name="chat_style_bubble_crop_bottom">Crop bottom</string>
+    <string name="chat_style_bubble_repeat_start">Repeat start</string>
+    <string name="chat_style_bubble_repeat_end">Repeat end</string>
+    <string name="chat_style_bubble_repeat_x_start">Repeat X start</string>
+    <string name="chat_style_bubble_repeat_x_end">Repeat X end</string>
+    <string name="chat_style_bubble_repeat_y_start">Repeat Y start</string>
+    <string name="chat_style_bubble_repeat_y_end">Repeat Y end</string>
+    <string name="chat_style_bubble_image_scale">Image scale</string>
+    <string name="chat_style_preview_title">Style preview</string>
+    <string name="chat_style_preview_user_message">This is a user message preview</string>
+    <string name="chat_style_preview_ai_message">This is an AI message preview</string>
+    <string name="chat_style_preview_user_name">User Name</string>
+    <string name="chat_style_preview_ai_name">Role Name</string>
+    <string name="chat_style_preview_ai_meta">Sample Model by Sample Provider</string>
+    <string name="chat_style_preview_user_source_title">User source 9-slice preview</string>
+    <string name="chat_style_preview_ai_source_title">AI source 9-slice preview</string>
+    <string name="chat_style_bubble_image_saved">Bubble image saved</string>
     <string name="display_options_title">Display Options</string>
     <string name="show_thinking_process">Show Thinking Process</string>
     <string name="show_thinking_process_desc">Toggle visibility of &lt;think&gt; tags in AI responses</string>
@@ -3487,6 +3569,7 @@
     <!-- API Provider names -->
     <string name="provider_openai">OpenAI (GPT Series)</string>
     <string name="provider_openai_responses">OpenAI (Responses API)</string>
+    <string name="provider_openai_responses_generic">OpenAI Responses (Generic)</string>
     <string name="provider_anthropic">Anthropic (Claude Series)</string>
     <string name="provider_anthropic_generic">Anthropic (Generic)</string>
     <string name="provider_google">Google (Gemini Series)</string>
@@ -3510,6 +3593,7 @@
     <string name="provider_openai_generic">OpenAI (Generic)</string>
     <string name="provider_other">Other Providers</string>
     <string name="provider_doubao">Doubao</string>
+    <string name="provider_nvidia">NVIDIA (API Catalog)</string>
     <string name="provider_llama_cpp">llama.cpp Local Inference</string>
     <string name="provider_mnn">MNN Local Inference</string>
     <string name="select_api_provider_title">Select API Provider</string>
@@ -4603,6 +4687,8 @@
     <string name="table_block">Table</string>
     <string name="plan_execution_graph">Execution Plan</string>
     <string name="image_block">Image</string>
+    <string name="audio_block">Audio</string>
+    <string name="video_block">Video</string>
     <string name="image_load_failed">Image failed to load</string>
     <string name="save_image">Save Image</string>
     <string name="image_saved">Image saved to gallery</string>
@@ -5107,6 +5193,29 @@
     <string name="patch_update_desc">Download patch and install after synthesizing APK locally</string>
     <string name="patch_update_failed">Patch update failed: %1$s</string>
     <string name="patch_update_success">Patch update prepared</string>
+    <string name="patch_update_failed_simple">Patch update failed</string>
+    <string name="patch_update_prepare_downloading">Preparing update to %1$s, downloading patch</string>
+    <string name="patch_update_prepare_testing_mirrors">Preparing update to %1$s, testing mirrors</string>
+    <string name="patch_update_testing_mirrors">Testing mirrors</string>
+    <string name="patch_update_selected_mirror">Selected mirror: %1$s</string>
+    <string name="patch_update_mirror_progress">Mirror test progress: %1$d/%2$d</string>
+    <string name="patch_update_selected_short">Selected: %1$s</string>
+    <string name="patch_update_mirror_available">Available</string>
+    <string name="patch_update_mirror_unavailable">Unavailable</string>
+    <string name="patch_update_mirror_test_failed">Mirror test failed</string>
+    <string name="patch_update_launching_installer">Launching installer...</string>
+    <string name="patch_update_stage_selecting_mirror">Selecting mirror</string>
+    <string name="patch_update_stage_downloading_meta">Downloading patch metadata</string>
+    <string name="patch_update_label_meta">Patch metadata</string>
+    <string name="patch_update_stage_resolving_chain">Resolving patch chain</string>
+    <string name="patch_update_chain_progress">Scan progress: %1$d/%2$d</string>
+    <string name="patch_update_stage_downloading_meta_step">Downloading patch metadata (%1$d/%2$d)</string>
+    <string name="patch_update_label_meta_step">Patch metadata %1$d/%2$d</string>
+    <string name="patch_update_stage_downloading_patch_step">Downloading patch package (%1$d/%2$d)</string>
+    <string name="patch_update_label_patch_step">Patch package %1$d/%2$d</string>
+    <string name="patch_update_stage_verifying_patch_step">Verifying patch package (%1$d/%2$d)</string>
+    <string name="patch_update_stage_applying_patch_step">Applying patch (%1$d/%2$d)</string>
+    <string name="patch_update_stage_verifying_new_apk_step">Verifying new APK (%1$d/%2$d)</string>
     <string name="patch_install_confirm_title">Install patch update</string>
     <string name="patch_install_confirm_message">New patch version detected: %1$s\n\nInstall now?</string>
     <string name="prepare_patch_update">Preparing patch update...</string>
@@ -5969,10 +6078,12 @@
     <string name="workflow_log_trigger_node_not_exist">Specified trigger node does not exist: %1$s</string>
     <string name="workflow_log_scheduled_trigger">Scheduled trigger: executing specified trigger node %1$s</string>
     <string name="workflow_log_manual_trigger">Manual trigger: executing all manual trigger type nodes</string>
+    <string name="workflow_log_no_manual_trigger_node">No manual-trigger nodes found</string>
     <string name="workflow_log_will_execute_trigger_nodes">Will execute %1$d trigger nodes: %2$s</string>
     <string name="workflow_log_mark_trigger_node">Marking trigger node: %1$s (%2$s)</string>
     <string name="workflow_log_circular_dependency">Workflow has circular dependencies, cannot execute</string>
     <string name="workflow_log_execution_complete">Workflow execution completed: %1$s</string>
+    <string name="workflow_log_execution_exception">Workflow execution exception</string>
     <string name="workflow_log_node_already_executed">Node already executed, skipping: %1$s</string>
     <string name="workflow_log_node_not_exist">Node does not exist: %1$s</string>
     <string name="workflow_log_condition_not_met_skip">Node condition not met, skipping: %1$s (%2$s)</string>
@@ -6048,6 +6159,9 @@
     <string name="global_display_image_format">Image Format</string>
     <string name="global_display_image_quality">Quality (JPG only)</string>
     <string name="global_display_resolution_scale">Resolution Scale (downscale before sending)</string>
+    <string name="visit_web_wait_time_title">Visit Web Wait Time</string>
+    <string name="visit_web_wait_time_description">Controls how long visit_web waits before returning after page content is extracted. Set to 0 seconds to return immediately.</string>
+    <string name="visit_web_wait_time_value">%1$d s</string>
     <string name="tool_collapse_mode_title">Collapse Tools</string>
     <string name="tool_collapse_mode_desc">Set the default collapse scope for tool-call groups in messages</string>
     <string name="tool_collapse_mode_read_only">Collapse Multiple Read-only Tools</string>
@@ -6412,6 +6526,15 @@
     <string name="openai_tts_error_voice_not_set">OpenAI TTS voice not set, please fill in settings (e.g., alloy).</string>
     <string name="openai_tts_error_init_failed">Unexpected error while initializing OpenAI TTS service</string>
     <string name="openai_tts_error_request_failed">OpenAI TTS request failed</string>
+    <string name="openai_realtime_tts_error_url_not_set">OpenAI Realtime WebSocket URL not set. Please enter the full endpoint address (for example, wss://api.openai.com/v1/realtime).</string>
+    <string name="openai_realtime_tts_error_url_invalid_scheme">OpenAI Realtime WebSocket URL must start with ws:// or wss://.</string>
+    <string name="openai_realtime_tts_error_api_key_not_set">OpenAI Realtime API Key not set. Please fill in settings.</string>
+    <string name="openai_realtime_tts_error_model_not_set">OpenAI Realtime model not set. Please fill in settings (for example, gpt-realtime).</string>
+    <string name="openai_realtime_tts_error_voice_not_set">OpenAI Realtime voice not set. Please fill in settings (for example, alloy).</string>
+    <string name="openai_realtime_tts_error_init_failed">Unexpected error while initializing OpenAI Realtime TTS service</string>
+    <string name="openai_realtime_tts_error_request_failed">OpenAI Realtime TTS request failed</string>
+    <string name="openai_realtime_tts_error_send_failed">Failed to send a message to the OpenAI Realtime WebSocket</string>
+    <string name="openai_realtime_tts_error_empty_audio">OpenAI Realtime returned no playable audio</string>
 
     <!-- ConversationService -->
     <string name="conversation_language_chinese">Chinese</string>
@@ -6658,6 +6781,7 @@
     <string name="message_processing">Processing message...</string>
     <string name="message_workspace_backing_up">Backing up workspace...</string>
     <string name="message_role_user">User</string>
+    <string name="role_card_chat_model_binding_parse_failed">Failed to parse role-card chat-model binding</string>
     <string name="message_workspace_sync_failed">Workspace state sync failed: %1$s</string>
     <string name="message_ai_service_not_initialized">AI service not initialized</string>
     <string name="message_summarizing">Summarizing memories...</string>
@@ -6801,4 +6925,35 @@
     <string name="max_concurrent_requests_desc">Requests over this limit will wait in queue. Use 0 or empty for unlimited concurrency.</string>
     <string name="request_queue_controls">Request Queue Controls</string>
     <string name="request_queue_controls_desc">Collapsed by default. Controls rate and concurrency; overflow requests wait in queue.</string>
+
+    <!-- Character group strings synced from values/strings.xml -->
+    <string name="action_assign_to_group">Assign to Character Group</string>
+    <string name="apply_character_group">Apply Character Group</string>
+    <string name="assign_to_character_group_title">Assign to Character Group</string>
+    <string name="assigned_chats_to_character_group">Assigned %1$d chat(s) to character group "%2$s"</string>
+    <string name="assigned_to_character_group">Assigned to character group "%1$s"</string>
+    <string name="character_group_avatar">Group Avatar</string>
+    <string name="character_group_binding_prefix">Group</string>
+    <string name="character_group_label">Character Group: %1$s</string>
+    <string name="character_group_single_char">G</string>
+    <string name="character_group_statistics">Character Group Statistics</string>
+    <string name="character_group_statistics_subtitle">View the number of chats and messages under each character group</string>
+    <string name="click_to_manage_missing_group">Tap to manage missing character group entries</string>
+    <string name="enable_enter_to_send">Press Enter to Send</string>
+    <string name="enable_enter_to_send_description">When enabled, pressing Enter in the chat input sends the message directly, and the keyboard send key will also show Send.</string>
+    <string name="missing_character_group_id">Missing character group (%1$s)</string>
+    <string name="missing_group_entry_action_message">There are %2$d chats under "%1$s". Please choose an action:</string>
+    <string name="missing_group_entry_action_title">Missing Character Group Entry</string>
+    <string name="no_available_character_groups_dropdown">No character groups available</string>
+    <string name="no_available_character_groups_toast">No character groups available. Please create one first.</string>
+    <string name="no_groups_create_first">No character groups available. Please create one first.</string>
+    <string name="please_select_a_character_group">Please select a character group</string>
+    <string name="remove_character_group_binding">Remove character group binding</string>
+    <string name="removed_character_group_binding">Removed character group binding for %1$d chat(s)</string>
+    <string name="select_group_or_unbind">Select a character group or unbind</string>
+    <string name="show_chat_floating_dots_animation">Show chat floating dots animation</string>
+    <string name="show_chat_floating_dots_animation_desc">Show floating dots animation in the chat area while the AI reply is loading</string>
+    <string name="target_character_group_optional">Target Character Group (Optional)</string>
+    <string name="unbound_character_group">Unbound Character Group</string>
+    <string name="unbound_chats_select_group">%1$d chat(s) need to be rebound to a character group. Please select the target character group:</string>
 </resources>

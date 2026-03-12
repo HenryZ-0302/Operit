@@ -22,6 +22,10 @@ import com.ai.assistance.operit.BuildConfig
 import com.ai.assistance.operit.R
 import com.ai.assistance.operit.core.chat.AIMessageManager
 import com.ai.assistance.operit.api.chat.AIForegroundService
+import com.ai.assistance.operit.plugins.PluginRegistry
+import com.ai.assistance.operit.plugins.lifecycle.AppLifecycleEvent
+import com.ai.assistance.operit.plugins.lifecycle.AppLifecycleHookParams
+import com.ai.assistance.operit.plugins.lifecycle.AppLifecycleHookPluginRegistry
 import com.ai.assistance.operit.core.config.SystemPromptConfig
 import com.ai.assistance.operit.core.tools.AIToolHandler
 import com.ai.assistance.operit.core.tools.system.AndroidShellExecutor
@@ -72,6 +76,10 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
         lateinit var json: Json
             private set
 
+        @Volatile
+        var appStartupTimeMs: Long = 0L
+            private set
+
         // 全局应用实例
         lateinit var instance: OperitApplication
             private set
@@ -102,6 +110,7 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
     override fun onCreate() {
         super.onCreate()
         val startTime = System.currentTimeMillis()
+        appStartupTimeMs = startTime
         instance = this
 
         configureOpenMpEnvironment()
@@ -121,6 +130,18 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
 
         // Initialize AIMessageManager
         AIMessageManager.initialize(this)
+        PluginRegistry.initializeBuiltins()
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.APPLICATION_CREATE,
+            params =
+                AppLifecycleHookParams(
+                    context = applicationContext,
+                    extras =
+                        mapOf(
+                            "startupTimeMs" to startTime
+                        )
+                )
+        )
         AppLogger.d(TAG, "【启动计时】AIMessageManager初始化完成 - ${System.currentTimeMillis() - startTime}ms")
         startGlobalAIForegroundServiceIfAlwaysListening()
         AppLogger.d(TAG, "【启动计时】AIForegroundService 始终监听检查完成 - ${System.currentTimeMillis() - startTime}ms")
@@ -454,6 +475,11 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
 
     override fun onTerminate() {
         super.onTerminate()
+
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.APPLICATION_TERMINATE,
+            params = AppLifecycleHookParams(applicationContext)
+        )
         
         try {
             if (AIForegroundService.isRunning.get()) {
@@ -497,5 +523,28 @@ class OperitApplication : Application(), ImageLoaderFactory, WorkConfiguration.P
         } catch (e: Exception) {
             AppLogger.e(TAG, "终止时关闭 ShowerController 失败: ${e.message}", e)
         }
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.APPLICATION_LOW_MEMORY,
+            params = AppLifecycleHookParams(applicationContext)
+        )
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        AppLifecycleHookPluginRegistry.dispatchAsync(
+            event = AppLifecycleEvent.APPLICATION_TRIM_MEMORY,
+            params =
+                AppLifecycleHookParams(
+                    context = applicationContext,
+                    extras =
+                        mapOf(
+                            "level" to level
+                        )
+                )
+        )
     }
 }

@@ -10,7 +10,12 @@ import java.io.File
 import java.net.InetSocketAddress
 import java.net.Proxy
 import java.net.URL
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.FormBody
@@ -69,7 +74,8 @@ class StandardHttpTools(private val context: Context) {
             followSslRedirects: Boolean = true,
             useCookies: Boolean = true,
             proxyHost: String? = null,
-            proxyPort: Int = 0
+            proxyPort: Int = 0,
+            ignoreSsl: Boolean = false
     ): OkHttpClient {
         val builder =
                 OkHttpClient.Builder()
@@ -90,7 +96,34 @@ class StandardHttpTools(private val context: Context) {
             builder.proxy(proxy)
         }
 
+        if (ignoreSsl) {
+            applyUnsafeSsl(builder)
+        }
+
         return builder.build()
+    }
+
+    private fun applyUnsafeSsl(builder: OkHttpClient.Builder) {
+        val trustManager =
+                object : X509TrustManager {
+                    override fun checkClientTrusted(
+                            chain: Array<out X509Certificate>?,
+                            authType: String?
+                    ) {}
+
+                    override fun checkServerTrusted(
+                            chain: Array<out X509Certificate>?,
+                            authType: String?
+                    ) {}
+
+                    override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+                }
+
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, arrayOf<TrustManager>(trustManager), SecureRandom())
+
+        builder.sslSocketFactory(sslContext.socketFactory, trustManager)
+        builder.hostnameVerifier { _, _ -> true }
     }
 
     /** 读取响应体内容，处理编码问题 */
@@ -134,6 +167,7 @@ class StandardHttpTools(private val context: Context) {
         val proxyHostParam = tool.parameters.find { it.name == "proxy_host" }?.value
         val proxyPortParam = tool.parameters.find { it.name == "proxy_port" }?.value
         val customCookiesParam = tool.parameters.find { it.name == "custom_cookies" }?.value
+        val ignoreSslParam = tool.parameters.find { it.name == "ignore_ssl" }?.value
 
         if (url.isBlank()) {
             return ToolResult(
@@ -185,7 +219,8 @@ class StandardHttpTools(private val context: Context) {
                             followSslRedirects = followRedirectsParam?.lowercase() != "false",
                             useCookies = useCookiesParam?.lowercase() != "false",
                             proxyHost = proxyHostParam,
-                            proxyPort = proxyPortParam?.toIntOrNull() ?: 0
+                            proxyPort = proxyPortParam?.toIntOrNull() ?: 0,
+                            ignoreSsl = ignoreSslParam?.lowercase() == "true"
                     )
 
             // 如果有自定义Cookie，添加到cookieStore
@@ -575,6 +610,7 @@ class StandardHttpTools(private val context: Context) {
         val proxyHostParam = tool.parameters.find { it.name == "proxy_host" }?.value
         val proxyPortParam = tool.parameters.find { it.name == "proxy_port" }?.value
         val customCookiesParam = tool.parameters.find { it.name == "custom_cookies" }?.value
+        val ignoreSslParam = tool.parameters.find { it.name == "ignore_ssl" }?.value
 
         if (url.isBlank()) {
             return ToolResult(
@@ -625,7 +661,8 @@ class StandardHttpTools(private val context: Context) {
                             followSslRedirects = followRedirectsParam?.lowercase() != "false",
                             useCookies = useCookiesParam?.lowercase() != "false",
                             proxyHost = proxyHostParam,
-                            proxyPort = proxyPortParam?.toIntOrNull() ?: 0
+                            proxyPort = proxyPortParam?.toIntOrNull() ?: 0,
+                            ignoreSsl = ignoreSslParam?.lowercase() == "true"
                     )
 
             // 如果有自定义Cookie，添加到cookieStore

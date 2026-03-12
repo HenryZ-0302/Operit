@@ -44,6 +44,8 @@ private:
 
     static bool isAsciiLetter(char16_t c);
     static bool isPunctuationTrigger(char16_t c);
+    static bool isEmojiTrigger(char16_t c);
+    static bool isEmojiContinuationChar(char16_t c);
 };
 
 } // namespace streamnative

@@ -556,7 +556,7 @@ class WorkflowExecutor(private val context: Context) {
                 // 如果没有指定触发节点ID（通常是手动触发），执行所有手动触发类型的节点
                 val manualTriggers = allTriggerNodes.filter { it.triggerType == "manual" }
                 if (manualTriggers.isEmpty()) {
-                    runLogger.w("没有手动触发类型的触发节点")
+                    runLogger.w(context.getString(R.string.workflow_log_no_manual_trigger_node))
                     return@withContext buildResult(
                         success = false,
                         message = "No manual trigger type trigger node"
@@ -625,7 +625,7 @@ class WorkflowExecutor(private val context: Context) {
             )
             
         } catch (e: Exception) {
-            runLogger.e("工作流执行异常", throwable = e)
+            runLogger.e(context.getString(R.string.workflow_log_execution_exception), throwable = e)
             return@withContext buildResult(
                 success = false,
                 message = "Workflow execution exception: ${e.message}"

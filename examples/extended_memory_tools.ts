@@ -21,7 +21,8 @@
                 { "name": "content", "description": { "zh": "记忆内容", "en": "Memory content" }, "type": "string", "required": true },
                 { "name": "content_type", "description": { "zh": "可选：内容类型，默认 text/plain", "en": "Optional: content type (default: text/plain)" }, "type": "string", "required": false },
                 { "name": "source", "description": { "zh": "可选：来源，默认 ai_created", "en": "Optional: source (default: ai_created)" }, "type": "string", "required": false },
-                { "name": "folder_path", "description": { "zh": "可选：文件夹路径，默认空", "en": "Optional: folder path (default: empty)" }, "type": "string", "required": false }
+                { "name": "folder_path", "description": { "zh": "可选：文件夹路径，默认空", "en": "Optional: folder path (default: empty)" }, "type": "string", "required": false },
+                { "name": "tags", "description": { "zh": "可选：标签（逗号分隔字符串）", "en": "Optional: tags (comma-separated string)" }, "type": "string", "required": false }
             ]
         },
         {
@@ -123,8 +124,8 @@ const ExtendedMemoryTools = (function () {
         data?: any;
     }
 
-    async function create_memory(params: { title: string; content: string; content_type?: string; source?: string; folder_path?: string }): Promise<ToolResponse> {
-        const result = await Tools.Memory.create(params.title, params.content, params.content_type, params.source, params.folder_path);
+    async function create_memory(params: { title: string; content: string; content_type?: string; source?: string; folder_path?: string; tags?: string }): Promise<ToolResponse> {
+        const result = await Tools.Memory.create(params.title, params.content, params.content_type, params.source, params.folder_path, params.tags);
         return { success: typeof result === 'string' && result.length > 0, message: '记忆创建完成', data: result };
     }
 
@@ -243,7 +244,7 @@ const ExtendedMemoryTools = (function () {
     }
 
     return {
-        create_memory: (params: { title: string; content: string; content_type?: string; source?: string; folder_path?: string }) => wrapToolExecution(create_memory, params),
+        create_memory: (params: { title: string; content: string; content_type?: string; source?: string; folder_path?: string; tags?: string }) => wrapToolExecution(create_memory, params),
         update_memory: (params: { old_title: string; new_title?: string; content?: string; content_type?: string; source?: string; credibility?: number; importance?: number; folder_path?: string; tags?: string }) => wrapToolExecution(update_memory, params),
         delete_memory: (params: { title: string }) => wrapToolExecution(delete_memory, params),
         move_memory: (params: { target_folder_path: string; titles?: string; source_folder_path?: string }) => wrapToolExecution(move_memory, params),

@@ -4,7 +4,6 @@
 #include <deque>
 #include <memory>
 
-#include "plugins/StreamPlanExecutionPlugin.h"
 #include "plugins/StreamMarkdownPlugin.h"
 #include "plugins/StreamXmlPlugin.h"
 
@@ -22,16 +21,15 @@ constexpr int MD_HORIZONTAL_RULE = 5;
 constexpr int MD_BLOCK_LATEX = 6;
 constexpr int MD_TABLE = 7;
 constexpr int MD_XML_BLOCK = 8;
-constexpr int MD_PLAN_EXECUTION = 9;
-constexpr int MD_BOLD = 10;
-constexpr int MD_ITALIC = 11;
-constexpr int MD_INLINE_CODE = 12;
-constexpr int MD_LINK = 13;
-constexpr int MD_IMAGE = 14;
-constexpr int MD_STRIKETHROUGH = 15;
-constexpr int MD_UNDERLINE = 16;
-constexpr int MD_INLINE_LATEX = 17;
-constexpr int MD_PLAIN_TEXT = 18;
+constexpr int MD_BOLD = 9;
+constexpr int MD_ITALIC = 10;
+constexpr int MD_INLINE_CODE = 11;
+constexpr int MD_LINK = 12;
+constexpr int MD_IMAGE = 13;
+constexpr int MD_STRIKETHROUGH = 14;
+constexpr int MD_UNDERLINE = 15;
+constexpr int MD_INLINE_LATEX = 16;
+constexpr int MD_PLAIN_TEXT = 17;
 
 // Segment type used only as a boundary marker between groups.
 // Kotlin side must treat this as "close current group" and not map it to MarkdownProcessorType.
@@ -305,7 +303,6 @@ MarkdownSession* createMarkdownBlockSession() {
     std::vector<PluginEntry> plugins;
     plugins.reserve(16);
     // Order must match NestedMarkdownProcessor.getBlockPlugins()
-    plugins.push_back({std::make_unique<StreamPlanExecutionPlugin>(true), MD_PLAN_EXECUTION});
     plugins.push_back({std::make_unique<StreamMarkdownHeaderPlugin>(true), MD_HEADER});
     plugins.push_back({std::make_unique<StreamMarkdownFencedCodeBlockPlugin>(true), MD_CODE_BLOCK});
     plugins.push_back({std::make_unique<StreamMarkdownBlockQuotePlugin>(false), MD_BLOCK_QUOTE});

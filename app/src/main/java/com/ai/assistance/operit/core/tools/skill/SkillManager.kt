@@ -177,7 +177,7 @@ class SkillManager private constructor(private val context: Context) {
         sb.appendLine("Using package (Skill): ${skill.name}")
         sb.appendLine("Use Time: ${java.time.LocalDateTime.now()}")
         sb.appendLine("Execution policy:")
-        sb.appendLine("优先使用skill提供的说明和带的脚本，利用terminal相关工具去完成任务。")
+        sb.appendLine("Prioritize using the skill-provided instructions and bundled scripts, and complete tasks with terminal-related tools.")
         if (skill.description.isNotBlank()) {
             sb.appendLine("Description: ${skill.description}")
         }

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -82,12 +83,13 @@ fun PackageDetailsDialog(
             }
     }
 
-    val activeStateId = remember(packageName, resolvedPackage) {
-        try {
-            packageManager.getActivePackageStateId(packageName)
-        } catch (e: Exception) {
-            null
-        }
+    val activeStateId by produceState<String?>(initialValue = null, packageName, resolvedPackage) {
+        value =
+            try {
+                withContext(Dispatchers.IO) { packageManager.getActivePackageStateId(packageName) }
+            } catch (_: Exception) {
+                null
+            }
     }
 
     val metaPackage = toolPackage ?: resolvedPackage
@@ -123,16 +125,17 @@ fun PackageDetailsDialog(
                 confirmButton = {
                     Button(
                             onClick = {
-                                AppLogger.d("PackageDetailsDialog", "Delete button clicked for package: $packageName")
-                                val deleted = packageManager.deletePackage(packageName)
-                                AppLogger.d("PackageDetailsDialog", "packageManager.deletePackage returned: $deleted")
-                                if (deleted) {
-                                    AppLogger.d("PackageDetailsDialog", "Deletion successful, closing dialog and calling onPackageDeleted.")
-                                    showDeleteConfirmDialog = false
-                                    onPackageDeleted()
-                                } else {
-                                    AppLogger.e("PackageDetailsDialog", "Deletion failed. Closing confirm diaAppLogger.")
-                                    showDeleteConfirmDialog = false
+                                scope.launch {
+                                    val deleted =
+                                        withContext(Dispatchers.IO) {
+                                            packageManager.deletePackage(packageName)
+                                        }
+                                    if (deleted) {
+                                        showDeleteConfirmDialog = false
+                                        onPackageDeleted()
+                                    } else {
+                                        showDeleteConfirmDialog = false
+                                    }
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -620,7 +623,7 @@ private fun EmptyToolsCard(message: String) {
         )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
@@ -632,8 +635,10 @@ private fun EmptyToolsCard(message: String) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = message,
+                modifier = Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
         }
     }

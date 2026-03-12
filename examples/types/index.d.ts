@@ -14,7 +14,12 @@ import {
     JavaBridgeHandle as JavaBridgeHandleType,
     JavaBridgePackage as JavaBridgePackageType,
     JavaBridgeJsInterfaceMarker as JavaBridgeJsInterfaceMarkerType,
-    JavaBridgeJsInterfaceImpl as JavaBridgeJsInterfaceImplType
+    JavaBridgeJsInterfaceImpl as JavaBridgeJsInterfaceImplType,
+    JavaBridgeJsMethod as JavaBridgeJsMethodType,
+    JavaBridgeInterfaceRef as JavaBridgeInterfaceRefType,
+    JavaBridgeCallbackResult as JavaBridgeCallbackResultType,
+    JavaBridgeExternalCodeLoadOptions as JavaBridgeExternalCodeLoadOptionsType,
+    JavaBridgeLoadedCodePath as JavaBridgeLoadedCodePathType
 } from './java-bridge';
 import {
     CalculationResultData as _CalculationResultData,
@@ -60,8 +65,10 @@ import { Android as AndroidClass } from './android';
 import {
     ComposeDslContext as ComposeDslContextType,
     ComposeDslScreen as ComposeDslScreenType,
-    ComposeNode as ComposeNodeType
+    ComposeNode as ComposeNodeType,
+    ComposeCanvasCommand as ComposeCanvasCommandType
 } from './compose-dsl';
+import { ToolPkg as ToolPkgType } from './toolpkg';
 
 // Export core interfaces and functions
 export * from './core';
@@ -72,8 +79,9 @@ export * from './results';
 // Export tool type definitions
 export * from './tool-types';
 export * from './java-bridge';
+export * from './toolpkg';
 
-// Export compose-dsl definitions for toolpkg ui_modules
+// Export compose-dsl definitions for toolpkg runtime modules
 export * from './compose-dsl';
 export * from './compose-dsl.material3.generated';
 
@@ -95,6 +103,7 @@ export { UI, UINode } from './ui';
 export { FFmpegVideoCodec, FFmpegAudioCodec, FFmpegResolution, FFmpegBitrate } from './ffmpeg';
 export { Tasker } from './tasker';
 export { Workflow } from './workflow';
+export { ToolPkg } from './toolpkg';
 export { Chat } from './chat';
 export { Memory } from './memory';
 
@@ -129,6 +138,7 @@ declare global {
     type ComposeDslContext = ComposeDslContextType;
     type ComposeDslScreen = ComposeDslScreenType;
     type ComposeNode = ComposeNodeType;
+    type ComposeCanvasCommand = ComposeCanvasCommandType;
     type JavaBridgeApi = JavaBridgeApiType;
     type JavaBridgeClass = JavaBridgeClassType;
     type JavaBridgeInstance = JavaBridgeInstanceType;
@@ -136,7 +146,11 @@ declare global {
     type JavaBridgePackage = JavaBridgePackageType;
     type JavaBridgeJsInterfaceMarker = JavaBridgeJsInterfaceMarkerType;
     type JavaBridgeJsInterfaceImpl = JavaBridgeJsInterfaceImplType;
-
+    type JavaBridgeJsMethod = JavaBridgeJsMethodType;
+    type JavaBridgeInterfaceRef = JavaBridgeInterfaceRefType;
+    type JavaBridgeCallbackResult = JavaBridgeCallbackResultType;
+    type JavaBridgeExternalCodeLoadOptions = JavaBridgeExternalCodeLoadOptionsType;
+    type JavaBridgeLoadedCodePath = JavaBridgeLoadedCodePathType;
 
     // Make result types available globally
     type CalculationResultData = _CalculationResultData;
@@ -176,40 +190,16 @@ declare global {
     type ModelConfigConnectionTestItemResultData = _ModelConfigConnectionTestItemResultData;
     type ModelConfigConnectionTestResultData = _ModelConfigConnectionTestResultData;
 
-    namespace Tasker {
-        export type TriggerTaskerEventParams = TaskerType.TriggerTaskerEventParams;
-    }
+    export import Tasker = TaskerType;
 
-    namespace Workflow {
-        export type CreateParams = WorkflowType.CreateParams;
-        export type GetParams = WorkflowType.GetParams;
-        export type UpdateParams = WorkflowType.UpdateParams;
-        export type DeleteParams = WorkflowType.DeleteParams;
-        export type TriggerParams = WorkflowType.TriggerParams;
+    export import Workflow = WorkflowType;
 
-        export type Node = WorkflowType.Node;
-        export type Connection = WorkflowType.Connection;
-        export type NodeInput = WorkflowType.NodeInput;
-        export type ConnectionInput = WorkflowType.ConnectionInput;
-        export type ConnectionConditionKeyword = WorkflowType.ConnectionConditionKeyword;
-        export type ConnectionCondition = WorkflowType.ConnectionCondition;
-        export type ParameterValueInput = WorkflowType.ParameterValueInput;
-        export type Info = WorkflowType.Info;
-        export type Detail = WorkflowType.Detail;
-        export type List = WorkflowType.List;
-
-        export type PatchOperation = WorkflowType.PatchOperation;
-        export type NodePatch = WorkflowType.NodePatch;
-        export type ConnectionPatch = WorkflowType.ConnectionPatch;
-        export type PatchParams = WorkflowType.PatchParams;
-    }
+    export import ToolPkg = ToolPkgType;
 
     // Global interface definitions
     interface ToolParams {
         [key: string]: string | number | boolean | object;
     }
-
-    type LocalizedText = string | { [lang: string]: string };
 
     interface ToolConfig {
         type?: string;
@@ -271,7 +261,7 @@ declare global {
         SoftwareSettings: typeof SoftwareSettingsType;
         UI: typeof UIType;
         FFmpeg: typeof FFmpegType;
-        Tasker: typeof TaskerType;
+        Tasker: TaskerType.Runtime;
         Workflow: WorkflowType.Runtime;
         Chat: typeof ChatType;
         Memory: typeof MemoryType;

@@ -63,15 +63,43 @@ bool StreamXmlPlugin::isPunctuationTrigger(char16_t c) {
     }
 }
 
+bool StreamXmlPlugin::isEmojiTrigger(char16_t c) {
+    // Most modern emojis are surrogate pairs in UTF-16.
+    if (c >= u'\xD800' && c <= u'\xDFFF') {
+        return true;
+    }
+
+    // Common BMP emoji/symbol blocks (e.g. ☀, ❤, ✨, etc.).
+    if ((c >= u'\x2300' && c <= u'\x23FF') ||
+        (c >= u'\x2600' && c <= u'\x27BF') ||
+        (c >= u'\x2B00' && c <= u'\x2BFF')) {
+        return true;
+    }
+
+    return false;
+}
+
+bool StreamXmlPlugin::isEmojiContinuationChar(char16_t c) {
+    switch (c) {
+        case u'\u200D': // ZERO WIDTH JOINER
+        case u'\uFE0E': // text presentation selector
+        case u'\uFE0F': // emoji presentation selector
+        case u'\u20E3': // combining enclosing keycap
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool StreamXmlPlugin::handleDefaultCharacter(char16_t c) {
     updatePunctuationAllowance(c);
     return true;
 }
 
 void StreamXmlPlugin::updatePunctuationAllowance(char16_t c) {
-    if (isPunctuationTrigger(c)) {
+    if (isPunctuationTrigger(c) || isEmojiTrigger(c)) {
         allowStartAfterPunctuation_ = true;
-    } else if (c == u' ' || c == u'\t') {
+    } else if (c == u' ' || c == u'\t' || isEmojiContinuationChar(c)) {
         // keep
     } else {
         allowStartAfterPunctuation_ = false;
@@ -162,7 +190,7 @@ bool StreamXmlPlugin::processChar(char16_t c, bool atStartOfLine) {
         if (!allowStart) {
             return finish(handleDefaultCharacter(c));
         }
-        if (c == u' ' || c == u'\t') {
+        if (c == u' ' || c == u'\t' || isEmojiContinuationChar(c)) {
             return finish(handleDefaultCharacter(c));
         }
     }

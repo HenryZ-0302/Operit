@@ -311,6 +311,9 @@ class CodeText : ColorsText {
     }
     
     fun setLanguage(language: String) {
+        if (currentLanguage.equals(language, ignoreCase = true)) {
+            return
+        }
         currentLanguage = language
         codeParser.setLanguage(language)
         completionProvider = CompletionProviderFactory.getProvider(language)
@@ -319,10 +322,14 @@ class CodeText : ColorsText {
     /**
      * 手动触发完整代码解析（用于文件加载后初始化高亮）
      */
-    fun triggerParse() {
+    fun triggerParse(immediate: Boolean = false) {
         val textLength = text?.length ?: 0
         if (textLength > 0) {
-            codeParser.parse(0, 0, textLength)
+            if (immediate) {
+                codeParser.parseImmediately()
+            } else {
+                codeParser.parse(0, 0, textLength)
+            }
         }
     }
 

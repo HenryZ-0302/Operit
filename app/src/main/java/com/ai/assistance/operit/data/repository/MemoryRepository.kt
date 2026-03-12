@@ -1481,7 +1481,19 @@ class MemoryRepository(private val context: Context, profileId: String) {
     /**
      * 创建新记忆并自动生成embedding，保存到数据库并同步索引。
      */
-    suspend fun createMemory(title: String, content: String, contentType: String = "text/plain", source: String = "user_input", folderPath: String = ""): Memory? = withContext(Dispatchers.IO) {
+    suspend fun createMemory(
+        title: String,
+        content: String,
+        contentType: String = "text/plain",
+        source: String = "user_input",
+        folderPath: String = "",
+        tags: List<String>? = null
+    ): Memory? = withContext(Dispatchers.IO) {
+        val normalizedTags = tags
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.distinct()
+
         val memory = Memory(
             title = title,
             content = content,
@@ -1490,6 +1502,19 @@ class MemoryRepository(private val context: Context, profileId: String) {
             folderPath = normalizeFolderPath(folderPath)
         )
         saveMemory(memory)
+
+        if (!normalizedTags.isNullOrEmpty()) {
+            normalizedTags.forEach { tagName ->
+                val tag =
+                    tagBox.query(MemoryTag_.name.equal(tagName, QueryBuilder.StringOrder.CASE_SENSITIVE))
+                        .build()
+                        .findFirst()
+                        ?: MemoryTag(name = tagName).also { tagBox.put(it) }
+                memory.tags.add(tag)
+            }
+            memoryBox.put(memory)
+        }
+
         addMemoryToIndex(memory)
         memory
     }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
@@ -39,6 +41,8 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.VolumeOff
+import androidx.compose.material.icons.filled.VolumeUp
 
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -124,6 +128,8 @@ fun BottomControlBar(
     onAttachLocationChange: (Boolean) -> Unit,
     hasOcrSelection: Boolean,
     onHasOcrSelectionChange: (Boolean) -> Unit,
+    isTtsMuted: Boolean,
+    onToggleTtsMute: () -> Unit,
     onSendClick: () -> Unit,
     volumeLevel: Float,
     modifier: Modifier = Modifier
@@ -139,6 +145,7 @@ fun BottomControlBar(
         }
     }
     val density = LocalDensity.current
+    val attachmentTabsScrollState = rememberScrollState()
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
@@ -188,13 +195,31 @@ fun BottomControlBar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 12.dp)
+                        .horizontalScroll(attachmentTabsScrollState)
+                        .padding(horizontal = 12.dp)
                         .offset(y = 6.dp),
                     horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val isScreenOcrMode = floatContext.currentMode == FloatingMode.SCREEN_OCR
                     val isScreenOcrSelected = isScreenOcrMode || hasOcrSelection
+
+                    // 朗读静音
+                    GlassyChip(
+                        selected = isTtsMuted,
+                        text = "",
+                        icon = if (isTtsMuted) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                        showIcon = true,
+                        showText = false,
+                        iconContentDescription = if (isTtsMuted) {
+                            stringResource(R.string.theme_unmute)
+                        } else {
+                            stringResource(R.string.theme_mute)
+                        },
+                        onClick = onToggleTtsMute
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     // 屏幕内容
                     GlassyChip(

@@ -1092,13 +1092,15 @@ data class TerminalSessionScreenResultData(
     val sessionId: String,
     val rows: Int,
     val cols: Int,
-    val content: String
+    val content: String,
+    val commandRunning: Boolean = false
 ) : ToolResultData() {
     override fun toString(): String {
         val sb = StringBuilder()
         sb.appendLine("Terminal Session Screen Snapshot:")
         sb.appendLine("Session: $sessionId")
         sb.appendLine("Size: ${cols}x${rows}")
+        sb.appendLine("Command Running: $commandRunning")
         sb.appendLine()
         sb.append(content)
         return sb.toString()

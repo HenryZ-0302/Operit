@@ -21,7 +21,8 @@
                 { "name": "method", "description": { "zh": "请求方法：GET/POST/PUT/DELETE", "en": "Method: GET/POST/PUT/DELETE" }, "type": "string", "required": true },
                 { "name": "headers", "description": { "zh": "可选：headers（JSON 对象字符串）", "en": "Optional: headers (JSON object string)" }, "type": "string", "required": false },
                 { "name": "body", "description": { "zh": "可选：请求体（字符串）", "en": "Optional: body (string)" }, "type": "string", "required": false },
-                { "name": "body_type", "description": { "zh": "可选：json/form/text/xml", "en": "Optional: json/form/text/xml" }, "type": "string", "required": false }
+                { "name": "body_type", "description": { "zh": "可选：json/form/text/xml", "en": "Optional: json/form/text/xml" }, "type": "string", "required": false },
+                { "name": "ignore_ssl", "description": { "zh": "可选：是否忽略 HTTPS 证书校验（true/false）", "en": "Optional: ignore HTTPS certificate verification (true/false)" }, "type": "boolean", "required": false }
             ]
         },
         {
@@ -32,7 +33,8 @@
                 { "name": "method", "description": { "zh": "请求方法：POST/PUT", "en": "Method: POST/PUT" }, "type": "string", "required": true },
                 { "name": "headers", "description": { "zh": "可选：headers（JSON 对象字符串）", "en": "Optional: headers (JSON object string)" }, "type": "string", "required": false },
                 { "name": "form_data", "description": { "zh": "可选：form_data（字符串）", "en": "Optional: form_data (string)" }, "type": "string", "required": false },
-                { "name": "files", "description": { "zh": "可选：files（JSON 数组字符串）", "en": "Optional: files (JSON array string)" }, "type": "string", "required": false }
+                { "name": "files", "description": { "zh": "可选：files（JSON 数组字符串）", "en": "Optional: files (JSON array string)" }, "type": "string", "required": false },
+                { "name": "ignore_ssl", "description": { "zh": "可选：是否忽略 HTTPS 证书校验（true/false）", "en": "Optional: ignore HTTPS certificate verification (true/false)" }, "type": "boolean", "required": false }
             ]
         },
         {
@@ -57,7 +59,14 @@ const ExtendedHttpTools = (function () {
         data?: any;
     }
 
-    async function http_request(params: { url: string; method: string; headers?: string; body?: string; body_type?: string }): Promise<ToolResponse> {
+    async function http_request(params: {
+        url: string;
+        method: string;
+        headers?: string;
+        body?: string;
+        body_type?: string;
+        ignore_ssl?: boolean;
+    }): Promise<ToolResponse> {
         const toolParams: ToolParams = {
             url: params.url,
             method: params.method,
@@ -65,6 +74,7 @@ const ExtendedHttpTools = (function () {
         if (params.headers !== undefined) toolParams.headers = params.headers;
         if (params.body !== undefined) toolParams.body = params.body;
         if (params.body_type !== undefined) toolParams.body_type = params.body_type;
+        if (params.ignore_ssl !== undefined) toolParams.ignore_ssl = params.ignore_ssl;
 
         const result = await toolCall({ name: "http_request", params: toolParams });
         const success = result.statusCode >= 200 && result.statusCode < 400;
@@ -109,7 +119,14 @@ const ExtendedHttpTools = (function () {
         return { success, message: 'HTTP 请求完成', data: result };
     }
 
-    async function multipart_request(params: { url: string; method: string; headers?: string; form_data?: string; files?: string }): Promise<ToolResponse> {
+    async function multipart_request(params: {
+        url: string;
+        method: string;
+        headers?: string;
+        form_data?: string;
+        files?: string;
+        ignore_ssl?: boolean;
+    }): Promise<ToolResponse> {
         const toolParams: ToolParams = {
             url: params.url,
             method: params.method,
@@ -117,6 +134,7 @@ const ExtendedHttpTools = (function () {
         if (params.headers !== undefined) toolParams.headers = params.headers;
         if (params.form_data !== undefined) toolParams.form_data = params.form_data;
         if (params.files !== undefined) toolParams.files = params.files;
+        if (params.ignore_ssl !== undefined) toolParams.ignore_ssl = params.ignore_ssl;
 
         const result = await toolCall({ name: "multipart_request", params: toolParams });
         const success = result.statusCode >= 200 && result.statusCode < 400;
@@ -164,8 +182,22 @@ const ExtendedHttpTools = (function () {
     }
 
     return {
-        http_request: (params: { url: string; method: string; headers?: string; body?: string; body_type?: string }) => wrapToolExecution(http_request, params),
-        multipart_request: (params: { url: string; method: string; headers?: string; form_data?: string; files?: string }) => wrapToolExecution(multipart_request, params),
+        http_request: (params: {
+            url: string;
+            method: string;
+            headers?: string;
+            body?: string;
+            body_type?: string;
+            ignore_ssl?: boolean;
+        }) => wrapToolExecution(http_request, params),
+        multipart_request: (params: {
+            url: string;
+            method: string;
+            headers?: string;
+            form_data?: string;
+            files?: string;
+            ignore_ssl?: boolean;
+        }) => wrapToolExecution(multipart_request, params),
         manage_cookies: (params: { action: string; domain?: string; cookies?: string }) => wrapToolExecution(manage_cookies, params),
         main,
     };

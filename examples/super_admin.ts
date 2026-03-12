@@ -335,7 +335,8 @@ const superAdmin = (function () {
                 sessionId: result.sessionId ?? sessionId,
                 rows: result.rows,
                 cols: result.cols,
-                content: result.content
+                content: result.content,
+                commandRunning: result.commandRunning === true
             };
         } catch (error) {
             console.error(`[terminal_getscreen] 错误: ${error.message}`);

@@ -22,8 +22,10 @@ import com.ai.assistance.operit.core.tools.system.AndroidShellExecutor
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.content.pm.PackageManager
 import android.content.pm.ApplicationInfo
 import android.app.ActivityManager
@@ -32,18 +34,45 @@ import android.os.Build
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.core.content.FileProvider
 import java.io.File
 import com.ai.assistance.operit.services.notification.OperitNotificationStore
 import com.ai.assistance.operit.R
+import com.ai.assistance.operit.util.OperitPaths
 
 /** 提供系统级操作的工具类 包括系统设置修改、应用安装和卸载等 这些操作需要用户明确授权 */
 open class StandardSystemOperationTools(private val context: Context) {
 
     companion object {
         private const val TAG = "SystemOperationTools"
+        private const val OPERIT_PACKAGE = "com.ai.assistance.operit"
 
         private const val AI_REPLY_CHANNEL_ID = "AI_REPLY_CHANNEL"
         private const val AI_REPLY_CHANNEL_NAME = "Chat Completion Reminder"
+    }
+
+    private fun isOperitInternalPath(path: String): Boolean {
+        val normalizedPath = path.trim()
+        return normalizedPath.startsWith("/data/data/$OPERIT_PACKAGE") ||
+            normalizedPath.startsWith("/data/user/0/$OPERIT_PACKAGE")
+    }
+
+    private fun stageApkForInstallIfNeeded(apkFile: File): File {
+        val apkPath = apkFile.absolutePath
+        if (!isOperitInternalPath(apkPath)) {
+            return apkFile
+        }
+
+        val cleanOnExitDir = OperitPaths.cleanOnExitDir()
+        if (!cleanOnExitDir.exists() && !cleanOnExitDir.mkdirs()) {
+            throw IllegalStateException("Cannot create cleanOnExit dir: ${cleanOnExitDir.absolutePath}")
+        }
+
+        val stagedFileName = "install_${System.currentTimeMillis()}_${apkFile.name}"
+        val stagedFile = File(cleanOnExitDir, stagedFileName)
+        apkFile.copyTo(stagedFile, overwrite = true)
+        AppLogger.d(TAG, "Staged internal apk for installer: $apkPath -> ${stagedFile.absolutePath}")
+        return stagedFile
     }
 
     open suspend fun toast(tool: AITool): ToolResult {
@@ -314,11 +343,24 @@ open class StandardSystemOperationTools(private val context: Context) {
         }
 
         return try {
+            val installFile = stageApkForInstallIfNeeded(file)
+            val apkUri =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        installFile
+                    )
+                } else {
+                    Uri.fromFile(installFile)
+                }
+
             val intent = Intent(Intent.ACTION_VIEW)
-            val uri = Uri.fromFile(file)
-            intent.setDataAndType(uri, "application/vnd.android.package-archive")
+            intent.setDataAndType(apkUri, "application/vnd.android.package-archive")
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
             context.startActivity(intent)
 
             val resultData = AppOperationData(

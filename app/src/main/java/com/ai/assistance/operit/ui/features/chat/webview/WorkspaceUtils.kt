@@ -151,9 +151,30 @@ private fun generateAndroidProjectConfig(context: Context): String {
             "shell": true
         },
         {
-            "id": "gradle_install_debug",
+            "id": "gradle_assemble_release",
+            "label": "${context.getString(R.string.workspace_cmd_android_assemble_release)}",
+            "command": "./gradlew assembleRelease",
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "android_install_debug_apk",
             "label": "${context.getString(R.string.workspace_cmd_android_install_debug)}",
-            "command": "./gradlew installDebug",
+            "tool": "install_app",
+            "toolParameters": {
+                "path": "${'$'}WORKSPACE/app/build/outputs/apk/debug/app-debug.apk"
+            },
+            "workingDir": ".",
+            "shell": true
+        },
+        {
+            "id": "share_release_apk",
+            "label": "${context.getString(R.string.workspace_cmd_android_share_release_apk)}",
+            "tool": "share_file",
+            "toolParameters": {
+                "path": "${'$'}WORKSPACE/app/build/outputs/apk/release/app-release.apk",
+                "title": "Share Release APK"
+            },
             "workingDir": ".",
             "shell": true
         },

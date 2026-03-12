@@ -134,6 +134,36 @@ export namespace NativeInterface {
     function logDebug(message: string, data: string): void;
 
     /**
+     * Register a toolbox UI module for current toolpkg main registration session.
+     * @param specJson - JSON object string describing a toolbox UI module
+     */
+    function registerToolPkgToolboxUiModule(specJson: string): void;
+
+    /**
+     * Register an app lifecycle hook for current toolpkg main registration session.
+     * @param specJson - JSON object string describing an app lifecycle hook
+     */
+    function registerToolPkgAppLifecycleHook(specJson: string): void;
+
+    /**
+     * Register a message processing plugin for current toolpkg main registration session.
+     * @param specJson - JSON object string describing a message processing plugin
+     */
+    function registerToolPkgMessageProcessingPlugin(specJson: string): void;
+
+    /**
+     * Register an XML render plugin for current toolpkg main registration session.
+     * @param specJson - JSON object string describing an XML render plugin
+     */
+    function registerToolPkgXmlRenderPlugin(specJson: string): void;
+
+    /**
+     * Register an input menu toggle plugin for current toolpkg main registration session.
+     * @param specJson - JSON object string describing an input menu toggle plugin
+     */
+    function registerToolPkgInputMenuTogglePlugin(specJson: string): void;
+
+    /**
      * Register an image from base64-encoded data into the global image pool
      * and return a `<link type="image" id="...">` tag string that can be
      * embedded into tool results or messages.
@@ -160,6 +190,29 @@ export namespace NativeInterface {
      * Check whether a Java/Kotlin class exists.
      */
     function javaClassExists(className: string): boolean;
+
+    /**
+     * Load an external `.dex` file into the Java bridge class loader chain.
+     * @param path - Absolute or app-accessible path to the dex file
+     * @param optionsJson - JSON object string, currently supports `nativeLibraryDir`
+     * @returns Bridge JSON string: {"success":boolean,"data"?:{"index":number,"type":"dex","path":string,"nativeLibraryDir":string|null,"alreadyLoaded":boolean},"error"?:string}
+     */
+    function javaLoadDex(path: string, optionsJson: string): string;
+
+    /**
+     * Load an external Android-executable `.jar` file into the Java bridge class loader chain.
+     * The jar must contain `classes.dex`.
+     * @param path - Absolute or app-accessible path to the jar file
+     * @param optionsJson - JSON object string, currently supports `nativeLibraryDir`
+     * @returns Bridge JSON string: {"success":boolean,"data"?:{"index":number,"type":"jar","path":string,"nativeLibraryDir":string|null,"alreadyLoaded":boolean},"error"?:string}
+     */
+    function javaLoadJar(path: string, optionsJson: string): string;
+
+    /**
+     * List external dex/jar artifacts already loaded in the current engine session.
+     * @returns Bridge JSON string: {"success":boolean,"data"?:Array<{"index":number,"type":"dex"|"jar","path":string,"nativeLibraryDir":string|null,"alreadyLoaded":boolean}>,"error"?:string}
+     */
+    function javaListLoadedCodePaths(): string;
 
     /**
      * Get the Android application Context as a bridge handle payload.
@@ -225,17 +278,6 @@ export namespace NativeInterface {
      */
     function javaSetInstanceField(instanceHandle: string, fieldName: string, valueJson: string): string;
 
-    /**
-     * Release one Java/Kotlin instance handle.
-     * @returns Bridge JSON string: {"success":boolean,"data"?:boolean,"error"?:string}
-     */
-    function javaReleaseInstance(instanceHandle: string): string;
-
-    /**
-     * Release all Java/Kotlin instance handles in current engine session.
-     * @returns Bridge JSON string: {"success":boolean,"data"?:number,"error"?:string}
-     */
-    function javaReleaseAllInstances(): string;
 }
 
 /**

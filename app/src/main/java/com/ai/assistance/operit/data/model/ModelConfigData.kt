@@ -7,6 +7,7 @@ import kotlinx.serialization.Serializable
 enum class ApiProviderType {
         OPENAI, // OpenAI (GPT系列)
         OPENAI_RESPONSES, // OpenAI Responses API
+        OPENAI_RESPONSES_GENERIC, // OpenAI Responses通用（自定义端点）
         OPENAI_GENERIC, // OpenAI通用（自定义端点）
         ANTHROPIC, // Anthropic (Claude系列)
         ANTHROPIC_GENERIC, // Anthropic通用（自定义端点）
@@ -26,6 +27,7 @@ enum class ApiProviderType {
         INFINIAI, // 无问芯穹
         ALIPAY_BAILING, // 支付宝百灵大模型
         DOUBAO, // 豆包（火山模型）
+        NVIDIA, // NVIDIA API Catalog / NIM
         LMSTUDIO, // LM Studio本地模型服务
         OLLAMA, // Ollama 本地/私有部署服务（OpenAI兼容）
         MNN, // MNN本地推理引擎

@@ -291,20 +291,18 @@ class FileBindingService(context: Context) {
         for ((op, start, end) in enrichedOps) {
             AppLogger.d(TAG, "Applying ${op.action} at lines ${start + 1}-${end + 1}")
 
-            // Capture original segment before removal so we can preserve indentation if needed
             val originalSegment = originalLines.subList(start, end + 1).toList()
+            val boundaryPreservingLines = tryApplyBoundaryPreservingEdit(originalSegment, op)
 
-            // Remove the old lines
             for (i in end downTo start) {
                 originalLines.removeAt(i)
             }
 
-            // If it's a REPLACE, add the new lines
-            if (op.action == EditAction.REPLACE) {
-
+            if (boundaryPreservingLines != null) {
+                originalLines.addAll(start, boundaryPreservingLines)
+            } else if (op.action == EditAction.REPLACE) {
                 val newLinesRaw = op.newContent.lines()
 
-                // For simple single-line replacements, inherit the indentation of the original line
                 val newLines = if (originalSegment.isNotEmpty() &&
                     start == end &&
                     newLinesRaw.size == 1
@@ -335,6 +333,53 @@ class FileBindingService(context: Context) {
         }
 
         return Pair(true, originalLines.joinToString("\n"))
+    }
+
+    private fun tryApplyBoundaryPreservingEdit(
+        originalSegment: List<String>,
+        op: EditOperation
+    ): List<String>? {
+        if (originalSegment.isEmpty()) return null
+
+        val oldLines = op.oldContent.lines()
+        if (oldLines.isEmpty()) return null
+
+        val startIndex = findUniqueOccurrence(originalSegment.first(), oldLines.first()) ?: return null
+        val endIndex = findUniqueOccurrence(originalSegment.last(), oldLines.last()) ?: return null
+
+        val prefix = originalSegment.first().substring(0, startIndex)
+        val suffix = originalSegment.last().substring(endIndex + oldLines.last().length)
+
+        return when (op.action) {
+            EditAction.REPLACE -> {
+                val newLines = op.newContent.lines()
+                if (newLines.isEmpty()) return null
+                when (newLines.size) {
+                    1 -> listOf(prefix + newLines.first() + suffix)
+                    else -> buildList {
+                        add(prefix + newLines.first())
+                        addAll(newLines.subList(1, newLines.lastIndex))
+                        add(newLines.last() + suffix)
+                    }
+                }
+            }
+            EditAction.DELETE -> {
+                val updatedLine = prefix + suffix
+                if (updatedLine.isEmpty()) emptyList() else listOf(updatedLine)
+            }
+        }
+    }
+
+    private fun findUniqueOccurrence(line: String, fragment: String): Int? {
+        if (fragment.isEmpty()) return null
+
+        val firstIndex = line.indexOf(fragment)
+        if (firstIndex == -1) return null
+
+        val duplicateMatchIndex = line.indexOf(fragment, firstIndex + fragment.length)
+        if (duplicateMatchIndex != -1) return null
+
+        return firstIndex
     }
 
     private fun parseEditOperations(patchCode: String): List<EditOperation> {

@@ -311,7 +311,8 @@ const superAdmin = (function () {
                 sessionId: (_a = result.sessionId) !== null && _a !== void 0 ? _a : sessionId,
                 rows: result.rows,
                 cols: result.cols,
-                content: result.content
+                content: result.content,
+                commandRunning: result.commandRunning === true
             };
         }
         catch (error) {

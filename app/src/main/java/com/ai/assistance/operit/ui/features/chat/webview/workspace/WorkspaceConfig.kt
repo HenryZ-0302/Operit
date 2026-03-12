@@ -50,7 +50,9 @@ data class PreviewConfig(
 data class CommandConfig(
     val id: String,
     val label: String,
-    val command: String,
+    val command: String? = null,
+    val tool: String? = null,
+    val toolParameters: Map<String, String> = emptyMap(),
     val workingDir: String = ".",
     val shell: Boolean = true,
     val usesDedicatedSession: Boolean = false, // 是否使用独立会话（适用于长时间运行的命令如 tsc watch）

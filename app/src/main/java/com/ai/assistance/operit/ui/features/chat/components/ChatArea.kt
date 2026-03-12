@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.draw.alpha
 import com.ai.assistance.operit.api.chat.llmprovider.MediaLinkParser
 import com.ai.assistance.operit.ui.features.chat.components.style.cursor.CursorStyleChatMessage
+import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleImageStyleConfig
 import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleStyleChatMessage
 import com.ai.assistance.operit.util.ChatMarkupRegex
 import com.ai.assistance.operit.util.WaifuMessageProcessor
@@ -217,6 +218,14 @@ fun ChatArea(
     onToggleMultiSelectMode: ((Int?) -> Unit)? = null, // 切换多选模式的回调，可传入要初始选中的消息索引
     onToggleMessageSelection: ((Int) -> Unit)? = null, // 切换消息选中状态的回调
     horizontalPadding: Dp = 16.dp, // 水平内边距，可自定义
+    bubbleUserImageStyle: BubbleImageStyleConfig? = null,
+    bubbleAiImageStyle: BubbleImageStyleConfig? = null,
+    bubbleUserRoundedCornersEnabled: Boolean = true,
+    bubbleAiRoundedCornersEnabled: Boolean = true,
+    bubbleUserContentPaddingLeft: Float = 12f,
+    bubbleUserContentPaddingRight: Float = 12f,
+    bubbleAiContentPaddingLeft: Float = 12f,
+    bubbleAiContentPaddingRight: Float = 12f,
     showChatFloatingDotsAnimation: Boolean = true,
 ) {
     // 记住当前深度状态，但当chatHistory发生变化时重置为1
@@ -305,7 +314,15 @@ fun ChatArea(
                         isSelected = selectedMessageIndices.contains(actualIndex), // 传递选中状态
                         onToggleSelection = { onToggleMessageSelection?.invoke(actualIndex) }, // 传递选中切换回调
                         onToggleMultiSelectMode = onToggleMultiSelectMode, // 传递多选模式切换回调
-                        messageIndex = actualIndex // 传递消息索引
+                        messageIndex = actualIndex, // 传递消息索引
+                        bubbleUserImageStyle = bubbleUserImageStyle,
+                        bubbleAiImageStyle = bubbleAiImageStyle,
+                        bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                        bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                        bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
+                        bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
+                        bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
+                        bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                     )
                 }
 
@@ -380,7 +397,15 @@ private fun MessageItem(
     isSelected: Boolean = false, // 是否被选中
     onToggleSelection: (() -> Unit)? = null, // 切换选中状态的回调
     onToggleMultiSelectMode: ((Int?) -> Unit)? = null, // 切换多选模式的回调，可传入要初始选中的消息索引
-    messageIndex: Int // 消息索引，用于进入多选时自动选中
+    messageIndex: Int, // 消息索引，用于进入多选时自动选中
+    bubbleUserImageStyle: BubbleImageStyleConfig? = null,
+    bubbleAiImageStyle: BubbleImageStyleConfig? = null,
+    bubbleUserRoundedCornersEnabled: Boolean = true,
+    bubbleAiRoundedCornersEnabled: Boolean = true,
+    bubbleUserContentPaddingLeft: Float = 12f,
+    bubbleUserContentPaddingRight: Float = 12f,
+    bubbleAiContentPaddingLeft: Float = 12f,
+    bubbleAiContentPaddingRight: Float = 12f,
 ) {
     val context = LocalContext.current
     var showContextMenu by remember { mutableStateOf(false) }
@@ -445,6 +470,14 @@ private fun MessageItem(
                     aiTextColor = aiTextColor,
                     systemMessageColor = systemMessageColor,
                     systemTextColor = systemTextColor,
+                    userBubbleImageStyle = bubbleUserImageStyle,
+                    aiBubbleImageStyle = bubbleAiImageStyle,
+                    bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                    bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                    bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
+                    bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
+                    bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
+                    bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                     isHidden = isHidden,
                     onRoleAvatarLongPress = onMentionRoleFromAvatar
                 )

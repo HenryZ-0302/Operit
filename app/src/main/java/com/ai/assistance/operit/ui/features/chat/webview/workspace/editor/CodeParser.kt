@@ -51,6 +51,9 @@ class CodeParser(private val codeText: ColorsText) : Runnable {
      */
     fun parse(start: Int, before: Int, count: Int) {
         if (running) {
+            this.start = start
+            this.before = before
+            this.count = count
             reparse = true
             forceFullParse = true
             return
@@ -77,8 +80,32 @@ class CodeParser(private val codeText: ColorsText) : Runnable {
         }
         
         // 重新解析以应用新的高亮规则
-        forceFullParse = true
-        parse(0, 0, codeText.length())
+        if (codeText.length() > 0) {
+            forceFullParse = true
+            parse(0, 0, codeText.length())
+        }
+    }
+
+    /**
+     * 立即在当前线程执行一次全量解析，避免文件首次加载时出现未高亮白块
+     */
+    @Synchronized
+    fun parseImmediately() {
+        if (running) {
+            reparse = true
+            forceFullParse = true
+            return
+        }
+        running = true
+        try {
+            val codeColors = codeText.getCodeColors()
+            val text = codeText.text?.toString() ?: ""
+            parseFullText(text, codeColors)
+            lastCodeLength = text.length
+            codeText.postInvalidate()
+        } finally {
+            running = false
+        }
     }
 
     override fun run() {

@@ -9,6 +9,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.regex.Pattern
 
 /**
  * App-wide logger with an API closely mirroring [com.ai.assistance.operit.util.AppLogger].
@@ -29,9 +30,29 @@ object AppLogger {
     // Log file configuration
     private const val LOG_DIR_NAME = "logs"
     private const val LOG_FILE_NAME = "operit.log"
+    private const val PACKAGE_LOG_DIR_NAME = "packageLogs"
+    private const val TOOLPKG_LOG_TAG = "ToolPkg"
 
     // Simple date formatter for log lines
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+    private val startupFileDateFormat = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US)
+    private val packageIdRegexes = listOf(
+        Pattern.compile("""\btoolPkgId=([A-Za-z0-9._:-]+)\b"""),
+        Pattern.compile("""\bpackage(?:/subpackage)?=([A-Za-z0-9._:-]+)\b"""),
+        Pattern.compile("""\bcontainer=([A-Za-z0-9._:-]+)\b"""),
+        Pattern.compile("""\btarget=([A-Za-z0-9._:-]+)\b""")
+    )
+    private val scriptRegexes = listOf(
+        Pattern.compile("""\bscript=([^\s,]+)"""),
+        Pattern.compile("""\bpath=([^\s,]+)"""),
+        Pattern.compile("""\bscreen=([^\s,]+)"""),
+        Pattern.compile("""\bfunction=([A-Za-z0-9_.$:-]+)\b""")
+    )
+    private val pluginRegexes = listOf(
+        Pattern.compile("""\bplugin=([A-Za-z0-9._:-]+)\b"""),
+        Pattern.compile("""\bpluginId=([A-Za-z0-9._:-]+)\b"""),
+        Pattern.compile("""\bhookId=([A-Za-z0-9._:-]+)\b""")
+    )
 
     /**
      * Optional external switch to completely disable file logging if needed.
@@ -42,6 +63,8 @@ object AppLogger {
 
     @Volatile
     private var logFile: File? = null
+    @Volatile
+    private var packageLogFile: File? = null
 
     @Volatile
     private var boundContext: Context? = null
@@ -71,6 +94,30 @@ object AppLogger {
                 logFile = file
             }
         } catch (e: Throwable) {
+            null
+        }
+    }
+
+    private fun resolvePackageLogFile(): File? {
+        val existing = packageLogFile
+        if (existing != null) return existing
+
+        return try {
+            val appContext: Context = try {
+                OperitApplication.instance.applicationContext
+            } catch (_: Throwable) {
+                boundContext ?: return null
+            }
+            val dir = File(OperitPaths.operitRootDir(), PACKAGE_LOG_DIR_NAME)
+            if (!dir.exists()) {
+                dir.mkdirs()
+            }
+            val startupMs = OperitApplication.appStartupTimeMs.takeIf { it > 0L } ?: System.currentTimeMillis()
+            val fileName = startupFileDateFormat.format(Date(startupMs)) + ".log"
+            File(dir, fileName).also { file ->
+                packageLogFile = file
+            }
+        } catch (_: Throwable) {
             null
         }
     }
@@ -193,6 +240,7 @@ object AppLogger {
                 file.delete()
             }
             logFile = null
+            packageLogFile = null
         } catch (e: Throwable) {
             // Ignore errors during reset to avoid crashing on startup
         }
@@ -238,5 +286,90 @@ object AppLogger {
         } catch (e: IOException) {
             // Avoid recursive logging here; swallow to prevent crashes
         }
+
+        writeToPackageLogIfNeeded(
+            tag = tag,
+            msg = msg,
+            tr = tr,
+            time = time,
+            levelChar = levelChar
+        )
+    }
+
+    private fun writeToPackageLogIfNeeded(
+        tag: String,
+        msg: String,
+        tr: Throwable?,
+        time: String,
+        levelChar: Char
+    ) {
+        if (!shouldMirrorToPackageLog(tag, msg)) {
+            return
+        }
+        val file = resolvePackageLogFile() ?: return
+        val packageId = extractFirstMatch(msg, packageIdRegexes)
+        val scriptId = extractFirstMatch(msg, scriptRegexes)
+        val pluginId = extractFirstMatch(msg, pluginRegexes)
+
+        val builder = StringBuilder()
+        builder.append(time)
+            .append(" ")
+            .append(levelChar)
+            .append("/")
+            .append(TOOLPKG_LOG_TAG)
+            .append(" ")
+
+        if (!packageId.isNullOrBlank()) {
+            builder.append("[PKG:")
+                .append(packageId)
+                .append("]")
+        }
+        if (!scriptId.isNullOrBlank()) {
+            builder.append("[SCRIPT:")
+                .append(scriptId)
+                .append("]")
+        }
+        if (!pluginId.isNullOrBlank()) {
+            builder.append("[PLUGIN:")
+                .append(pluginId)
+                .append("]")
+        }
+        if (builder.isNotEmpty() && builder[builder.length - 1] != ' ') {
+            builder.append(" ")
+        }
+        builder
+            .append(msg)
+
+        if (tr != null) {
+            builder.append("\n").append(Log.getStackTraceString(tr))
+        }
+        builder.append('\n')
+
+        try {
+            FileWriter(file, true).use { writer ->
+                writer.write(builder.toString())
+            }
+        } catch (_: IOException) {
+        }
+    }
+
+    private fun shouldMirrorToPackageLog(tag: String, msg: String): Boolean {
+        if (!tag.equals(TOOLPKG_LOG_TAG, ignoreCase = true)) {
+            return false
+        }
+        return true
+    }
+
+    private fun extractFirstMatch(text: String, patterns: List<Pattern>): String? {
+        for (pattern in patterns) {
+            val matcher = pattern.matcher(text)
+            if (matcher.find()) {
+                val value = matcher.group(1)?.trim().orEmpty()
+                if (value.isNotEmpty()) {
+                    return value
+                }
+            }
+        }
+        return null
     }
 }

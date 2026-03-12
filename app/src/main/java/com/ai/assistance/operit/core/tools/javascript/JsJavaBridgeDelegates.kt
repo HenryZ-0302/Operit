@@ -1,6 +1,8 @@
 package com.ai.assistance.operit.core.tools.javascript
 
 import com.ai.assistance.operit.util.AppLogger
+import java.lang.ref.PhantomReference
+import java.lang.ref.ReferenceQueue
 import java.lang.reflect.Array as ReflectArray
 import java.lang.reflect.Constructor
 import java.lang.reflect.Field
@@ -8,14 +10,21 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import java.lang.reflect.Proxy
+import java.util.Collections
+import java.util.IdentityHashMap
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.intrinsics.COROUTINE_SUSPENDED
 
 internal typealias JsInterfaceCallbackInvoker = (jsObjectId: String, methodName: String, argsJson: String) -> String
+internal typealias JsInterfaceReleaseInvoker = (jsObjectId: String) -> Unit
 
 internal object JsJavaBridgeDelegates {
     private const val TAG = "JsJavaBridge"
@@ -65,9 +74,42 @@ internal object JsJavaBridgeDelegates {
         val error: String?
     )
 
-    fun classExists(className: String): Boolean {
+    private class JsInterfaceProxyReference(
+        referent: Any,
+        val callbackInvoker: JsInterfaceCallbackInvoker,
+        val jsObjectIds: Set<String>
+    ) : PhantomReference<Any>(referent, jsInterfaceProxyReferenceQueue)
+
+    private val jsInterfaceProxyReferenceQueue = ReferenceQueue<Any>()
+    private val jsInterfaceProxyReferences =
+        Collections.newSetFromMap(ConcurrentHashMap<JsInterfaceProxyReference, Boolean>())
+    private val jsInterfaceLifecycleLock = Any()
+    private val jsInterfaceReleaseInvokers =
+        IdentityHashMap<JsInterfaceCallbackInvoker, JsInterfaceReleaseInvoker>()
+    private val jsInterfaceReferenceCounts =
+        IdentityHashMap<JsInterfaceCallbackInvoker, MutableMap<String, Int>>()
+    private val jsInterfaceLifecycleWorkerStarted = AtomicBoolean(false)
+
+    fun registerJsInterfaceReleaseInvoker(
+        callbackInvoker: JsInterfaceCallbackInvoker,
+        releaseInvoker: JsInterfaceReleaseInvoker
+    ) {
+        ensureJsInterfaceLifecycleWorker()
+        synchronized(jsInterfaceLifecycleLock) {
+            jsInterfaceReleaseInvokers[callbackInvoker] = releaseInvoker
+        }
+    }
+
+    fun unregisterJsInterfaceReleaseInvoker(callbackInvoker: JsInterfaceCallbackInvoker) {
+        synchronized(jsInterfaceLifecycleLock) {
+            jsInterfaceReleaseInvokers.remove(callbackInvoker)
+            jsInterfaceReferenceCounts.remove(callbackInvoker)
+        }
+    }
+
+    fun classExists(className: String, bridgeClassLoader: ClassLoader? = null): Boolean {
         return try {
-            loadClass(className)
+            loadClass(className, bridgeClassLoader)
             true
         } catch (_: Exception) {
             false
@@ -82,7 +124,7 @@ internal object JsJavaBridgeDelegates {
         bridgeClassLoader: ClassLoader? = null
     ): String {
         return runBridgeCall(objectRegistry) {
-            val clazz = loadClass(className)
+            val clazz = loadClass(className, bridgeClassLoader)
             val rawArgs = parseArgsJson(argsJson, objectRegistry)
             val constructorMatch =
                 selectConstructor(
@@ -105,7 +147,7 @@ internal object JsJavaBridgeDelegates {
         bridgeClassLoader: ClassLoader? = null
     ): String {
         return runBridgeCall(objectRegistry) {
-            val clazz = loadClass(className)
+            val clazz = loadClass(className, bridgeClassLoader)
             val normalizedMethodName = methodName.trim()
             require(normalizedMethodName.isNotEmpty()) { "method name is required" }
 
@@ -153,13 +195,60 @@ internal object JsJavaBridgeDelegates {
         }
     }
 
+    fun callStaticSuspend(
+        className: String,
+        methodName: String,
+        argsJson: String,
+        objectRegistry: ConcurrentHashMap<String, Any>,
+        callback: (String) -> Unit,
+        jsCallbackInvoker: JsInterfaceCallbackInvoker? = null,
+        bridgeClassLoader: ClassLoader? = null
+    ) {
+        val target = loadClass(className, bridgeClassLoader)
+        callSuspendInternal(
+            targetClass = target,
+            instance = null,
+            methodName = methodName,
+            argsJson = argsJson,
+            staticOnly = true,
+            objectRegistry = objectRegistry,
+            callback = callback,
+            jsCallbackInvoker = jsCallbackInvoker,
+            bridgeClassLoader = bridgeClassLoader
+        )
+    }
+
+    fun callInstanceSuspend(
+        instanceHandle: String,
+        methodName: String,
+        argsJson: String,
+        objectRegistry: ConcurrentHashMap<String, Any>,
+        callback: (String) -> Unit,
+        jsCallbackInvoker: JsInterfaceCallbackInvoker? = null,
+        bridgeClassLoader: ClassLoader? = null
+    ) {
+        val instance = requireInstance(instanceHandle, objectRegistry)
+        callSuspendInternal(
+            targetClass = instance.javaClass,
+            instance = instance,
+            methodName = methodName,
+            argsJson = argsJson,
+            staticOnly = false,
+            objectRegistry = objectRegistry,
+            callback = callback,
+            jsCallbackInvoker = jsCallbackInvoker,
+            bridgeClassLoader = bridgeClassLoader
+        )
+    }
+
     fun getStaticField(
         className: String,
         fieldName: String,
-        objectRegistry: ConcurrentHashMap<String, Any>
+        objectRegistry: ConcurrentHashMap<String, Any>,
+        bridgeClassLoader: ClassLoader? = null
     ): String {
         return runBridgeCall(objectRegistry) {
-            val clazz = loadClass(className)
+            val clazz = loadClass(className, bridgeClassLoader)
             val normalizedFieldName = fieldName.trim()
             require(normalizedFieldName.isNotEmpty()) { "field name is required" }
 
@@ -186,7 +275,7 @@ internal object JsJavaBridgeDelegates {
         bridgeClassLoader: ClassLoader? = null
     ): String {
         return runBridgeCall(objectRegistry) {
-            val clazz = loadClass(className)
+            val clazz = loadClass(className, bridgeClassLoader)
             val normalizedFieldName = fieldName.trim()
             require(normalizedFieldName.isNotEmpty()) { "field name is required" }
 
@@ -309,11 +398,116 @@ internal object JsJavaBridgeDelegates {
         }
     }
 
-    fun releaseAllInstances(objectRegistry: ConcurrentHashMap<String, Any>): String {
-        return runBridgeCall(objectRegistry) {
-            val size = objectRegistry.size
-            objectRegistry.clear()
-            size
+    private fun ensureJsInterfaceLifecycleWorker() {
+        if (!jsInterfaceLifecycleWorkerStarted.compareAndSet(false, true)) {
+            return
+        }
+
+        Thread {
+            while (!Thread.currentThread().isInterrupted) {
+                try {
+                    val reference = jsInterfaceProxyReferenceQueue.remove() as? JsInterfaceProxyReference ?: continue
+                    jsInterfaceProxyReferences.remove(reference)
+                    releaseCollectedJsInterfaceProxy(reference)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return@Thread
+                } catch (e: Exception) {
+                    AppLogger.e(TAG, "Failed to release collected JS interface proxy: ${e.message}", e)
+                }
+            }
+        }.apply {
+            isDaemon = true
+            name = "OperitJsInterfaceRelease"
+        }.start()
+    }
+
+    private fun trackJsInterfaceProxy(
+        proxy: Any,
+        callbackInvoker: JsInterfaceCallbackInvoker,
+        jsObjectIds: Collection<String>
+    ) {
+        val normalizedIds =
+            jsObjectIds
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .toSet()
+        if (normalizedIds.isEmpty()) {
+            return
+        }
+
+        ensureJsInterfaceLifecycleWorker()
+        synchronized(jsInterfaceLifecycleLock) {
+            if (!jsInterfaceReleaseInvokers.containsKey(callbackInvoker)) {
+                return
+            }
+            val counts = jsInterfaceReferenceCounts.getOrPut(callbackInvoker) { LinkedHashMap() }
+            normalizedIds.forEach { jsObjectId ->
+                counts[jsObjectId] = (counts[jsObjectId] ?: 0) + 1
+            }
+        }
+
+        jsInterfaceProxyReferences.add(
+            JsInterfaceProxyReference(
+                referent = proxy,
+                callbackInvoker = callbackInvoker,
+                jsObjectIds = normalizedIds
+            )
+        )
+    }
+
+    private fun releaseCollectedJsInterfaceProxy(reference: JsInterfaceProxyReference) {
+        val idsToRelease = mutableListOf<String>()
+        val releaseInvoker: JsInterfaceReleaseInvoker?
+
+        synchronized(jsInterfaceLifecycleLock) {
+            val counts = jsInterfaceReferenceCounts[reference.callbackInvoker]
+            releaseInvoker = jsInterfaceReleaseInvokers[reference.callbackInvoker]
+            if (counts == null) {
+                return
+            }
+
+            reference.jsObjectIds.forEach { jsObjectId ->
+                val remaining = (counts[jsObjectId] ?: 0) - 1
+                if (remaining <= 0) {
+                    counts.remove(jsObjectId)
+                    if (releaseInvoker != null) {
+                        idsToRelease += jsObjectId
+                    }
+                } else {
+                    counts[jsObjectId] = remaining
+                }
+            }
+
+            if (counts.isEmpty()) {
+                jsInterfaceReferenceCounts.remove(reference.callbackInvoker)
+            }
+        }
+
+        if (releaseInvoker == null) {
+            return
+        }
+
+        idsToRelease.forEach { jsObjectId ->
+            try {
+                releaseInvoker.invoke(jsObjectId)
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "Failed to auto-release JS interface object $jsObjectId: ${e.message}", e)
+            }
+        }
+    }
+
+    private fun collectJsInterfaceObjectIds(value: Any?, output: MutableSet<String>) {
+        when (value) {
+            is JsInterfaceBinding -> {
+                val normalized = value.jsObjectId.trim()
+                if (normalized.isNotEmpty()) {
+                    output += normalized
+                }
+            }
+            is Map<*, *> -> value.values.forEach { collectJsInterfaceObjectIds(it, output) }
+            is Iterable<*> -> value.forEach { collectJsInterfaceObjectIds(it, output) }
+            is Array<*> -> value.forEach { collectJsInterfaceObjectIds(it, output) }
         }
     }
 
@@ -327,10 +521,144 @@ internal object JsJavaBridgeDelegates {
         } catch (e: InvocationTargetException) {
             val cause = e.targetException ?: e
             AppLogger.e(TAG, "Java bridge invocation error: ${cause.message}", cause)
-            failure(cause.message ?: cause.javaClass.name)
+            failure(describeThrowable(cause))
         } catch (e: Exception) {
-            AppLogger.e(TAG, "Java bridge error: ${e.message}", e)
-            failure(e.message ?: e.javaClass.name)
+            val shouldLog =
+                e !is NoSuchFieldException &&
+                    e !is NoSuchMethodException
+            if (shouldLog) {
+                AppLogger.e(TAG, "Java bridge error: ${e.message}", e)
+            }
+            failure(describeThrowable(e))
+        }
+    }
+
+    private fun describeThrowable(error: Throwable): String {
+        val parts = ArrayList<String>()
+        val seen = HashSet<Throwable>()
+        var current: Throwable? = error
+        while (current != null && seen.add(current) && parts.size < 6) {
+            val label = current.message?.trim().takeUnless { it.isNullOrEmpty() }
+                ?: current.javaClass.name
+            parts += label
+            current = current.cause
+        }
+        return parts.joinToString(separator = " | caused by: ")
+    }
+
+    private fun callSuspendInternal(
+        targetClass: Class<*>,
+        instance: Any?,
+        methodName: String,
+        argsJson: String,
+        staticOnly: Boolean,
+        objectRegistry: ConcurrentHashMap<String, Any>,
+        callback: (String) -> Unit,
+        jsCallbackInvoker: JsInterfaceCallbackInvoker?,
+        bridgeClassLoader: ClassLoader?
+    ) {
+        val normalizedMethodName = methodName.trim()
+        if (normalizedMethodName.isEmpty()) {
+            callback(failure("method name is required"))
+            return
+        }
+
+        val rawArgs = parseArgsJson(argsJson, objectRegistry)
+        val candidates =
+            targetClass.methods.filter { method ->
+                method.name == normalizedMethodName &&
+                    Modifier.isStatic(method.modifiers) == staticOnly &&
+                    method.parameterTypes.isNotEmpty() &&
+                    Continuation::class.java.isAssignableFrom(method.parameterTypes.last())
+            }
+
+        if (candidates.isEmpty() && staticOnly) {
+            val companionInstance =
+                runCatching {
+                    findField(targetClass, "Companion", staticOnly = true)?.get(null)
+                        ?: findGetter(targetClass, "Companion", staticOnly = true)?.invoke(null)
+                }.getOrNull()
+            if (companionInstance != null) {
+                callSuspendInternal(
+                    targetClass = companionInstance.javaClass,
+                    instance = companionInstance,
+                    methodName = methodName,
+                    argsJson = argsJson,
+                    staticOnly = false,
+                    objectRegistry = objectRegistry,
+                    callback = callback,
+                    jsCallbackInvoker = jsCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader
+                )
+                return
+            }
+        }
+        if (candidates.isEmpty()) {
+            val callType = if (staticOnly) "static" else "instance"
+            callback(failure("$callType suspend method '$normalizedMethodName' not found on ${targetClass.name}"))
+            return
+        }
+
+        var best: MethodMatch? = null
+        for (method in candidates) {
+            val parameterTypes = method.parameterTypes
+            val argParamTypes = parameterTypes.copyOfRange(0, parameterTypes.size - 1)
+            val converted =
+                convertArguments(
+                    parameterTypes = argParamTypes,
+                    isVarArgs = method.isVarArgs,
+                    rawArgs = rawArgs,
+                    objectRegistry = objectRegistry,
+                    jsCallbackInvoker = jsCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader
+                ) ?: continue
+
+            val match = MethodMatch(method, converted.first, converted.second)
+            if (best == null || match.score < best.score) {
+                best = match
+            }
+        }
+
+        val selected = best
+        if (selected == null) {
+            callback(
+                failure("no suspend method '$normalizedMethodName' matched on ${targetClass.name} with ${rawArgs.size} args")
+            )
+            return
+        }
+
+        val completed = AtomicBoolean(false)
+        val continuation =
+            object : Continuation<Any?> {
+                override val context = EmptyCoroutineContext
+                override fun resumeWith(result: Result<Any?>) {
+                    if (!completed.compareAndSet(false, true)) {
+                        return
+                    }
+                    if (result.isSuccess) {
+                        callback(success(result.getOrNull(), objectRegistry))
+                    } else {
+                        val error = result.exceptionOrNull()
+                        callback(failure(error?.message ?: error?.javaClass?.name ?: "unknown error"))
+                    }
+                }
+            }
+
+        try {
+            val argsWithContinuation = selected.args + continuation
+            val outcome = selected.method.invoke(instance, *argsWithContinuation)
+            if (outcome !== COROUTINE_SUSPENDED && completed.compareAndSet(false, true)) {
+                callback(success(outcome, objectRegistry))
+            }
+        } catch (e: InvocationTargetException) {
+            val cause = e.targetException ?: e
+            if (completed.compareAndSet(false, true)) {
+                callback(failure(cause.message ?: cause.javaClass.name))
+            }
+        } catch (e: Exception) {
+            if (completed.compareAndSet(false, true)) {
+                callback(failure(e.message ?: e.javaClass.name))
+            }
         }
     }
 
@@ -714,6 +1042,25 @@ internal object JsJavaBridgeDelegates {
 
         val wrapper = primitiveWrapperMap[targetType] ?: targetType
 
+        if (
+            rawValue is Map<*, *> &&
+                wrapper.isInterface &&
+                !Map::class.java.isAssignableFrom(wrapper) &&
+                !Collection::class.java.isAssignableFrom(wrapper)
+        ) {
+            val proxy =
+                createJsInterfaceProxyFromMap(
+                    rawValue = rawValue,
+                    targetType = wrapper,
+                    objectRegistry = objectRegistry,
+                    jsCallbackInvoker = jsCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader
+                )
+            if (proxy != null) {
+                return ConvertedArg(proxy, 3)
+            }
+        }
+
         if (wrapper.isInstance(rawValue)) {
             return ConvertedArg(rawValue, 0)
         }
@@ -881,7 +1228,8 @@ internal object JsJavaBridgeDelegates {
                 ?: proxyInterfaces.firstOrNull()?.classLoader
                 ?: JsJavaBridgeDelegates::class.java.classLoader
 
-        return Proxy.newProxyInstance(loader, proxyInterfaces) { proxy, method, args ->
+        val proxy =
+            Proxy.newProxyInstance(loader, proxyInterfaces) { proxy, method, args ->
             if (method.declaringClass == Any::class.java) {
                 return@newProxyInstance when (method.name) {
                     "toString" ->
@@ -892,36 +1240,186 @@ internal object JsJavaBridgeDelegates {
                 }
             }
 
-            val argsJson = serializeCallbackArgs(args ?: emptyArray(), objectRegistry)
-            val rawResponse = callbackInvoker.invoke(binding.jsObjectId, method.name, argsJson)
-            val response = parseBridgeResponse(rawResponse)
+            invokeJsInterfaceBinding(
+                binding = binding,
+                method = method,
+                args = args ?: emptyArray(),
+                objectRegistry = objectRegistry,
+                callbackInvoker = callbackInvoker,
+                jsCallbackInvoker = jsCallbackInvoker,
+                bridgeClassLoader = bridgeClassLoader
+            )
+        }
+        trackJsInterfaceProxy(proxy, callbackInvoker, listOf(binding.jsObjectId))
+        return proxy
+    }
 
-            if (!response.success) {
-                if (method.returnType == java.lang.Void.TYPE || method.returnType == Void::class.java) {
-                    AppLogger.e(
-                        TAG,
-                        "JS interface callback failed for void method ${method.name}: ${response.error}"
-                    )
+    private fun createJsInterfaceProxyFromMap(
+        rawValue: Map<*, *>,
+        targetType: Class<*>,
+        objectRegistry: ConcurrentHashMap<String, Any>,
+        jsCallbackInvoker: JsInterfaceCallbackInvoker?,
+        bridgeClassLoader: ClassLoader?
+    ): Any? {
+        val callbackInvoker = jsCallbackInvoker ?: return null
+        if (!targetType.isInterface) {
+            return null
+        }
+
+        val memberMap = LinkedHashMap<String, Any?>()
+        rawValue.entries.forEach { entry ->
+            val key = entry.key?.toString()?.trim().orEmpty()
+            if (key.isNotEmpty()) {
+                memberMap[key] = entry.value
+            }
+        }
+        if (memberMap.isEmpty()) {
+            return null
+        }
+
+        val loader =
+            bridgeClassLoader
+                ?: targetType.classLoader
+                ?: JsJavaBridgeDelegates::class.java.classLoader
+
+        val proxy =
+            Proxy.newProxyInstance(loader, arrayOf(targetType)) { proxy, method, args ->
+            if (method.declaringClass == Any::class.java) {
+                return@newProxyInstance when (method.name) {
+                    "toString" -> "JsInterfaceProxy(map) implements ${targetType.simpleName}"
+                    "hashCode" -> System.identityHashCode(proxy)
+                    "equals" -> proxy === args?.getOrNull(0)
+                    else -> null
+                }
+            }
+
+            val runtimeArgs = args ?: emptyArray()
+            val resolved = resolveMapInterfaceMember(memberMap, method, runtimeArgs)
+            if (!resolved.first) {
+                if (isVoidLikeReturnType(method.returnType)) {
                     return@newProxyInstance null
                 }
                 throw IllegalStateException(
-                    response.error ?: "JS interface callback failed for method ${method.name}"
+                    "JS interface map does not provide implementation for method ${method.name}"
                 )
             }
 
-            if (method.returnType == java.lang.Void.TYPE || method.returnType == Void::class.java) {
+            val mappedValue = resolved.second
+            if (mappedValue is JsInterfaceBinding) {
+                return@newProxyInstance invokeJsInterfaceBinding(
+                    binding = mappedValue,
+                    method = method,
+                    args = runtimeArgs,
+                    objectRegistry = objectRegistry,
+                    callbackInvoker = callbackInvoker,
+                    jsCallbackInvoker = jsCallbackInvoker,
+                    bridgeClassLoader = bridgeClassLoader
+                )
+            }
+
+            if (isVoidLikeReturnType(method.returnType)) {
                 return@newProxyInstance null
             }
 
-            val decoded = decodeJsonValue(response.dataRaw, objectRegistry)
             adaptReturnValue(
-                value = decoded,
+                value = mappedValue,
                 targetType = method.returnType,
                 objectRegistry = objectRegistry,
                 jsCallbackInvoker = jsCallbackInvoker,
                 bridgeClassLoader = bridgeClassLoader
             )
         }
+        val jsObjectIds = linkedSetOf<String>().also { collectJsInterfaceObjectIds(memberMap, it) }
+        trackJsInterfaceProxy(proxy, callbackInvoker, jsObjectIds)
+        return proxy
+    }
+
+    private fun resolveMapInterfaceMember(
+        memberMap: MutableMap<String, Any?>,
+        method: Method,
+        args: Array<out Any?>
+    ): Pair<Boolean, Any?> {
+        val methodName = method.name
+        if (memberMap.containsKey(methodName)) {
+            return Pair(true, memberMap[methodName])
+        }
+
+        val propertyName = accessorPropertyName(methodName)
+        if (propertyName != null) {
+            if (methodName.startsWith("set") && args.size == 1) {
+                memberMap[propertyName] = args[0]
+                return Pair(true, null)
+            }
+            if (args.isEmpty() && memberMap.containsKey(propertyName)) {
+                return Pair(true, memberMap[propertyName])
+            }
+        }
+
+        return Pair(false, null)
+    }
+
+    private fun accessorPropertyName(methodName: String): String? {
+        val propertyBase =
+            when {
+                methodName.startsWith("get") && methodName.length > 3 -> methodName.substring(3)
+                methodName.startsWith("is") && methodName.length > 2 -> methodName.substring(2)
+                methodName.startsWith("set") && methodName.length > 3 -> methodName.substring(3)
+                else -> null
+            } ?: return null
+
+        if (propertyBase.isEmpty()) {
+            return null
+        }
+
+        return propertyBase.replaceFirstChar { ch ->
+            if (ch.isUpperCase()) ch.lowercase(Locale.ROOT) else ch.toString()
+        }
+    }
+
+    private fun isVoidLikeReturnType(returnType: Class<*>): Boolean {
+        return returnType == java.lang.Void.TYPE ||
+            returnType == Void::class.java ||
+            returnType.name == "kotlin.Unit"
+    }
+
+    private fun invokeJsInterfaceBinding(
+        binding: JsInterfaceBinding,
+        method: Method,
+        args: Array<out Any?>,
+        objectRegistry: ConcurrentHashMap<String, Any>,
+        callbackInvoker: JsInterfaceCallbackInvoker,
+        jsCallbackInvoker: JsInterfaceCallbackInvoker?,
+        bridgeClassLoader: ClassLoader?
+    ): Any? {
+        val argsJson = serializeCallbackArgs(args, objectRegistry)
+        val rawResponse = callbackInvoker.invoke(binding.jsObjectId, method.name, argsJson)
+        val response = parseBridgeResponse(rawResponse)
+
+        if (!response.success) {
+            if (isVoidLikeReturnType(method.returnType)) {
+                AppLogger.e(
+                    TAG,
+                    "JS interface callback failed for void method ${method.name}: ${response.error}"
+                )
+                return null
+            }
+            throw IllegalStateException(
+                response.error ?: "JS interface callback failed for method ${method.name}"
+            )
+        }
+
+        if (isVoidLikeReturnType(method.returnType)) {
+            return null
+        }
+
+        val decoded = decodeJsonValue(response.dataRaw, objectRegistry)
+        return adaptReturnValue(
+            value = decoded,
+            targetType = method.returnType,
+            objectRegistry = objectRegistry,
+            jsCallbackInvoker = jsCallbackInvoker,
+            bridgeClassLoader = bridgeClassLoader
+        )
     }
 
     private fun serializeCallbackArgs(

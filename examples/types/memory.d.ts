@@ -36,9 +36,10 @@ export namespace Memory {
      * @param contentType - Optional content type (default "text/plain")
      * @param source - Optional source (default "ai_created")
      * @param folderPath - Optional folder path (default "")
+     * @param tags - Optional tags (comma-separated string)
      * @returns Creation result as a string
      */
-    function create(title: string, content: string, contentType?: string, source?: string, folderPath?: string): Promise<string>;
+    function create(title: string, content: string, contentType?: string, source?: string, folderPath?: string, tags?: string): Promise<string>;
 
     /**
      * Update options for memory update

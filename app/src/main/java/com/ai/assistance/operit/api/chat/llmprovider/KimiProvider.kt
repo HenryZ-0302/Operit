@@ -65,7 +65,7 @@ class KimiProvider(
                 super.createRequestBodyInternal(context, message, chatHistory, modelParameters, stream, availableTools, preserveThinkInHistory)
             val jsonObject = JSONObject(baseRequestBodyJson)
             applyThinkingParams(jsonObject)
-            return jsonObject.toString().toRequestBody(JSON)
+            return createJsonRequestBody(jsonObject.toString())
         }
 
         val jsonObject = JSONObject()
@@ -131,7 +131,7 @@ class KimiProvider(
         val sanitizedLogJson = sanitizeImageDataForLogging(logJson)
         logLargeString("KimiProvider", sanitizedLogJson.toString(4), "Final Kimi K2.5 request body: ")
 
-        return jsonObject.toString().toRequestBody(JSON)
+        return createJsonRequestBody(jsonObject.toString())
     }
 
     private fun buildMessagesWithReasoning(
@@ -272,7 +272,8 @@ class KimiProvider(
         availableTools: List<ToolPrompt>?,
         preserveThinkInHistory: Boolean,
         onTokensUpdated: suspend (input: Int, cachedInput: Int, output: Int) -> Unit,
-        onNonFatalError: suspend (error: String) -> Unit
+        onNonFatalError: suspend (error: String) -> Unit,
+        enableRetry: Boolean
     ): Stream<String> {
         return super.sendMessage(
             context,
@@ -284,7 +285,8 @@ class KimiProvider(
             availableTools,
             preserveThinkInHistory,
             onTokensUpdated,
-            onNonFatalError
+            onNonFatalError,
+            enableRetry
         )
     }
 }

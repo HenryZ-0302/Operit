@@ -50,14 +50,18 @@ import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ApiProviderType
 import com.ai.assistance.operit.data.model.AttachmentInfo
 import com.ai.assistance.operit.data.model.CharacterCardChatModelBindingMode
+import com.ai.assistance.operit.data.model.InputProcessingState
 import com.ai.assistance.operit.data.model.ToolParameter
 import com.ai.assistance.operit.data.preferences.ApiPreferences
+import com.ai.assistance.operit.data.preferences.DisplayPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
 import com.ai.assistance.operit.ui.components.ErrorDialog
 import com.ai.assistance.operit.ui.features.chat.components.*
 import com.ai.assistance.operit.ui.features.chat.components.style.input.agent.AgentChatInputSection
 import com.ai.assistance.operit.ui.features.chat.components.style.input.classic.ClassicChatInputSection
 import com.ai.assistance.operit.ui.features.chat.components.style.input.classic.ClassicChatSettingsBar
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.PendingQueueMessageItem
+import com.ai.assistance.operit.ui.features.chat.components.style.bubble.BubbleImageStyleConfig
 import com.ai.assistance.operit.ui.features.chat.components.AndroidExportDialog
 import com.ai.assistance.operit.ui.features.chat.components.ExportCompleteDialog
 import com.ai.assistance.operit.ui.features.chat.components.ExportPlatformDialog
@@ -86,8 +90,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
 import com.ai.assistance.operit.data.preferences.ActivePromptManager
 import com.ai.assistance.operit.data.model.ActivePrompt
+import com.ai.assistance.operit.ui.theme.getTextColorForBackground
 
 
 @RequiresApi(Build.VERSION_CODES.O)
@@ -164,6 +170,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
     // Get background image state
     val preferencesManager = remember { UserPreferencesManager.getInstance(context) }
+    val displayPreferencesManager = remember { DisplayPreferencesManager.getInstance(context) }
     val useBackgroundImage by preferencesManager.useBackgroundImage.collectAsState(initial = false)
     val backgroundImageUri by preferencesManager.backgroundImageUri.collectAsState(initial = null)
     val chatHeaderTransparent by preferencesManager.chatHeaderTransparent.collectAsState(initial = false)
@@ -174,9 +181,11 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val chatHeaderPipIconColor by preferencesManager.chatHeaderPipIconColor.collectAsState(initial = null)
     val chatHeaderOverlayMode by preferencesManager.chatHeaderOverlayMode.collectAsState(initial = false)
     val showInputProcessingStatus by preferencesManager.showInputProcessingStatus.collectAsState(initial = true)
+    val enableEnterToSend by displayPreferencesManager.enableEnterToSend.collectAsState(initial = false)
     val showChatFloatingDotsAnimation by
         preferencesManager.showChatFloatingDotsAnimation.collectAsState(initial = true)
-    val hasBackgroundImage = useBackgroundImage && backgroundImageUri != null
+    val hasBackgroundImageFromPrefs = useBackgroundImage && backgroundImageUri != null
+    val effectiveHasBackgroundImage = hasBackgroundImage || hasBackgroundImageFromPrefs
 
     // Collect chat style from preferences
     val chatStyleSetting by preferencesManager.chatStyle.collectAsState(initial = UserPreferencesManager.CHAT_STYLE_CURSOR)
@@ -190,6 +199,72 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
         preferencesManager.inputStyle.collectAsState(
             initial = UserPreferencesManager.INPUT_STYLE_AGENT,
         )
+    val cursorUserBubbleFollowTheme by
+        preferencesManager.cursorUserBubbleFollowTheme.collectAsState(initial = true)
+    val cursorUserBubbleColorValue by
+        preferencesManager.cursorUserBubbleColor.collectAsState(initial = null)
+    val bubbleUserBubbleColorValue by
+        preferencesManager.bubbleUserBubbleColor.collectAsState(initial = null)
+    val bubbleAiBubbleColorValue by
+        preferencesManager.bubbleAiBubbleColor.collectAsState(initial = null)
+    val bubbleUserUseImage by
+        preferencesManager.bubbleUserUseImage.collectAsState(initial = false)
+    val bubbleAiUseImage by
+        preferencesManager.bubbleAiUseImage.collectAsState(initial = false)
+    val bubbleUserImageUri by preferencesManager.bubbleUserImageUri.collectAsState(initial = null)
+    val bubbleAiImageUri by preferencesManager.bubbleAiImageUri.collectAsState(initial = null)
+    val bubbleUserImageCropLeft by
+        preferencesManager.bubbleUserImageCropLeft.collectAsState(initial = 0f)
+    val bubbleUserImageCropTop by
+        preferencesManager.bubbleUserImageCropTop.collectAsState(initial = 0f)
+    val bubbleUserImageCropRight by
+        preferencesManager.bubbleUserImageCropRight.collectAsState(initial = 0f)
+    val bubbleUserImageCropBottom by
+        preferencesManager.bubbleUserImageCropBottom.collectAsState(initial = 0f)
+    val bubbleUserImageRepeatStart by
+        preferencesManager.bubbleUserImageRepeatStart.collectAsState(initial = 0.35f)
+    val bubbleUserImageRepeatEnd by
+        preferencesManager.bubbleUserImageRepeatEnd.collectAsState(initial = 0.65f)
+    val bubbleUserImageRepeatYStart by
+        preferencesManager.bubbleUserImageRepeatYStart.collectAsState(initial = 0.35f)
+    val bubbleUserImageRepeatYEnd by
+        preferencesManager.bubbleUserImageRepeatYEnd.collectAsState(initial = 0.65f)
+    val bubbleUserImageScale by
+        preferencesManager.bubbleUserImageScale.collectAsState(initial = 1f)
+    val bubbleAiImageCropLeft by
+        preferencesManager.bubbleAiImageCropLeft.collectAsState(initial = 0f)
+    val bubbleAiImageCropTop by
+        preferencesManager.bubbleAiImageCropTop.collectAsState(initial = 0f)
+    val bubbleAiImageCropRight by
+        preferencesManager.bubbleAiImageCropRight.collectAsState(initial = 0f)
+    val bubbleAiImageCropBottom by
+        preferencesManager.bubbleAiImageCropBottom.collectAsState(initial = 0f)
+    val bubbleAiImageRepeatStart by
+        preferencesManager.bubbleAiImageRepeatStart.collectAsState(initial = 0.35f)
+    val bubbleAiImageRepeatEnd by
+        preferencesManager.bubbleAiImageRepeatEnd.collectAsState(initial = 0.65f)
+    val bubbleAiImageRepeatYStart by
+        preferencesManager.bubbleAiImageRepeatYStart.collectAsState(initial = 0.35f)
+    val bubbleAiImageRepeatYEnd by
+        preferencesManager.bubbleAiImageRepeatYEnd.collectAsState(initial = 0.65f)
+    val bubbleAiImageScale by
+        preferencesManager.bubbleAiImageScale.collectAsState(initial = 1f)
+    val bubbleImageRenderMode by
+        preferencesManager.bubbleImageRenderMode.collectAsState(
+            initial = UserPreferencesManager.BUBBLE_IMAGE_RENDER_MODE_TILED_NINE_SLICE,
+        )
+    val bubbleUserRoundedCornersEnabled by
+        preferencesManager.bubbleUserRoundedCornersEnabled.collectAsState(initial = true)
+    val bubbleAiRoundedCornersEnabled by
+        preferencesManager.bubbleAiRoundedCornersEnabled.collectAsState(initial = true)
+    val bubbleUserContentPaddingLeft by
+        preferencesManager.bubbleUserContentPaddingLeft.collectAsState(initial = 12f)
+    val bubbleUserContentPaddingRight by
+        preferencesManager.bubbleUserContentPaddingRight.collectAsState(initial = 12f)
+    val bubbleAiContentPaddingLeft by
+        preferencesManager.bubbleAiContentPaddingLeft.collectAsState(initial = 12f)
+    val bubbleAiContentPaddingRight by
+        preferencesManager.bubbleAiContentPaddingRight.collectAsState(initial = 12f)
     val hostActivity = remember(context) { context.findActivity() }
 
     // Collect chat area horizontal padding from preferences
@@ -212,8 +287,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     val errorMessage by actualViewModel.errorMessage.collectAsState()
     // 按会话隔离的输入处理状态（用于进度条文案）
     val inputProcessingState by actualViewModel.currentChatInputProcessingState.collectAsState()
+    val isSummarizing by actualViewModel.isSummarizing.collectAsState()
+    val isSendTriggeredSummarizing by actualViewModel.isSendTriggeredSummarizing.collectAsState()
 
-    val enableAiPlanning by actualViewModel.enableAiPlanning.collectAsState()
+    val featureStates by actualViewModel.featureToggles.collectAsState()
     val enableThinkingMode by actualViewModel.enableThinkingMode.collectAsState() // 收集思考模式状态
     val enableThinkingGuidance by
             actualViewModel.enableThinkingGuidance.collectAsState() // 收集思考引导状态
@@ -240,6 +317,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     // 从ViewModel收集新的状态
     val shouldShowConfigDialog by actualViewModel.shouldShowConfigDialog.collectAsState()
     val isWorkspaceOpen by actualViewModel.isWorkspaceOpen.collectAsState()
+    val isWorkspacePreparing by actualViewModel.isWorkspacePreparing.collectAsState()
     val showWorkspaceFileSelector by actualViewModel.showWorkspaceFileSelector.collectAsState()
 
     // 添加模型建议对话框状态
@@ -342,20 +420,193 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
     // Modern chat UI colors - Cursor风格
     val backgroundColor =
-            if (hasBackgroundImage) Color.Transparent else MaterialTheme.colorScheme.background
-    val userMessageColor = MaterialTheme.colorScheme.primaryContainer
-    val aiMessageColor = MaterialTheme.colorScheme.surface
-    val userTextColor = MaterialTheme.colorScheme.onPrimaryContainer
-    val aiTextColor = MaterialTheme.colorScheme.onSurface
+            if (effectiveHasBackgroundImage) Color.Transparent else MaterialTheme.colorScheme.background
+    val defaultUserMessageColor = MaterialTheme.colorScheme.primaryContainer
+    val defaultAiMessageColor = MaterialTheme.colorScheme.surface
+    val cursorCustomUserMessageColor = cursorUserBubbleColorValue?.let(::Color)
+    val bubbleCustomUserMessageColor = bubbleUserBubbleColorValue?.let(::Color)
+    val bubbleCustomAiMessageColor = bubbleAiBubbleColorValue?.let(::Color)
+
+    val userMessageColor =
+        when (chatStyle) {
+            ChatStyle.CURSOR -> {
+                if (cursorUserBubbleFollowTheme) {
+                    defaultUserMessageColor
+                } else {
+                    cursorCustomUserMessageColor ?: defaultUserMessageColor
+                }
+            }
+
+            ChatStyle.BUBBLE -> bubbleCustomUserMessageColor ?: defaultUserMessageColor
+        }
+    val aiMessageColor =
+        when (chatStyle) {
+            ChatStyle.BUBBLE -> bubbleCustomAiMessageColor ?: defaultAiMessageColor
+            ChatStyle.CURSOR -> defaultAiMessageColor
+        }
+    val userTextColor =
+        when {
+            chatStyle == ChatStyle.CURSOR && cursorUserBubbleFollowTheme ->
+                MaterialTheme.colorScheme.onPrimaryContainer
+            else -> getTextColorForBackground(userMessageColor.copy(alpha = 1f))
+        }
+    val aiTextColor =
+        when {
+            chatStyle == ChatStyle.BUBBLE && bubbleCustomAiMessageColor != null ->
+                getTextColorForBackground(aiMessageColor.copy(alpha = 1f))
+            else -> MaterialTheme.colorScheme.onSurface
+        }
     val systemMessageColor = MaterialTheme.colorScheme.surfaceVariant
     val systemTextColor = MaterialTheme.colorScheme.onSurfaceVariant
     val thinkingBackgroundColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
     val thinkingTextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
+    val bubbleUserImageStyle =
+        remember(
+            chatStyle,
+            bubbleUserUseImage,
+            bubbleUserImageUri,
+            bubbleUserImageCropLeft,
+            bubbleUserImageCropTop,
+            bubbleUserImageCropRight,
+            bubbleUserImageCropBottom,
+            bubbleUserImageRepeatStart,
+            bubbleUserImageRepeatEnd,
+            bubbleUserImageRepeatYStart,
+            bubbleUserImageRepeatYEnd,
+            bubbleUserImageScale,
+            bubbleImageRenderMode,
+        ) {
+            val imageUri = bubbleUserImageUri
+            if (
+                chatStyle == ChatStyle.BUBBLE &&
+                    bubbleUserUseImage &&
+                    !imageUri.isNullOrBlank()
+            ) {
+                BubbleImageStyleConfig(
+                    imageUri = imageUri,
+                    cropLeftRatio = bubbleUserImageCropLeft,
+                    cropTopRatio = bubbleUserImageCropTop,
+                    cropRightRatio = bubbleUserImageCropRight,
+                    cropBottomRatio = bubbleUserImageCropBottom,
+                    repeatXStartRatio = bubbleUserImageRepeatStart,
+                    repeatXEndRatio = bubbleUserImageRepeatEnd,
+                    repeatYStartRatio = bubbleUserImageRepeatYStart,
+                    repeatYEndRatio = bubbleUserImageRepeatYEnd,
+                    imageScale = bubbleUserImageScale,
+                    renderMode = bubbleImageRenderMode,
+                )
+            } else {
+                null
+            }
+        }
+
+    val bubbleAiImageStyle =
+        remember(
+            chatStyle,
+            bubbleAiUseImage,
+            bubbleAiImageUri,
+            bubbleAiImageCropLeft,
+            bubbleAiImageCropTop,
+            bubbleAiImageCropRight,
+            bubbleAiImageCropBottom,
+            bubbleAiImageRepeatStart,
+            bubbleAiImageRepeatEnd,
+            bubbleAiImageRepeatYStart,
+            bubbleAiImageRepeatYEnd,
+            bubbleAiImageScale,
+            bubbleImageRenderMode,
+        ) {
+            val imageUri = bubbleAiImageUri
+            if (
+                chatStyle == ChatStyle.BUBBLE &&
+                    bubbleAiUseImage &&
+                    !imageUri.isNullOrBlank()
+            ) {
+                BubbleImageStyleConfig(
+                    imageUri = imageUri,
+                    cropLeftRatio = bubbleAiImageCropLeft,
+                    cropTopRatio = bubbleAiImageCropTop,
+                    cropRightRatio = bubbleAiImageCropRight,
+                    cropBottomRatio = bubbleAiImageCropBottom,
+                    repeatXStartRatio = bubbleAiImageRepeatStart,
+                    repeatXEndRatio = bubbleAiImageRepeatEnd,
+                    repeatYStartRatio = bubbleAiImageRepeatYStart,
+                    repeatYEndRatio = bubbleAiImageRepeatYEnd,
+                    imageScale = bubbleAiImageScale,
+                    renderMode = bubbleImageRenderMode,
+                )
+            } else {
+                null
+            }
+        }
+
     // 滚动状态
     var autoScrollToBottom by remember { mutableStateOf(true) }
     val onAutoScrollToBottomChange = remember { { it: Boolean -> autoScrollToBottom = it } }
     val imeBottomPx = WindowInsets.ime.getBottom(density)
+    val isMessageProcessing =
+        isLoading ||
+            inputProcessingState is InputProcessingState.Connecting ||
+            inputProcessingState is InputProcessingState.ExecutingTool ||
+            inputProcessingState is InputProcessingState.ToolProgress ||
+            inputProcessingState is InputProcessingState.Processing ||
+            inputProcessingState is InputProcessingState.ProcessingToolResult ||
+            inputProcessingState is InputProcessingState.Summarizing ||
+            inputProcessingState is InputProcessingState.Receiving
+    val isQueueBlocked = isMessageProcessing || isSummarizing || isSendTriggeredSummarizing
+
+    val pendingQueueMessages = remember(currentChatId) { mutableStateListOf<PendingQueueMessageItem>() }
+    var isPendingQueueExpanded by remember(currentChatId) { mutableStateOf(true) }
+    var nextPendingQueueId by remember(currentChatId) { mutableStateOf(1L) }
+    var wasQueueBlocked by remember(currentChatId) { mutableStateOf(false) }
+    var suppressNextAutoDequeue by remember(currentChatId) { mutableStateOf(false) }
+    val latestQueueBlocked = rememberUpdatedState(isQueueBlocked)
+    val latestCurrentChatId = rememberUpdatedState(currentChatId)
+
+    val sendQueuedItemNow: (PendingQueueMessageItem, Boolean) -> Unit = { item, cancelCurrentConversation ->
+        coroutineScope.launch {
+            val shouldWaitForCancel = cancelCurrentConversation && latestQueueBlocked.value
+            if (shouldWaitForCancel) {
+                suppressNextAutoDequeue = true
+            }
+            if (cancelCurrentConversation) {
+                actualViewModel.cancelCurrentMessage()
+            }
+            if (shouldWaitForCancel) {
+                snapshotFlow { latestQueueBlocked.value }.first { !it }
+            }
+
+            val chatId = latestCurrentChatId.value
+            if (chatId.isNullOrBlank()) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.chat_please_create_new_chat),
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@launch
+            }
+
+            focusManager.clearFocus()
+            actualViewModel.sendTextMessage(item.text)
+            autoScrollToBottom = true
+        }
+    }
+
+    LaunchedEffect(isQueueBlocked, pendingQueueMessages.size, currentChatId) {
+        if (wasQueueBlocked && !isQueueBlocked) {
+            if (suppressNextAutoDequeue) {
+                suppressNextAutoDequeue = false
+            } else if (pendingQueueMessages.isNotEmpty()) {
+                delay(250)
+                if (!latestQueueBlocked.value && pendingQueueMessages.isNotEmpty()) {
+                    val nextMessage = pendingQueueMessages.removeAt(0)
+                    sendQueuedItemNow(nextMessage, false)
+                }
+            }
+        }
+        wasQueueBlocked = isQueueBlocked
+    }
 
     // 处理来自ViewModel的滚动事件（流式输出时）
     LaunchedEffect(Unit) {
@@ -462,8 +713,8 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     }
 
     var hasEverShownWebView by remember { mutableStateOf(false) }
-    LaunchedEffect(showWebView) {
-        if (showWebView) {
+    LaunchedEffect(showWebView, isWorkspacePreparing) {
+        if (showWebView || isWorkspacePreparing) {
             hasEverShownWebView = true
         }
     }
@@ -502,11 +753,12 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
     // 当showWebView或showAiComputer状态改变时，更新TopAppBar的actions
     // 使用DisposableEffect确保当AIChatScreen离开组合时，actions被清空
-    LaunchedEffect(isCurrentScreen, showWebView, showAiComputer, appBarContentColor) {
+    LaunchedEffect(isCurrentScreen, showWebView, showAiComputer, isWorkspacePreparing, appBarContentColor) {
         if (isCurrentScreen) {
             setTopBarActions {
                 // AI电脑模式切换按钮
                 IconButton(
+                        enabled = !isWorkspacePreparing,
                         onClick = {
                             actualViewModel.onAiComputerButtonClick()
                         }
@@ -522,17 +774,26 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
 
                 // Web开发模式切换按钮
                 IconButton(
+                        enabled = !isWorkspacePreparing,
                         onClick = {
                             actualViewModel.onWorkspaceButtonClick()
                         }
                 ) {
-                    Icon(
-                            imageVector = Icons.Default.Code,
-                            contentDescription = stringResource(R.string.code_editor),
-                            tint =
-                            if (showWebView) MaterialTheme.colorScheme.primaryContainer
-                            else appBarContentColor
-                    )
+                    if (isWorkspacePreparing) {
+                        CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = appBarContentColor
+                        )
+                    } else {
+                        Icon(
+                                imageVector = Icons.Default.Code,
+                                contentDescription = stringResource(R.string.code_editor),
+                                tint =
+                                if (showWebView) MaterialTheme.colorScheme.primaryContainer
+                                else appBarContentColor
+                        )
+                    }
                 }
             }
         }
@@ -554,9 +815,32 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
     var bottomBarHeightPx by remember { mutableStateOf(0) }
     val inputSurfaceColor = when {
         chatInputTransparent -> colorScheme.surface.copy(alpha = 0f)
-        hasBackgroundImage -> colorScheme.surface.copy(alpha = 0.85f)
+        effectiveHasBackgroundImage -> colorScheme.surface.copy(alpha = 0.85f)
         else -> colorScheme.surface
     }
+
+    fun removePendingQueueMessageById(id: Long): PendingQueueMessageItem? {
+        val index = pendingQueueMessages.indexOfFirst { it.id == id }
+        if (index < 0) return null
+        return pendingQueueMessages.removeAt(index)
+    }
+
+    fun enqueueDraftToPendingQueue() {
+        val draftText = userMessage.text.trim()
+        if (draftText.isBlank()) return
+
+        pendingQueueMessages.add(
+            PendingQueueMessageItem(
+                id = nextPendingQueueId,
+                text = draftText
+            )
+        )
+        nextPendingQueueId += 1
+        isPendingQueueExpanded = true
+        actualViewModel.updateUserMessage(TextFieldValue(""))
+        actualViewModel.showToast(context.getString(R.string.chat_queue_added))
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         CustomScaffold(
                 containerColor = Color.Transparent,
@@ -577,6 +861,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         onUserMessageChange = {
                                             actualViewModel.updateUserMessage(it)
                                         },
+                                        enableEnterToSend = enableEnterToSend,
                                         onSendMessage = {
                                             if (currentChatId.isNullOrBlank()) {
                                                 Toast.makeText(
@@ -593,7 +878,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                                 autoScrollToBottom = true
                                             }
                                         },
-                                        onCancelMessage = { actualViewModel.cancelCurrentMessage() },
+                                        onQueueMessage = { enqueueDraftToPendingQueue() },
+                                        onCancelMessage = {
+                                            actualViewModel.cancelCurrentMessage()
+                                        },
                                         isLoading = isLoading,
                                         inputState = inputProcessingState,
                                         allowTextInputWhileProcessing = true,
@@ -618,7 +906,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         onTakePhoto = { uri ->
                                             actualViewModel.handleTakenPhoto(uri)
                                         },
-                                        hasBackgroundImage = hasBackgroundImage,
+                                        hasBackgroundImage = effectiveHasBackgroundImage,
                                         chatInputTransparent = chatInputTransparent,
                                         externalAttachmentPanelState = attachmentPanelState,
                                         onAttachmentPanelStateChange = { newState ->
@@ -643,8 +931,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         onToggleEnableMaxContextMode = {
                                             actualViewModel.toggleEnableMaxContextMode()
                                         },
-                                        enableAiPlanning = enableAiPlanning,
-                                        onToggleAiPlanning = { actualViewModel.toggleAiPlanning() },
+                                        featureStates = featureStates,
+                                        onToggleFeature = { featureKey ->
+                                            actualViewModel.toggleFeature(featureKey)
+                                        },
                                         permissionLevel =
                                                 actualViewModel.masterPermissionLevel
                                                         .collectAsState()
@@ -680,6 +970,28 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         onNavigateToModelConfig = onNavigateToModelConfig,
                                         characterCardBoundChatModelConfigId = characterCardBoundChatModelConfigId,
                                         characterCardBoundChatModelIndex = characterCardBoundChatModelIndex,
+                                        pendingQueueMessages = pendingQueueMessages,
+                                        isPendingQueueExpanded = isPendingQueueExpanded,
+                                        onPendingQueueExpandedChange = { isPendingQueueExpanded = it },
+                                        onDeletePendingQueueMessage = { id ->
+                                            removePendingQueueMessageById(id)
+                                        },
+                                        onEditPendingQueueMessage = { id ->
+                                            removePendingQueueMessageById(id)?.let { queueItem ->
+                                                val text = queueItem.text
+                                                actualViewModel.updateUserMessage(
+                                                    TextFieldValue(
+                                                        text = text,
+                                                        selection = TextRange(text.length)
+                                                    )
+                                                )
+                                            }
+                                        },
+                                        onSendPendingQueueMessage = { id ->
+                                            removePendingQueueMessageById(id)?.let { queueItem ->
+                                                sendQueuedItemNow(queueItem, true)
+                                            }
+                                        },
                                 )
                             } else {
                                 ClassicChatInputSection(
@@ -688,6 +1000,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         onUserMessageChange = {
                                             actualViewModel.updateUserMessage(it)
                                         },
+                                        enableEnterToSend = enableEnterToSend,
                                         onSendMessage = {
                                             if (currentChatId.isNullOrBlank()) {
                                                 Toast.makeText(
@@ -704,7 +1017,10 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                                 autoScrollToBottom = true
                                             }
                                         },
-                                        onCancelMessage = { actualViewModel.cancelCurrentMessage() },
+                                        onQueueMessage = { enqueueDraftToPendingQueue() },
+                                        onCancelMessage = {
+                                            actualViewModel.cancelCurrentMessage()
+                                        },
                                         isLoading = isLoading,
                                         inputState = inputProcessingState,
                                         allowTextInputWhileProcessing = true,
@@ -729,7 +1045,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         onTakePhoto = { uri ->
                                             actualViewModel.handleTakenPhoto(uri)
                                         },
-                                        hasBackgroundImage = hasBackgroundImage,
+                                        hasBackgroundImage = effectiveHasBackgroundImage,
                                         chatInputTransparent = chatInputTransparent,
                                         externalAttachmentPanelState = attachmentPanelState,
                                         onAttachmentPanelStateChange = { newState ->
@@ -741,7 +1057,29 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                         onClearReply = {
                                             actualViewModel.clearReplyToMessage()
                                         },
-                                        isWorkspaceOpen = isWorkspaceOpen
+                                        isWorkspaceOpen = isWorkspaceOpen,
+                                        pendingQueueMessages = pendingQueueMessages,
+                                        isPendingQueueExpanded = isPendingQueueExpanded,
+                                        onPendingQueueExpandedChange = { isPendingQueueExpanded = it },
+                                        onDeletePendingQueueMessage = { id ->
+                                            removePendingQueueMessageById(id)
+                                        },
+                                        onEditPendingQueueMessage = { id ->
+                                            removePendingQueueMessageById(id)?.let { queueItem ->
+                                                val text = queueItem.text
+                                                actualViewModel.updateUserMessage(
+                                                    TextFieldValue(
+                                                        text = text,
+                                                        selection = TextRange(text.length)
+                                                    )
+                                                )
+                                            }
+                                        },
+                                        onSendPendingQueueMessage = { id ->
+                                            removePendingQueueMessageById(id)?.let { queueItem ->
+                                                sendQueuedItemNow(queueItem, true)
+                                            }
+                                        }
                                 )
                             }
                         }
@@ -810,7 +1148,6 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 actualViewModel = actualViewModel,
                                 showChatHistorySelector = showChatHistorySelector,
                                 chatHistory = chatHistory,
-                                enableAiPlanning = enableAiPlanning,
                                 isLoading = isLoading,
                                 userMessageColor = userMessageColor,
                                 aiMessageColor = aiMessageColor,
@@ -820,7 +1157,7 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                 systemTextColor = systemTextColor,
                                 thinkingBackgroundColor = thinkingBackgroundColor,
                                 thinkingTextColor = thinkingTextColor,
-                                hasBackgroundImage = hasBackgroundImage,
+                                hasBackgroundImage = effectiveHasBackgroundImage,
                                 editingMessageIndex = editingMessageIndex,
                                 editingMessageContent = editingMessageContent,
                                 chatScreenGestureConsumed = chatScreenGestureConsumed,
@@ -846,14 +1183,24 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                                     actualViewModel.switchActiveCharacterTarget(target)
                                 },
                                 chatAreaHorizontalPadding = chatAreaHorizontalPadding,
+                                bubbleUserImageStyle = bubbleUserImageStyle,
+                                bubbleAiImageStyle = bubbleAiImageStyle,
+                                bubbleUserRoundedCornersEnabled = bubbleUserRoundedCornersEnabled,
+                                bubbleAiRoundedCornersEnabled = bubbleAiRoundedCornersEnabled,
+                                bubbleUserContentPaddingLeft = bubbleUserContentPaddingLeft,
+                                bubbleUserContentPaddingRight = bubbleUserContentPaddingRight,
+                                bubbleAiContentPaddingLeft = bubbleAiContentPaddingLeft,
+                                bubbleAiContentPaddingRight = bubbleAiContentPaddingRight,
                                 showChatFloatingDotsAnimation = showChatFloatingDotsAnimation,
                         )
 
                         if (inputStyle == UserPreferencesManager.INPUT_STYLE_CLASSIC) {
                             ClassicChatSettingsBar(
                                     modifier = Modifier.align(Alignment.BottomEnd),
-                                    enableAiPlanning = enableAiPlanning,
-                                    onToggleAiPlanning = { actualViewModel.toggleAiPlanning() },
+                                    featureStates = featureStates,
+                                    onToggleFeature = { featureKey ->
+                                        actualViewModel.toggleFeature(featureKey)
+                                    },
                                     permissionLevel =
                                             actualViewModel.masterPermissionLevel
                                                     .collectAsState()
@@ -1039,6 +1386,42 @@ val actualViewModel: ChatViewModel = viewModel ?: viewModel { ChatViewModel(cont
                     .clipToBounds()
             ) {
                 ComputerScreen()
+            }
+        }
+
+        AnimatedVisibility(
+            visible = isWorkspacePreparing,
+            enter = fadeIn(animationSpec = tween(180)),
+            exit = fadeOut(animationSpec = tween(120))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {},
+                contentAlignment = Alignment.Center
+            ) {
+                ElevatedCard {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            text = stringResource(R.string.workspace_opening),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = stringResource(R.string.workspace_opening_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
 

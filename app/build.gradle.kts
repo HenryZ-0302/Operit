@@ -54,7 +54,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 39
-        versionName = "1.9.1+7"
+        versionName = "1.9.1+13"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -182,6 +182,7 @@ dependencies {
     implementation(project(":llama"))
     implementation(project(":mmd"))
     implementation(project(":showerclient"))
+    implementation(project(":quickjs"))
 
     // glTF runtime rendering (Filament)
     implementation("com.google.android.filament:filament-android:1.69.2")

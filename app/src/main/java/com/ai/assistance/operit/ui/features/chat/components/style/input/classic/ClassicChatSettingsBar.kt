@@ -76,6 +76,8 @@ import com.ai.assistance.operit.data.model.getModelList
 import com.ai.assistance.operit.data.model.getValidModelIndex
 import com.ai.assistance.operit.data.preferences.PromptPreferencesManager
 import com.ai.assistance.operit.data.preferences.UserPreferencesManager
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuToggleHookParams
+import com.ai.assistance.operit.ui.features.chat.components.style.input.common.InputMenuTogglePluginRegistry
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.CharacterCardModelBindingSwitchConfirmDialog
 import com.ai.assistance.operit.ui.features.chat.components.style.input.common.ToolPromptManagerDialog
 import com.ai.assistance.operit.ui.permissions.PermissionLevel
@@ -87,8 +89,8 @@ import com.ai.assistance.operit.R
 @Composable
 fun ClassicChatSettingsBar(
     modifier: Modifier = Modifier,
-    enableAiPlanning: Boolean,
-    onToggleAiPlanning: () -> Unit,
+    featureStates: Map<String, Boolean>,
+    onToggleFeature: (String) -> Unit,
     permissionLevel: PermissionLevel,
     onTogglePermission: () -> Unit,
     enableThinkingMode: Boolean,
@@ -183,6 +185,15 @@ fun ClassicChatSettingsBar(
     // 获取聊天设置按钮右边距设置
     val chatSettingsBarRightMargin by
             userPreferencesManager.chatSettingsButtonEndPadding.collectAsState(initial = 2f)
+    val inputMenuToggles = InputMenuTogglePluginRegistry.changeVersion.collectAsState().value.let {
+        InputMenuTogglePluginRegistry.createToggles(
+            params = InputMenuToggleHookParams(
+                context = context,
+                featureStates = featureStates,
+                onToggleFeature = onToggleFeature
+            )
+        )
+    }
 
     val onSelectModel: (String, Int) -> Unit = { selectedId, modelIndex ->
         if (isModelSelectionLockedByCharacterCard) {
@@ -285,13 +296,18 @@ fun ClassicChatSettingsBar(
                         modifier = Modifier.size(20.dp)
                     )
                 }
-                AnimatedVisibility(visible = enableAiPlanning) {
-                    Icon(
-                        imageVector = Icons.Outlined.Hub,
-                        contentDescription = stringResource(R.string.ai_planning_active),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                inputMenuToggles.forEach { toggle ->
+                    AnimatedVisibility(visible = toggle.isChecked) {
+                        val toggleTitle =
+                            if (toggle.titleRes != 0) stringResource(toggle.titleRes)
+                            else toggle.title.orEmpty()
+                        Icon(
+                            imageVector = Icons.Outlined.Hub,
+                            contentDescription = toggleTitle,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
                 AnimatedVisibility(visible = permissionLevel == PermissionLevel.ALLOW) {
                     Icon(
@@ -637,26 +653,37 @@ fun ClassicChatSettingsBar(
                             )
 
                             // ========== AI功能类 ==========
-                            // AI计划模式
-                            SettingItem(
-                                title = stringResource(R.string.ai_planning_mode),
-                                    icon =
-                                            if (enableAiPlanning) Icons.Outlined.Hub
-                                            else Icons.Outlined.Hub,
+                            inputMenuToggles.forEach { toggle ->
+                                val toggleTitle =
+                                    if (toggle.titleRes != 0) stringResource(toggle.titleRes)
+                                    else toggle.title.orEmpty()
+                                SettingItem(
+                                    title = toggleTitle,
+                                    icon = Icons.Outlined.Hub,
                                     iconTint =
-                                            if (enableAiPlanning) MaterialTheme.colorScheme.primary
-                                            else
-                                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                                                            alpha = 0.7f
-                                                    ),
-                                isChecked = enableAiPlanning,
-                                onToggle = onToggleAiPlanning,
-                                onInfoClick = {
+                                        if (!toggle.isEnabled)
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+                                        else if (toggle.isChecked) MaterialTheme.colorScheme.primary
+                                        else
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                alpha = 0.7f
+                                            ),
+                                    isChecked = toggle.isChecked,
+                                    isEnabled = toggle.isEnabled,
+                                    onToggle = toggle.onToggle,
+                                    onInfoClick = {
+                                        val infoTitle =
+                                            if (toggle.titleRes != 0) context.getString(toggle.titleRes)
+                                            else toggle.title.orEmpty()
+                                        val infoDescription =
+                                            if (toggle.descriptionRes != 0) context.getString(toggle.descriptionRes)
+                                            else toggle.description.orEmpty()
                                         infoPopupContent =
-                                                context.getString(R.string.ai_planning_mode) to context.getString(R.string.ai_planning_desc)
-                                    showMenu = false
-                                }
-                            )
+                                            infoTitle to infoDescription
+                                        showMenu = false
+                                    }
+                                )
+                            }
 
                             HorizontalDivider(
                                 modifier = Modifier.padding(vertical = 2.dp),
@@ -774,6 +801,7 @@ private fun SettingItem(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     iconTint: Color,
     isChecked: Boolean,
+    isEnabled: Boolean = true,
     onToggle: () -> Unit,
     onInfoClick: () -> Unit
 ) {
@@ -794,6 +822,7 @@ private fun SettingItem(
             }
             .toggleable(
                 value = isChecked,
+                enabled = isEnabled,
                 onValueChange = { onToggle() },
                 role = Role.Switch
             ),
@@ -822,7 +851,9 @@ private fun SettingItem(
             text = title,
             fontSize = 13.sp,
             fontWeight = FontWeight.Normal,
-            color = MaterialTheme.colorScheme.onSurface,
+            color =
+                if (isEnabled) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             modifier = Modifier
                 .weight(1f)
                 .padding(horizontal = 8.dp)
@@ -832,6 +863,7 @@ private fun SettingItem(
         Switch(
             checked = isChecked,
             onCheckedChange = null, // 由Row的toggleable处理
+            enabled = isEnabled,
             modifier = Modifier
                 .scale(0.65f)
                 .clearAndSetSemantics {},

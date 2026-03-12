@@ -41,8 +41,8 @@ class ApiConfigDelegate(
     private val _isConfigured = MutableStateFlow(true) // 默认已配置
     val isConfigured: StateFlow<Boolean> = _isConfigured.asStateFlow()
 
-    private val _enableAiPlanning = MutableStateFlow(ApiPreferences.DEFAULT_ENABLE_AI_PLANNING)
-    val enableAiPlanning: StateFlow<Boolean> = _enableAiPlanning.asStateFlow()
+    private val _featureToggles = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val featureToggles: StateFlow<Map<String, Boolean>> = _featureToggles.asStateFlow()
 
     private val _keepScreenOn = MutableStateFlow(ApiPreferences.DEFAULT_KEEP_SCREEN_ON)
     val keepScreenOn: StateFlow<Boolean> = _keepScreenOn.asStateFlow()
@@ -209,10 +209,10 @@ class ApiConfigDelegate(
     }
 
     private fun initializeSettingsCollection() {
-        // Collect AI planning setting
+        // Collect feature toggle settings
         coroutineScope.launch {
-            apiPreferences.enableAiPlanningFlow.collect { enableAiPlanningValue ->
-                _enableAiPlanning.value = enableAiPlanningValue
+            apiPreferences.featureTogglesFlow.collect { toggles ->
+                _featureToggles.value = toggles
             }
         }
 
@@ -363,12 +363,17 @@ class ApiConfigDelegate(
         }
     }
 
-    /** 切换AI计划功能 */
-    fun toggleAiPlanning() {
+    fun toggleFeature(featureKey: String) {
         coroutineScope.launch {
-            val newValue = !_enableAiPlanning.value
-            apiPreferences.saveEnableAiPlanning(newValue)
-            _enableAiPlanning.value = newValue
+            val normalizedKey = featureKey.trim()
+            if (normalizedKey.isEmpty()) {
+                return@launch
+            }
+            val currentValue =
+                _featureToggles.value[normalizedKey] ?: ApiPreferences.DEFAULT_FEATURE_TOGGLE_STATE
+            val newValue = !currentValue
+            apiPreferences.saveFeatureToggle(normalizedKey, newValue)
+            _featureToggles.value = _featureToggles.value + (normalizedKey to newValue)
         }
     }
 
