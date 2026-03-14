@@ -1,6 +1,7 @@
 package com.ai.assistance.operit.core.tools.packTool
 
 import android.content.Context
+import android.provider.DocumentsContract
 import com.ai.assistance.operit.core.tools.LocalizedText
 import com.ai.assistance.operit.core.tools.ToolPackage
 import java.io.File
@@ -12,6 +13,13 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.hjson.JsonValue
+
+private val TOOLPKG_DIRECTORY_RESOURCE_MIME_TYPES =
+    setOf(
+        DocumentsContract.Document.MIME_TYPE_DIR.lowercase(),
+        "inode/directory",
+        "application/x-directory"
+    )
 
 internal enum class ToolPkgSourceType {
     ASSET,
@@ -283,9 +291,13 @@ internal object ToolPkgArchiveParser {
                     )
                 }
                 val normalizedPath =
-                    normalizeZipEntryPath(resource.path)
+                    normalizeResourcePath(resource.path)
                         ?: throw IllegalArgumentException("Invalid resource path: ${resource.path}")
-                if (!containsZipEntry(entries, normalizedPath)) {
+                if (isDirectoryResourceMime(resource.mime)) {
+                    if (!containsZipEntriesUnderDirectory(entries, normalizedPath)) {
+                        throw IllegalArgumentException("Cannot find resource directory '${resource.path}'")
+                    }
+                } else if (!containsZipEntry(entries, normalizedPath)) {
                     throw IllegalArgumentException("Cannot find resource path '${resource.path}'")
                 }
                 ToolPkgResourceRuntime(
@@ -667,6 +679,16 @@ internal object ToolPkgArchiveParser {
         return normalized
     }
 
+    fun normalizeResourcePath(rawPath: String): String? {
+        val normalized = normalizeZipEntryPath(rawPath) ?: return null
+        return normalized.trimEnd('/').ifBlank { null }
+    }
+
+    fun isDirectoryResourceMime(mime: String?): Boolean {
+        val normalizedMime = mime?.trim()?.lowercase().orEmpty()
+        return TOOLPKG_DIRECTORY_RESOURCE_MIME_TYPES.contains(normalizedMime)
+    }
+
     fun findZipEntryContent(entries: Map<String, ByteArray>, rawPath: String): ByteArray? {
         val normalizedPath = normalizeZipEntryPath(rawPath) ?: return null
         entries[normalizedPath]?.let { return it }
@@ -738,6 +760,14 @@ internal object ToolPkgArchiveParser {
             return true
         }
         return entries.keys.any { it.equals(normalizedPath, ignoreCase = true) }
+    }
+
+    private fun containsZipEntriesUnderDirectory(
+        entries: Map<String, ByteArray>,
+        normalizedDirectoryPath: String
+    ): Boolean {
+        val prefix = normalizedDirectoryPath.trimEnd('/') + "/"
+        return entries.keys.any { it.startsWith(prefix, ignoreCase = true) }
     }
 
     private fun findManifestEntry(entries: Map<String, ByteArray>): String? {

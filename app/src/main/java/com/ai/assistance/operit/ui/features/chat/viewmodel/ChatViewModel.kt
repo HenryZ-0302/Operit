@@ -2018,14 +2018,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 if (sharedSessionId == null || terminal.terminalState.value.sessions.none { it.id == sharedSessionId }) {
                     val workspaceName = workspaceDir.name.take(4) // 只取前4位
 
-                    sharedSessionId = terminal.createSessionAndWait("Workspace: $workspaceName")
-                    if (sharedSessionId == null) {
-                        AppLogger.e(TAG, "Failed to create workspace terminal session")
-                        uiStateDelegate.showErrorMessage(
-                            context.getString(R.string.chat_create_workspace_terminal_session_failed)
-                        )
-                        return@launch
-                    }
+                    sharedSessionId = terminal.createSession("Workspace: $workspaceName")
 
                     // 保存会话 ID
                     workspaceTerminalSessions[workspacePath] = sharedSessionId
@@ -2116,14 +2109,7 @@ class ChatViewModel(private val context: Context) : ViewModel() {
                 }
                 val workspaceDir = File(workspacePath)
                 val sessionTitle = command.sessionTitle ?: command.label
-                val dedicatedSessionId = terminalInstance.createSessionAndWait(sessionTitle)
-                if (dedicatedSessionId == null) {
-                    AppLogger.e(TAG, "Failed to create dedicated terminal session")
-                    uiStateDelegate.showErrorMessage(
-                        context.getString(R.string.chat_create_dedicated_terminal_session_failed)
-                    )
-                    return@launch
-                }
+                val dedicatedSessionId = terminalInstance.createSession(sessionTitle)
 
                 terminalInstance.executeCommand(dedicatedSessionId, "cd \"${workspaceDir.absolutePath}\"")
                 terminalInstance.sendInput(dedicatedSessionId, commandText + "\r")

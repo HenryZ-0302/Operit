@@ -7,6 +7,7 @@ import com.ai.assistance.operit.core.tools.*
 import com.ai.assistance.operit.data.model.AITool
 import com.ai.assistance.operit.data.model.ToolResult
 import com.ai.assistance.operit.core.tools.system.Terminal
+import com.ai.assistance.operit.terminal.provider.type.HiddenExecResult
 import com.ai.assistance.operit.terminal.view.domain.ansi.TerminalChar
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
@@ -186,6 +187,92 @@ class StandardTerminalCommandExecutor(private val context: Context) {
                         success = false,
                         result = StringResultData(""),
                         error = context.getString(R.string.terminal_error_execute_command, e.message ?: "")
+                )
+            }
+        }
+    }
+
+    /** 在隐藏终端执行器中执行命令 */
+    fun executeHiddenCommand(tool: AITool): ToolResult {
+        return runBlocking {
+            try {
+                val command = tool.parameters.find { it.name == "command" }?.value ?: ""
+                if (command.isBlank()) {
+                    return@runBlocking ToolResult(
+                        toolName = tool.name,
+                        success = false,
+                        result = StringResultData(""),
+                        error = context.getString(R.string.terminal_error_missing_command)
+                    )
+                }
+
+                val executorKey =
+                    tool.parameters
+                        .find { it.name == "executor_key" }
+                        ?.value
+                        ?.trim()
+                        ?.ifEmpty { "default" }
+                        ?: "default"
+                val timeoutMs =
+                    tool.parameters
+                        .find { it.name == "timeout_ms" }
+                        ?.value
+                        ?.toLongOrNull()
+                        ?: 120000L
+
+                val terminal = Terminal.getInstance(context)
+                val hiddenResult =
+                    terminal.executeHiddenCommand(
+                        command = command,
+                        executorKey = executorKey,
+                        timeoutMs = timeoutMs
+                    )
+                val output = extractHiddenExecOutput(hiddenResult)
+                val didTimeout = hiddenResult.state == HiddenExecResult.State.TIMEOUT
+                val errorMessage =
+                    when {
+                        didTimeout ->
+                            context.getString(
+                                R.string.terminal_error_hidden_command_timeout,
+                                timeoutMs
+                            )
+                        !hiddenResult.isOk ->
+                            context.getString(
+                                R.string.terminal_error_execute_hidden_command,
+                                buildHiddenExecFailureDetail(hiddenResult)
+                            )
+                        hiddenResult.exitCode != 0 ->
+                            context.getString(
+                                R.string.terminal_error_hidden_command_non_zero_exit,
+                                hiddenResult.exitCode
+                            )
+                        else -> null
+                    }
+
+                ToolResult(
+                    toolName = tool.name,
+                    success = errorMessage == null,
+                    result =
+                        HiddenTerminalCommandResultData(
+                            command = command,
+                            output = output,
+                            exitCode = hiddenResult.exitCode,
+                            executorKey = executorKey,
+                            timedOut = didTimeout
+                        ),
+                    error = errorMessage
+                )
+            } catch (e: Exception) {
+                AppLogger.e(TAG, "执行隐藏终端命令时出错", e)
+                ToolResult(
+                    toolName = tool.name,
+                    success = false,
+                    result = StringResultData(""),
+                    error =
+                        context.getString(
+                            R.string.terminal_error_execute_hidden_command,
+                            e.message ?: ""
+                        )
                 )
             }
         }
@@ -378,6 +465,29 @@ class StandardTerminalCommandExecutor(private val context: Context) {
         }
 
         return lines.joinToString("\n")
+    }
+
+    private fun extractHiddenExecOutput(result: HiddenExecResult): String {
+        return result.output.ifBlank { result.rawOutputPreview }
+    }
+
+    private fun buildHiddenExecFailureDetail(result: HiddenExecResult): String {
+        val summary =
+            buildString {
+                append("state=")
+                append(result.state.name)
+                val error = result.error.trim()
+                if (error.isNotEmpty()) {
+                    append(", error=")
+                    append(error)
+                }
+            }
+        val preview = result.rawOutputPreview.trim()
+        return if (preview.isNotEmpty()) {
+            "$summary\n$preview"
+        } else {
+            summary
+        }
     }
 
     private fun normalizeControl(rawControl: String?): String? {

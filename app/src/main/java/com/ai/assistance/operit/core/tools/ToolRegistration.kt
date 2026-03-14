@@ -137,6 +137,21 @@ fun registerAllTools(handler: AIToolHandler, context: Context) {
     )
 
     handler.registerTool(
+            name = "execute_hidden_terminal_command",
+            dangerCheck = { true },
+            descriptionGenerator = { tool ->
+                val command = tool.parameters.find { it.name == "command" }?.value ?: ""
+                val executorKey =
+                        tool.parameters.find { it.name == "executor_key" }?.value ?: "default"
+                s(R.string.toolreg_execute_hidden_terminal_command_desc, executorKey, command)
+            },
+            executor = { tool ->
+                val terminalTool = ToolGetter.getTerminalCommandExecutor(context)
+                terminalTool.executeHiddenCommand(tool)
+            }
+    )
+
+    handler.registerTool(
             name = "close_terminal_session",
             dangerCheck = { false },
             descriptionGenerator = { tool ->

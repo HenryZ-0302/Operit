@@ -65,6 +65,33 @@ object SystemToolPromptsInternal {
                                 )
                         ),
                         ToolPrompt(
+                            name = "execute_hidden_terminal_command",
+                            description = "Execute a command in a hidden non-PTY terminal executor. Commands using the same executor_key reuse the same hidden login context and are not shown in the visible terminal UI.",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "command",
+                                        type = "string",
+                                        description = "command to execute",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "executor_key",
+                                        type = "string",
+                                        description = "optional, hidden executor key used to reuse the same background shell context",
+                                        required = false,
+                                        default = "default"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "optional, command timeout in milliseconds",
+                                        required = false,
+                                        default = "120000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
                             name = "input_in_terminal_session",
                             description = "Write input to a terminal session. At least one of input or control is required. Typical usage is sending input first, then control=enter to submit.",
                             parametersStructured =
@@ -2589,6 +2616,33 @@ object SystemToolPromptsInternal {
                                         description = "可选，超时时间（毫秒）",
                                         required = false,
                                         default = "1800000"
+                                    )
+                                )
+                        ),
+                        ToolPrompt(
+                            name = "execute_hidden_terminal_command",
+                            description = "在隐藏的非 PTY 终端执行器中执行命令。使用相同 executor_key 的命令会复用同一个后台登录上下文，且不会显示在可见终端 UI 中。",
+                            parametersStructured =
+                                listOf(
+                                    ToolParameterSchema(
+                                        name = "command",
+                                        type = "string",
+                                        description = "要执行的命令",
+                                        required = true
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "executor_key",
+                                        type = "string",
+                                        description = "可选，用于复用同一个后台 shell 上下文的隐藏执行器 key",
+                                        required = false,
+                                        default = "default"
+                                    ),
+                                    ToolParameterSchema(
+                                        name = "timeout_ms",
+                                        type = "integer",
+                                        description = "可选，超时时间（毫秒）",
+                                        required = false,
+                                        default = "120000"
                                     )
                                 )
                         ),

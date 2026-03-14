@@ -6,8 +6,8 @@
         "en": "Apktool Direct Bridge"
     },
     "description": {
-        "zh": "通过 ToolPkg.readResource + Java.loadJar 载入内置 apktool runtime，并在每次执行前自动确保 runtime 与默认 framework 就绪。",
-        "en": "Load the bundled apktool runtime through ToolPkg.readResource + Java.loadJar, and automatically ensure the runtime and default framework before each command."
+        "zh": "通过 ToolPkg.readResource + Java.loadJar 载入内置 apktool runtime，并通过 child-first 包前缀隔离宿主依赖冲突。",
+        "en": "Load the bundled apktool runtime through ToolPkg.readResource + Java.loadJar, and isolate host dependency conflicts with child-first package prefixes."
     },
     "enabledByDefault": true,
     "category": "System",
@@ -15,8 +15,8 @@
         {
             "name": "usage_advice",
             "description": {
-                "zh": "返回当前直调版 apktool 支持的 CLI 对齐能力说明。",
-                "en": "Return CLI-parity support notes for this direct-bridge apktool package."
+                "zh": "返回当前隔离直调版 apktool 支持的 CLI 对齐能力说明。",
+                "en": "Return CLI-parity support notes for this isolated direct-bridge apktool package."
             },
             "parameters": [],
             "advice": true
@@ -52,30 +52,6 @@
             ]
         },
         {
-            "name": "apktool_build",
-            "description": {
-                "zh": "直接调用 brut.androlib.ApkBuilder 回编 APK，并对齐 apktool build 主要 CLI 参数。",
-                "en": "Directly call brut.androlib.ApkBuilder and expose the main apktool build CLI options."
-            },
-            "parameters": [
-                { "name": "input_dir", "description": { "zh": "可选，已解包工程目录。省略时默认为当前目录。", "en": "Optional decoded project directory. Defaults to current directory." }, "type": "string", "required": false },
-                { "name": "output_apk_path", "description": { "zh": "可选，输出 APK 路径。开启 no_apk 时可省略。", "en": "Optional output APK path. May be omitted when no_apk is enabled." }, "type": "string", "required": false },
-                { "name": "jobs", "description": { "zh": "可选，对齐 -j/--jobs。", "en": "Optional. Mirrors -j/--jobs." }, "type": "string", "required": false },
-                { "name": "frame_path", "description": { "zh": "可选，对齐 -p/--frame-path。", "en": "Optional. Mirrors -p/--frame-path." }, "type": "string", "required": false },
-                { "name": "lib", "description": { "zh": "可选，对齐 -l/--lib。可传单个 package:file，或 JSON 数组 / 逗号换行分隔。", "en": "Optional. Mirrors -l/--lib. Accepts a single package:file, or a JSON array / comma-newline separated list." }, "type": "string", "required": false },
-                { "name": "force", "description": { "zh": "可选，对齐 -f/--force。", "en": "Optional. Mirrors -f/--force." }, "type": "string", "required": false },
-                { "name": "no_apk", "description": { "zh": "可选，对齐 --no-apk。", "en": "Optional. Mirrors --no-apk." }, "type": "string", "required": false },
-                { "name": "no_crunch", "description": { "zh": "可选，对齐 --no-crunch。", "en": "Optional. Mirrors --no-crunch." }, "type": "string", "required": false },
-                { "name": "copy_original", "description": { "zh": "可选，对齐 --copy-original。", "en": "Optional. Mirrors --copy-original." }, "type": "string", "required": false },
-                { "name": "debuggable", "description": { "zh": "可选，对齐 --debuggable。", "en": "Optional. Mirrors --debuggable." }, "type": "string", "required": false },
-                { "name": "net_sec_conf", "description": { "zh": "可选，对齐 --net-sec-conf。", "en": "Optional. Mirrors --net-sec-conf." }, "type": "string", "required": false },
-                { "name": "aapt", "description": { "zh": "可选，对齐 --aapt。传入 aapt2 可执行文件路径。", "en": "Optional. Mirrors --aapt. Provide the aapt2 binary path." }, "type": "string", "required": false },
-                { "name": "verbose", "description": { "zh": "可选，对齐 -v/--verbose。", "en": "Optional. Mirrors -v/--verbose." }, "type": "string", "required": false },
-                { "name": "quiet", "description": { "zh": "可选，对齐 -q/--quiet。", "en": "Optional. Mirrors -q/--quiet." }, "type": "string", "required": false },
-                { "name": "config_json", "description": { "zh": "可选，JSON 对象。仍支持旧版 config_json，并会与直接参数合并。", "en": "Optional JSON object. Legacy config_json is still supported and merged with direct parameters." }, "type": "string", "required": false }
-            ]
-        },
-        {
             "name": "apktool_list_frameworks",
             "description": {
                 "zh": "直接调用 brut.androlib.res.Framework.listDirectory，并对齐 apktool list-frameworks CLI 参数。",
@@ -101,20 +77,22 @@ const APKTOOL_ANDROID_FRAMEWORK_RESOURCE_KEY = "apktool_android_framework_jar";
 const APKTOOL_RUNTIME_OUTPUT_FILE_NAME = "apktool-runtime-android.jar";
 const APKTOOL_ANDROID_FRAMEWORK_OUTPUT_FILE_NAME = "android-framework.jar";
 const APKTOOL_RUNTIME_SOURCE_ARTIFACT = "org.apktool:apktool-cli:3.0.1";
+const APKTOOL_RUNTIME_CHILD_FIRST_PREFIXES = [
+  "antlr.",
+  "brut.",
+  "com.android.",
+  "com.beust.",
+  "com.google.",
+  "javax.annotation.",
+  "org.antlr.",
+  "org.apache.",
+  "org.jspecify.",
+  "org.stringtemplate.",
+  "org.xmlpull."
+];
 const JVM_COMPAT_OS_NAME = "Linux";
 const JVM_COMPAT_OS_ARCH = "aarch64";
 const JVM_COMPAT_ARCH_DATA_MODEL = "64";
-const APKTOOL_BRIDGE_CLASS_NAMES = [
-  "brut.androlib.Config",
-  "brut.androlib.ApkDecoder",
-  "brut.androlib.ApkBuilder",
-  "brut.androlib.res.Framework",
-  "brut.androlib.Config$DecodeSources",
-  "brut.androlib.Config$DecodeResources",
-  "brut.androlib.Config$DecodeAssets",
-  "brut.androlib.Config$DecodeResolve",
-  "java.io.File"
-];
 
 type AppliedConfigValue = string | number | boolean | string[];
 type AppliedConfig = Record<string, AppliedConfigValue> & {
@@ -292,6 +270,17 @@ function collectJvmCompatibilitySystemProperties() {
   };
 }
 
+function requireExistingRegularFile(file, parameterName) {
+  const absolutePath = asText(file.getAbsolutePath());
+  if (!file.exists()) {
+    throw new Error(`${parameterName} does not exist: ${absolutePath}`);
+  }
+  if (!file.isFile()) {
+    throw new Error(`${parameterName} is not a file: ${absolutePath}`);
+  }
+  return absolutePath;
+}
+
 function configureJavaLogging(mode) {
   const Logger = Java.type("java.util.logging.Logger");
   const Level = Java.type("java.util.logging.Level");
@@ -316,7 +305,9 @@ async function ensureRuntimeLoaded() {
     APKTOOL_RUNTIME_OUTPUT_FILE_NAME,
     true
   );
-  const loadInfo = Java.loadJar(runtimeJarPath);
+  const loadInfo = Java.loadJar(runtimeJarPath, {
+    childFirstPrefixes: APKTOOL_RUNTIME_CHILD_FIRST_PREFIXES
+  });
   return {
     runtimeJarPath,
     loadInfo,
@@ -361,7 +352,6 @@ function getBridgeClasses() {
     File: Java.type("java.io.File"),
     Config: Java.type("brut.androlib.Config"),
     ApkDecoder: Java.type("brut.androlib.ApkDecoder"),
-    ApkBuilder: Java.type("brut.androlib.ApkBuilder"),
     Framework: Java.type("brut.androlib.res.Framework"),
     DecodeSources: Java.type("brut.androlib.Config$DecodeSources"),
     DecodeResources: Java.type("brut.androlib.Config$DecodeResources"),
@@ -468,7 +458,7 @@ function requireNoConflict(condition, message) {
   }
 }
 
-function buildExecutionContext(classes, params, operation) {
+function createExecutionContext(classes, params, operation) {
   const configJson = parseConfigJson(params);
   const config = new classes.Config(APKTOOL_VERSION);
   const applied: AppliedConfig = {
@@ -670,48 +660,6 @@ function buildExecutionContext(classes, params, operation) {
     }
   }
 
-  if (operation === "build") {
-    const noApkValue = pickOptionValue(params, configJson, ["no_apk"]);
-    if (noApkValue !== undefined) {
-      const noApk = parseBoolean(noApkValue, "no_apk");
-      config.setNoApk(noApk);
-      applied.no_apk = noApk;
-    }
-    const noCrunchValue = pickOptionValue(params, configJson, ["no_crunch"]);
-    if (noCrunchValue !== undefined) {
-      const noCrunch = parseBoolean(noCrunchValue, "no_crunch");
-      config.setNoCrunch(noCrunch);
-      applied.no_crunch = noCrunch;
-    }
-    const copyOriginalValue = pickOptionValue(params, configJson, ["copy_original"]);
-    if (copyOriginalValue !== undefined) {
-      const copyOriginal = parseBoolean(copyOriginalValue, "copy_original");
-      config.setCopyOriginal(copyOriginal);
-      applied.copy_original = copyOriginal;
-    }
-    const debuggableValue = pickOptionValue(params, configJson, ["debuggable"]);
-    if (debuggableValue !== undefined) {
-      const debuggable = parseBoolean(debuggableValue, "debuggable");
-      config.setDebuggable(debuggable);
-      applied.debuggable = debuggable;
-    }
-    const netSecConfValue = pickOptionValue(params, configJson, ["net_sec_conf"]);
-    if (netSecConfValue !== undefined) {
-      const netSecConf = parseBoolean(netSecConfValue, "net_sec_conf");
-      config.setNetSecConf(netSecConf);
-      applied.net_sec_conf = netSecConf;
-    }
-    const aaptValue = pickOptionValue(params, configJson, ["aapt", "aapt_binary"]);
-    if (aaptValue !== undefined) {
-      const aaptBinary = asText(aaptValue).trim();
-      if (!aaptBinary) {
-        throw new Error("aapt must not be blank");
-      }
-      config.setAaptBinary(aaptBinary);
-      applied.aapt = aaptBinary;
-    }
-  }
-
   if (operation === "list_frameworks") {
     const allValue = pickOptionValue(params, configJson, ["all"]);
     if (allValue !== undefined) {
@@ -731,13 +679,15 @@ function buildExecutionContext(classes, params, operation) {
 }
 
 function javaFileListToPaths(list) {
-  const paths: string[] = [];
-  const size = Number(list.size());
-  for (let index = 0; index < size; index += 1) {
-    const file = list.get(index);
-    paths.push(asText(file.getAbsolutePath()));
+  if (!Array.isArray(list)) {
+    throw new Error(`Expected JS array of file proxies, got ${Object.prototype.toString.call(list)}`);
   }
-  return paths;
+  return list.map((file) => {
+    if (!file || typeof file.getAbsolutePath !== "function") {
+      throw new Error("Framework entry is not a java.io.File proxy");
+    }
+    return asText(file.getAbsolutePath());
+  });
 }
 
 function defaultDecodeOutputDir(inputApkPath) {
@@ -782,11 +732,11 @@ export async function usage_advice() {
     packageVersion: PACKAGE_VERSION,
     apktoolVersion: APKTOOL_VERSION,
     runtimeSourceArtifact: APKTOOL_RUNTIME_SOURCE_ARTIFACT,
-    runtimeLoadMode: "ToolPkg.readResource + Java.loadJar",
-    note: "This package extracts a dex-jar runtime, automatically ensures the default framework, and directly calls brut.androlib.* classes through the Java bridge instead of starting a JVM subprocess.",
+    runtimeLoadMode: "ToolPkg.readResource + Java.loadJar(childFirstPrefixes=...)",
+    runtimeChildFirstPrefixes: APKTOOL_RUNTIME_CHILD_FIRST_PREFIXES,
+    note: "This package extracts a dex-jar runtime, loads it with child-first package isolation to avoid host dependency collisions, and automatically ensures the default framework for decode and list-frameworks flows.",
     supportedCommands: [
       "decode",
-      "build",
       "list-frameworks"
     ],
     directCliParity: {
@@ -809,20 +759,6 @@ export async function usage_advice() {
         "verbose",
         "quiet"
       ],
-      build: [
-        "jobs",
-        "frame_path",
-        "lib",
-        "force",
-        "no_apk",
-        "no_crunch",
-        "copy_original",
-        "debuggable",
-        "net_sec_conf",
-        "aapt",
-        "verbose",
-        "quiet"
-      ],
       listFrameworks: [
         "frame_path",
         "frame_tag",
@@ -836,7 +772,6 @@ export async function usage_advice() {
       "decode_sources",
       "framework_directory",
       "framework_tag",
-      "aapt_binary",
       "library_files"
     ]
   };
@@ -848,17 +783,19 @@ export async function apktool_decode(params) {
     const outputDir = optionalText(params, "output_dir") || defaultDecodeOutputDir(inputApkPath);
     const runtime = await ensureRuntimeLoaded();
     const classes = getBridgeClasses();
-    const context = buildExecutionContext(classes, params, "decode");
+    const inputApkFile = new classes.File(inputApkPath);
+    const inputApkAbsolutePath = requireExistingRegularFile(inputApkFile, "input_apk_path");
+    const context = createExecutionContext(classes, params, "decode");
     const frameworkInfo = await ensureDefaultFrameworkInstalled(classes, context.config);
     const decoder = new classes.ApkDecoder(
-      new classes.File(inputApkPath),
+      inputApkFile,
       context.config
     );
     decoder.decode(new classes.File(outputDir));
     return {
       ...baseSuccessPayload(runtime),
       operation: "decode",
-      inputApkPath,
+      inputApkPath: inputApkAbsolutePath,
       outputDir,
       frameworkInfo,
       appliedConfig: context.applied
@@ -871,42 +808,11 @@ export async function apktool_decode(params) {
   }
 }
 
-export async function apktool_build(params) {
-  try {
-    const inputDir = optionalText(params, "input_dir") || ".";
-    const outputApkPath = optionalText(params, "output_apk_path");
-    const runtime = await ensureRuntimeLoaded();
-    const classes = getBridgeClasses();
-    const context = buildExecutionContext(classes, params, "build");
-    const frameworkInfo = await ensureDefaultFrameworkInstalled(classes, context.config);
-    requireNoConflict(context.applied.no_apk === true && !!outputApkPath, "output_apk_path cannot be used together with no_apk");
-    requireNoConflict(context.applied.no_apk !== true && !outputApkPath, "output_apk_path is required unless no_apk is enabled");
-    const builder = new classes.ApkBuilder(
-      new classes.File(inputDir),
-      context.config
-    );
-    builder.build(outputApkPath ? new classes.File(outputApkPath) : null);
-    return {
-      ...baseSuccessPayload(runtime),
-      operation: "build",
-      inputDir,
-      outputApkPath: outputApkPath || null,
-      frameworkInfo,
-      appliedConfig: context.applied
-    };
-  } catch (error) {
-    return {
-      ...baseFailurePayload(error),
-      operation: "build"
-    };
-  }
-}
-
 export async function apktool_list_frameworks(params) {
   try {
     const runtime = await ensureRuntimeLoaded();
     const classes = getBridgeClasses();
-    const context = buildExecutionContext(classes, params, "list_frameworks");
+    const context = createExecutionContext(classes, params, "list_frameworks");
     const defaultFrameworkInfo = await ensureDefaultFrameworkInstalled(classes, context.config);
     const framework = new classes.Framework(context.config);
     const frameworkDirectory = asText(framework.getDirectory().getAbsolutePath());

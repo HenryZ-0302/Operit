@@ -518,6 +518,18 @@ internal fun buildJavaClassBridgeDefinition(): String {
                 ) {
                     normalized.nativeLibraryDir = options.nativeLibraryDir.trim();
                 }
+                if (Array.isArray(options.childFirstPrefixes)) {
+                    var childFirstPrefixes = options.childFirstPrefixes
+                        .map(function(prefix) {
+                            return String(prefix || '').trim();
+                        })
+                        .filter(function(prefix) {
+                            return prefix.length > 0;
+                        });
+                    if (childFirstPrefixes.length > 0) {
+                        normalized.childFirstPrefixes = Array.from(new Set(childFirstPrefixes));
+                    }
+                }
                 return normalized;
             }
 

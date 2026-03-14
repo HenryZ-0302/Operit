@@ -377,6 +377,18 @@ fun getJsToolsDefinition(): String {
                         }
                         return toolCall("execute_in_terminal_session", params);
                     },
+                    hiddenExec: (command, options = {}) => {
+                        const params = { command };
+                        if (options && typeof options === "object") {
+                            if (options.executorKey !== undefined && options.executorKey !== null) {
+                                params.executor_key = String(options.executorKey);
+                            }
+                            if (options.timeoutMs !== undefined && options.timeoutMs !== null) {
+                                params.timeout_ms = String(options.timeoutMs);
+                            }
+                        }
+                        return toolCall("execute_hidden_terminal_command", params);
+                    },
                     screen: (sessionId) => toolCall("get_terminal_session_screen", { session_id: sessionId }),
                     close: (sessionId) => toolCall("close_terminal_session", { session_id: sessionId }),
                     input: (sessionId, options = {}) => {

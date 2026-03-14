@@ -496,6 +496,29 @@ export interface TerminalCommandResultData {
 }
 
 /**
+ * Hidden terminal command execution result data
+ */
+export interface HiddenTerminalCommandResultData {
+    /** The command that was executed */
+    command: string;
+
+    /** The output from the command execution */
+    output: string;
+
+    /** Exit code from the command (0 typically means success) */
+    exitCode: number;
+
+    /** Hidden executor key used for execution */
+    executorKey: string;
+
+    /** Whether this execution ended due to timeout */
+    timedOut?: boolean;
+
+    /** Returns a formatted string representation of the hidden terminal execution result */
+    toString(): string;
+}
+
+/**
  * Terminal session creation result data
  */
 export interface TerminalSessionCreationResultData {
@@ -679,6 +702,10 @@ export interface IntentResult extends BaseResult {
 
 export interface TerminalCommandResult extends BaseResult {
     data: TerminalCommandResultData;
+}
+
+export interface HiddenTerminalCommandResult extends BaseResult {
+    data: HiddenTerminalCommandResultData;
 }
 
 export interface TerminalSessionCreationResult extends BaseResult {

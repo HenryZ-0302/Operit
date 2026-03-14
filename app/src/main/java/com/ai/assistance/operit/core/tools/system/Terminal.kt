@@ -7,8 +7,8 @@ import androidx.annotation.RequiresApi
 import com.ai.assistance.operit.terminal.CommandExecutionEvent
 import com.ai.assistance.operit.terminal.SessionDirectoryEvent
 import com.ai.assistance.operit.terminal.TerminalManager
-import com.ai.assistance.operit.terminal.data.CommandHistoryItem
 import com.ai.assistance.operit.terminal.data.TerminalState
+import com.ai.assistance.operit.terminal.provider.type.HiddenExecResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,8 +16,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -84,19 +82,6 @@ class Terminal private constructor(private val context: Context) {
     }
     
     /**
-     * 创建新的终端会话并等待初始化完成
-     * @deprecated 使用 createSession 代替，现在所有会话创建都是同步的
-     */
-    suspend fun createSessionAndWait(title: String? = null): String? {
-        return try {
-            createSession(title)
-        } catch (e: Exception) {
-            AppLogger.e(TAG, "Session creation failed", e)
-            null
-        }
-    }
-    
-    /**
      * 切换到指定会话
      */
     fun switchToSession(sessionId: String) {
@@ -153,6 +138,18 @@ class Terminal private constructor(private val context: Context) {
         return result
     }
 
+    suspend fun executeHiddenCommand(
+        command: String,
+        executorKey: String = "default",
+        timeoutMs: Long = 120000L
+    ): HiddenExecResult {
+        return terminalManager.executeHiddenCommand(
+            command = command,
+            executorKey = executorKey,
+            timeoutMs = timeoutMs
+        )
+    }
+
     /**
      * 执行命令 - Flow版本
      * 返回命令执行过程中的所有事件，直到命令完成
@@ -204,4 +201,4 @@ class Terminal private constructor(private val context: Context) {
     fun isConnected(): Boolean {
         return true
     }
-} 
+}

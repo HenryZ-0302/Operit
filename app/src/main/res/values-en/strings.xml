@@ -5029,6 +5029,7 @@
     <string name="toolreg_unnamed">Unnamed</string>
     <string name="toolreg_create_terminal_session_desc">Create or get terminal session: %1$s</string>
     <string name="toolreg_execute_in_terminal_session_desc">Execute in terminal session [%1$s]: %2$s</string>
+    <string name="toolreg_execute_hidden_terminal_command_desc">Execute in hidden terminal executor [%1$s]: %2$s</string>
     <string name="toolreg_close_terminal_session_desc">Close terminal session: %1$s</string>
     <string name="toolreg_input_in_terminal_session_desc">Write input to terminal session [%1$s] (control=%2$s)</string>
     <string name="toolreg_get_terminal_session_screen_desc">Get current terminal screen content for session [%1$s] (single screen)</string>
@@ -6490,12 +6491,16 @@
     <!-- StandardTerminalCommandExecutor -->
     <string name="terminal_error_missing_session_name">Missing parameter: session_name</string>
     <string name="terminal_error_create_session">Error creating or getting terminal session: %1$s</string>
+    <string name="terminal_error_missing_command">Missing parameter: command</string>
     <string name="terminal_error_missing_session_id">Missing parameter: session_id</string>
     <string name="terminal_error_session_not_exist">Terminal session \'%1$s\' does not exist or is closed</string>
     <string name="terminal_error_command_failed">Terminal command execution failed or timed out</string>
     <string name="terminal_error_command_timeout">Terminal command timed out (%1$dms)</string>
     <string name="terminal_error_command_non_zero_exit">Terminal command exited with non-zero status (exitCode=%1$d)</string>
     <string name="terminal_error_execute_command">Error executing terminal command: %1$s</string>
+    <string name="terminal_error_hidden_command_timeout">Hidden terminal command timed out (%1$dms)</string>
+    <string name="terminal_error_hidden_command_non_zero_exit">Hidden terminal command exited with non-zero status (exitCode=%1$d)</string>
+    <string name="terminal_error_execute_hidden_command">Error executing hidden terminal command: %1$s</string>
     <string name="terminal_session_closed">Terminal session \'%1$s\' closed successfully.</string>
     <string name="terminal_error_close_session">Error closing terminal session \'%1$s\': %2$s</string>
     <string name="terminal_error_missing_input_or_control">Missing parameter: input or control (at least one is required)</string>
@@ -6863,62 +6868,6 @@
     <string name="tool_windows_control_one_click">Windows One-Click Setup</string>
     <string name="tool_windows_control_one_click_desc">Export the PC agent package, configure HTTP agent environment variables, and enable windows_control in one flow</string>
     <string name="screen_title_windows_control_one_click">Windows One-Click Setup</string>
-
-    <string name="windows_one_click_title">Windows Control One-Click Setup</string>
-    <string name="windows_one_click_subtitle">Share the bundled PC agent package to your Windows computer and run it, then save HTTP agent settings here to enable the windows_control package.</string>
-    <string name="windows_one_click_step1_title">Step 1: Export and share PC agent</string>
-    <string name="windows_one_click_step1_desc">This exports the built-in operit-pc-agent ZIP into /sdcard/Download/Operit/cleanOnExit and opens the system share sheet.</string>
-    <string name="windows_one_click_step1_button">Export and Share ZIP</string>
-    <string name="windows_one_click_exporting">Preparing ZIP...</string>
-    <string name="windows_one_click_step1_success">Written to cleanOnExit and shared: %1$s</string>
-    <string name="windows_one_click_step1_error_missing_asset">Bundled agent ZIP is missing. Run tools/package_operit_pc_agent_asset.py first to generate the asset.</string>
-    <string name="windows_one_click_step1_error_share">Failed to open share sheet</string>
-    <string name="windows_one_click_share_title">Share Operit PC Agent</string>
-
-    <string name="windows_one_click_step2_title">Step 2: Paste agent config and enable package</string>
-    <string name="windows_one_click_step2_desc">After pasting, the app saves WINDOWS_AGENT_* environment variables and enables windows_control automatically.</string>
-    <string name="windows_one_click_field_host">WINDOWS_AGENT_BASE_URL</string>
-    <string name="windows_one_click_field_username">WINDOWS_AGENT_TOKEN (required)</string>
-    <string name="windows_one_click_field_password">WINDOWS_AGENT_DEFAULT_SHELL (optional)</string>
-    <string name="windows_one_click_field_private_key">WINDOWS_AGENT_TIMEOUT_MS (optional)</string>
-    <string name="windows_one_click_field_port">(unused)</string>
-    <string name="windows_one_click_field_strict_host_key">(unused)</string>
-    <string name="windows_one_click_field_session_name">(unused)</string>
-    <string name="windows_one_click_field_ssh_options">(unused)</string>
-    <string name="windows_one_click_tip_env">Required: WINDOWS_AGENT_BASE_URL and WINDOWS_AGENT_TOKEN.</string>
-    <string name="windows_one_click_button_apply">Save and Enable windows_control</string>
-    <string name="windows_one_click_button_paste_apply">Paste and Enable windows_control</string>
-    <string name="windows_one_click_connection_button">Check Current Connection</string>
-    <string name="windows_one_click_connection_card_title">Connection Status</string>
-    <string name="windows_one_click_connection_state_idle">Not checked yet</string>
-    <string name="windows_one_click_connection_state_checking">Checking...</string>
-    <string name="windows_one_click_connection_state_ok">Connected</string>
-    <string name="windows_one_click_connection_state_failed">Connection failed</string>
-    <string name="windows_one_click_connection_state_not_configured">Not configured</string>
-    <string name="windows_one_click_connection_field_base_url">Base URL</string>
-    <string name="windows_one_click_connection_field_package_version">Package Version</string>
-    <string name="windows_one_click_connection_field_agent_version">Agent Version</string>
-    <string name="windows_one_click_connection_field_duration">Duration (ms)</string>
-    <string name="windows_one_click_connection_field_command">Command</string>
-    <string name="windows_one_click_connection_field_error">Error</string>
-    <string name="windows_one_click_connection_fix_base_url_label">Enter New Address</string>
-    <string name="windows_one_click_connection_fix_base_url_placeholder">Example: http://192.168.1.8:58321</string>
-    <string name="windows_one_click_connection_fix_apply_button">Save and Retry</string>
-    <string name="windows_one_click_connection_checking">Checking connection...</string>
-    <string name="windows_one_click_connection_ok">Connection check succeeded: %1$s</string>
-    <string name="windows_one_click_connection_failed">Connection check failed: %1$s</string>
-    <string name="windows_one_click_connection_package_not_enabled">windows_control is not configured yet. Please complete one-click setup first.</string>
-    <string name="windows_one_click_applying">Applying settings...</string>
-    <string name="windows_one_click_error_host_required">Please fill WINDOWS_AGENT_BASE_URL</string>
-    <string name="windows_one_click_error_token_required">Please fill WINDOWS_AGENT_TOKEN</string>
-    <string name="windows_one_click_error_username_required">(unused)</string>
-    <string name="windows_one_click_error_credential_required">(unused)</string>
-    <string name="windows_one_click_error_paste_empty">Please paste the configuration text first</string>
-    <string name="windows_one_click_error_paste_invalid">Failed to parse configuration text: %1$s</string>
-    <string name="windows_one_click_field_config_text">Configuration Text</string>
-    <string name="windows_one_click_field_config_text_placeholder">Paste the configuration text copied from the PC here (WINDOWS_AGENT_*)</string>
-    <string name="windows_one_click_status_success">Configuration saved, windows_control is enabled.</string>
-    <string name="windows_one_click_status_error">Operation failed: %1$s</string>
     <string name="request_limit_per_minute">Requests per minute</string>
     <string name="request_limit_per_minute_desc">Requests over this limit will wait in queue. Use 0 or empty for no rate limit.</string>
     <string name="max_concurrent_requests">Max concurrent requests</string>

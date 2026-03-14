@@ -48,8 +48,18 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.ai.assistance.operit.util.markdown.MarkdownProcessorType
 import com.ai.assistance.operit.ui.theme.ProvideAiMarkdownTextLayoutSettings
 import kotlinx.coroutines.runBlocking
+
+private val ExpandedBubbleLayoutNodeTypes =
+    setOf(
+        MarkdownProcessorType.CODE_BLOCK,
+        MarkdownProcessorType.TABLE,
+        MarkdownProcessorType.XML_BLOCK,
+        MarkdownProcessorType.IMAGE,
+        MarkdownProcessorType.BLOCK_LATEX,
+    )
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @OptIn(ExperimentalFoundationApi::class)
@@ -179,6 +189,8 @@ fun BubbleAiMessageComposable(
             null
         }
     }
+    val shouldUseExpandedBubbleLayout =
+        rendererState.renderNodes.any { node -> node.type in ExpandedBubbleLayoutNodeTypes }
 
     ProvideAiMarkdownTextLayoutSettings {
         if (bubbleWideLayoutEnabled) {
@@ -304,7 +316,7 @@ fun BubbleAiMessageComposable(
                                             bottom = 12.dp,
                                         ),
                                     state = rendererState,
-                                    fillMaxWidth = false,
+                                    fillMaxWidth = shouldUseExpandedBubbleLayout,
                                 )
                             } else {
                                 StreamMarkdownRenderer(
@@ -323,7 +335,7 @@ fun BubbleAiMessageComposable(
                                             bottom = 12.dp,
                                         ),
                                     state = rendererState,
-                                    fillMaxWidth = false,
+                                    fillMaxWidth = shouldUseExpandedBubbleLayout,
                                 )
                             }
                         }
@@ -481,7 +493,7 @@ fun BubbleAiMessageComposable(
                                             bottom = 12.dp,
                                         ),
                                     state = rendererState,
-                                    fillMaxWidth = false  // bubble模式：横向缩紧
+                                    fillMaxWidth = shouldUseExpandedBubbleLayout
                                 )
                             } else {
                                 // 对于已完成的静态消息，使用 content 参数的渲染器以支持Markdown
@@ -502,7 +514,7 @@ fun BubbleAiMessageComposable(
                                             bottom = 12.dp,
                                         ),
                                     state = rendererState,
-                                    fillMaxWidth = false  // bubble模式：横向缩紧
+                                    fillMaxWidth = shouldUseExpandedBubbleLayout
                                 )
                             }
                         }

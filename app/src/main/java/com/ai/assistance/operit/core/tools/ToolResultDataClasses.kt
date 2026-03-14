@@ -117,6 +117,30 @@ data class TerminalCommandResultData(
     }
 }
 
+/** 隐藏终端命令执行结果数据 */
+@Serializable
+data class HiddenTerminalCommandResultData(
+        val command: String,
+        val output: String,
+        val exitCode: Int,
+        val executorKey: String,
+        val timedOut: Boolean = false
+) : ToolResultData() {
+    override fun toString(): String {
+        val sb = StringBuilder()
+        sb.appendLine("Hidden Terminal Command Execution Result:")
+        sb.appendLine("Command: $command")
+        sb.appendLine("Executor Key: $executorKey")
+        sb.appendLine("Exit Code: $exitCode")
+        if (timedOut) {
+            sb.appendLine("Timed Out: true")
+        }
+        sb.appendLine("\nOutput:")
+        sb.appendLine(output)
+        return sb.toString()
+    }
+}
+
 /** 计算结果结构化数据 */
 @Serializable
 data class CalculationResultData(
@@ -1132,6 +1156,24 @@ data class GrepResultData(
         val lineContent: String,
         val matchContext: String? = null
     )
+
+    private fun parsePreNumberedLineNumber(line: String): Int? {
+        val trimmed = line.trimStart()
+        val separatorIndex = trimmed.indexOf('|')
+        if (separatorIndex <= 0) return null
+        return trimmed.substring(0, separatorIndex).trim().toIntOrNull()
+    }
+
+    private fun markPreNumberedContextLine(line: String): String {
+        val separatorIndex = line.indexOf('|')
+        if (separatorIndex < 0) return line
+        if (separatorIndex + 1 < line.length && line[separatorIndex + 1] == '>') return line
+        return buildString(line.length + 1) {
+            append(line, 0, separatorIndex + 1)
+            append('>')
+            append(line.substring(separatorIndex + 1))
+        }
+    }
     
     override fun toString(): String {
         val sb = StringBuilder()
@@ -1167,18 +1209,32 @@ data class GrepResultData(
                     // If context is available, show full context
                     if (lineMatch.matchContext != null && lineMatch.matchContext.isNotBlank()) {
                         val contextLines = lineMatch.matchContext.lines()
-                        val centerIndex = contextLines.size / 2
+                        val isPreNumberedContext =
+                            contextLines.any { it.isNotBlank() } &&
+                                contextLines.all { it.isBlank() || parsePreNumberedLineNumber(it) != null }
 
-                        contextLines.forEachIndexed { idx, contextLine ->
-                            // Calculate actual line number for each line
-                            val actualLineNum = lineMatch.lineNumber - centerIndex + idx
-                            val lineNumStr = String.format("%6d", actualLineNum)
+                        if (isPreNumberedContext) {
+                            contextLines.forEach { contextLine ->
+                                val renderedLine =
+                                    if (parsePreNumberedLineNumber(contextLine) == lineMatch.lineNumber) {
+                                        markPreNumberedContextLine(contextLine)
+                                    } else {
+                                        contextLine
+                                    }
+                                sb.appendLine(renderedLine)
+                            }
+                        } else {
+                            val centerIndex = contextLines.size / 2
 
-                            // Mark matching line with >
-                            if (idx == centerIndex) {
-                                sb.appendLine("$lineNumStr|>${contextLine}")
-                            } else {
-                                sb.appendLine("$lineNumStr| ${contextLine}")
+                            contextLines.forEachIndexed { idx, contextLine ->
+                                val actualLineNum = lineMatch.lineNumber - centerIndex + idx
+                                val lineNumStr = String.format("%6d", actualLineNum)
+
+                                if (idx == centerIndex) {
+                                    sb.appendLine("$lineNumStr|>${contextLine}")
+                                } else {
+                                    sb.appendLine("$lineNumStr| ${contextLine}")
+                                }
                             }
                         }
                         sb.appendLine() // Add blank line after each match block

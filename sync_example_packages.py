@@ -169,22 +169,42 @@ def _resolve_plan_item(examples_dir: Path, item: str) -> SyncPlanItem | None:
     return None
 
 
-def _iter_files_for_pack(folder: Path) -> list[Path]:
+def _iter_files_for_pack(repo_root: Path, folder: Path) -> list[Path]:
+    folder_rel = folder.relative_to(repo_root).as_posix()
+    completed = subprocess.run(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", folder_rel],
+        cwd=str(repo_root),
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(f"git ls-files failed for: {folder_rel}")
+
     files: list[Path] = []
-    for p in folder.rglob("*"):
-        if p.is_file():
-            files.append(p)
+    seen: set[Path] = set()
+    for raw_path in completed.stdout.split(b"\x00"):
+        if not raw_path:
+            continue
+        repo_relative = Path(raw_path.decode("utf-8"))
+        file_path = repo_root / repo_relative
+        if not file_path.is_file():
+            continue
+        if file_path in seen:
+            continue
+        seen.add(file_path)
+        files.append(file_path)
+
     files.sort(key=lambda x: x.relative_to(folder).as_posix())
     return files
 
 
-def _pack_toolpkg_folder(source_folder: Path, destination_file: Path) -> None:
+def _pack_toolpkg_folder(repo_root: Path, source_folder: Path, destination_file: Path) -> None:
     if _find_manifest_file(source_folder) is None:
         raise ValueError(f"Missing manifest.hjson or manifest.json: {source_folder}")
 
     destination_file.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(destination_file, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for file_path in _iter_files_for_pack(source_folder):
+        for file_path in _iter_files_for_pack(repo_root, source_folder):
             arcname = file_path.relative_to(source_folder).as_posix()
             zf.write(file_path, arcname)
 
@@ -307,7 +327,7 @@ def main() -> int:
         action = "PACK" if not args.dry_run else "DRY-PACK"
         print(f"{action}: {plan.source} -> {dest}")
         if not args.dry_run:
-            _pack_toolpkg_folder(plan.source, dest)
+            _pack_toolpkg_folder(repo_root, plan.source, dest)
             packed += 1
 
     if args.delete_extra and packages_dir.exists():

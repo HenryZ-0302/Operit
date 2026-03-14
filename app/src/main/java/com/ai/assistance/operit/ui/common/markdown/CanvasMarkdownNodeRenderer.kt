@@ -16,13 +16,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -824,6 +822,21 @@ private fun UnifiedCanvasRenderer(
         val clampedHeightDp = with(localDensity) {
             layoutResult.height.coerceIn(0f, maxHeightPx).toDp()
         }
+        val canvasModifier =
+            (if (fillMaxWidth) {
+                Modifier.fillMaxWidth()
+            } else {
+                // bubble模式：使用实际宽度，如果宽度为0则wrapContent
+                if (layoutResult.actualWidth > 0f) {
+                    Modifier.width(with(localDensity) { layoutResult.actualWidth.toDp() })
+                } else {
+                    Modifier
+                }
+            })
+                .height(clampedHeightDp)
+                .semantics {
+                    contentDescription = safeAccessibleText
+                }
         
         // 使用单个 Canvas 绘制所有内容
         SafeMeasureOrFallback(
@@ -838,74 +851,54 @@ private fun UnifiedCanvasRenderer(
             }
         ) {
             Canvas(
-                modifier = (if (fillMaxWidth) {
-                    Modifier.fillMaxWidth()
-                } else {
-                    // bubble模式：使用实际宽度，如果宽度为0则wrapContent
-                    if (layoutResult.actualWidth > 0f) {
-                        Modifier.width(with(localDensity) { layoutResult.actualWidth.toDp() })
-                    } else {
-                        Modifier
-                    }
-                })
-                    .height(clampedHeightDp)
-                    .semantics {
-                        contentDescription = safeAccessibleText
-                    }
-                    .pointerInput(layoutResult.instructions, onLinkClick) {
-                        // 使用 awaitEachGesture 来精确控制事件消费
-                        awaitEachGesture {
-                            val down = awaitPointerEvent(PointerEventPass.Initial).changes.first()
-                            val downTime = System.currentTimeMillis()
-                            val downPosition = down.position
-                            
-                            // 等待手指抬起
-                            val up = awaitPointerEvent(PointerEventPass.Initial).changes.first()
-                            val upTime = System.currentTimeMillis()
-                            val upPosition = up.position
-                            
-                            // 检查是否是点击（而非长按或拖动）
-                            val isTap = (upTime - downTime) < 500 && // 时间小于500ms
-                                        (upPosition - downPosition).getDistance() < 10f // 移动距离小于10px
-                            
-                            if (isTap) {
-                                // 检查是否点击到了链接
-                                var clickedLink = false
-                                layoutResult.instructions.forEach { instruction ->
-                                    if (instruction is DrawInstruction.TextLayout) {
-                                        val layout = instruction.layout
-                                        val text = instruction.text
-                                        if (text is Spanned) {
-                                            val bounds = android.graphics.RectF(
-                                                instruction.x,
-                                                instruction.y,
-                                                instruction.x + layout.width,
-                                                instruction.y + layout.height
-                                            )
-                                            if (bounds.contains(upPosition.x, upPosition.y)) {
-                                                val relativeX = upPosition.x - instruction.x
-                                                val relativeY = upPosition.y - instruction.y
-                                                val line = layout.getLineForVertical(relativeY.toInt())
-                                                val lineOffset = layout.getOffsetForHorizontal(line, relativeX)
+                modifier = canvasModifier.pointerInput(layoutResult.instructions, onLinkClick) {
+                    awaitEachGesture {
+                        val down = awaitPointerEvent(PointerEventPass.Initial).changes.first()
+                        val downTime = System.currentTimeMillis()
+                        val downPosition = down.position
 
-                                                val spans = text.getSpans(lineOffset, lineOffset, URLSpan::class.java)
-                                                spans.firstOrNull()?.let { span ->
-                                                    onLinkClick?.invoke(span.url)
-                                                    clickedLink = true
-                                                }
+                        val up = awaitPointerEvent(PointerEventPass.Initial).changes.first()
+                        val upTime = System.currentTimeMillis()
+                        val upPosition = up.position
+
+                        val isTap = (upTime - downTime) < 500 &&
+                            (upPosition - downPosition).getDistance() < 10f
+
+                        if (isTap) {
+                            var clickedLink = false
+                            layoutResult.instructions.forEach { instruction ->
+                                if (instruction is DrawInstruction.TextLayout) {
+                                    val layout = instruction.layout
+                                    val text = instruction.text
+                                    if (text is Spanned) {
+                                        val bounds = android.graphics.RectF(
+                                            instruction.x,
+                                            instruction.y,
+                                            instruction.x + layout.width,
+                                            instruction.y + layout.height
+                                        )
+                                        if (bounds.contains(upPosition.x, upPosition.y)) {
+                                            val relativeX = upPosition.x - instruction.x
+                                            val relativeY = upPosition.y - instruction.y
+                                            val line = layout.getLineForVertical(relativeY.toInt())
+                                            val lineOffset = layout.getOffsetForHorizontal(line, relativeX)
+
+                                            val spans = text.getSpans(lineOffset, lineOffset, URLSpan::class.java)
+                                            spans.firstOrNull()?.let { span ->
+                                                onLinkClick?.invoke(span.url)
+                                                clickedLink = true
                                             }
                                         }
                                     }
                                 }
-                                
-                                // 只有点击到链接时才消费事件
-                                if (clickedLink) {
-                                    up.consume()
-                                }
                             }
-                            // 如果不是点击或没有点击到链接，不消费事件，让它传递到外层
+
+                            if (clickedLink) {
+                                up.consume()
+                            }
                         }
                     }
+                }
             ) {
                 drawIntoCanvas { canvas ->
                     // 获取可见区域（屏幕内区域）

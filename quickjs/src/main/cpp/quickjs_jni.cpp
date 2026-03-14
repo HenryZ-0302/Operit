@@ -149,6 +149,124 @@ std::optional<std::string> GetExceptionPropertyString(
     return result;
 }
 
+std::string JStringToString(JNIEnv* env, jstring value) {
+    if (env == nullptr || value == nullptr) {
+        return "";
+    }
+    const char* chars = env->GetStringUTFChars(value, nullptr);
+    if (chars == nullptr) {
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
+        return "";
+    }
+    std::string result(chars);
+    env->ReleaseStringUTFChars(value, chars);
+    return result;
+}
+
+std::string DescribeJavaThrowable(JNIEnv* env, jthrowable throwable) {
+    if (env == nullptr || throwable == nullptr) {
+        return "Java host call failed";
+    }
+
+    jclass throwable_class = env->FindClass("java/lang/Throwable");
+    if (throwable_class == nullptr) {
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
+        env->DeleteLocalRef(throwable);
+        return "Java host call failed";
+    }
+
+    jmethodID to_string_method = env->GetMethodID(
+        throwable_class,
+        "toString",
+        "()Ljava/lang/String;"
+    );
+    jmethodID get_cause_method = env->GetMethodID(
+        throwable_class,
+        "getCause",
+        "()Ljava/lang/Throwable;"
+    );
+    if (to_string_method == nullptr || get_cause_method == nullptr) {
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+        }
+        env->DeleteLocalRef(throwable_class);
+        env->DeleteLocalRef(throwable);
+        return "Java host call failed";
+    }
+
+    std::vector<std::string> parts;
+    jthrowable current = throwable;
+    while (current != nullptr && parts.size() < 6) {
+        jstring text_value = static_cast<jstring>(env->CallObjectMethod(current, to_string_method));
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            if (text_value != nullptr) {
+                env->DeleteLocalRef(text_value);
+            }
+            env->DeleteLocalRef(current);
+            current = nullptr;
+            break;
+        }
+
+        std::string part = JStringToString(env, text_value);
+        if (text_value != nullptr) {
+            env->DeleteLocalRef(text_value);
+        }
+        if (!part.empty()) {
+            parts.push_back(part);
+        }
+
+        jthrowable next = static_cast<jthrowable>(env->CallObjectMethod(current, get_cause_method));
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            if (next != nullptr) {
+                env->DeleteLocalRef(next);
+            }
+            env->DeleteLocalRef(current);
+            current = nullptr;
+            break;
+        }
+        if (next != nullptr && env->IsSameObject(current, next)) {
+            env->DeleteLocalRef(next);
+            next = nullptr;
+        }
+        env->DeleteLocalRef(current);
+        current = next;
+    }
+    if (current != nullptr) {
+        env->DeleteLocalRef(current);
+    }
+
+    env->DeleteLocalRef(throwable_class);
+    if (parts.empty()) {
+        return "Java host call failed";
+    }
+
+    std::string message = parts.front();
+    for (size_t index = 1; index < parts.size(); index += 1) {
+        message += " | caused by: " + parts[index];
+    }
+    return message;
+}
+
+std::optional<std::string> TakeJavaExceptionMessage(JNIEnv* env) {
+    if (env == nullptr || !env->ExceptionCheck()) {
+        return std::nullopt;
+    }
+    jthrowable throwable = env->ExceptionOccurred();
+    env->ExceptionClear();
+    return DescribeJavaThrowable(env, throwable);
+}
+
+struct HostCallResult {
+    std::optional<std::string> value;
+    std::optional<std::string> error;
+};
+
 class QuickJsVm {
 public:
     QuickJsVm(JavaVM* java_vm, JNIEnv* env, jobject host_bridge)
@@ -409,14 +527,22 @@ private:
 
         RecordHostCall(method, args_json);
         active_host_call_depth_ += 1;
-        std::optional<std::string> result = CallHost(method, args_json);
+        HostCallResult result = CallHost(method, args_json);
         if (active_host_call_depth_ > 0) {
             active_host_call_depth_ -= 1;
         }
-        if (!result.has_value()) {
+        if (result.error.has_value()) {
+            return JS_ThrowInternalError(
+                context,
+                "Host call failed for %s: %s",
+                method.c_str(),
+                result.error->c_str()
+            );
+        }
+        if (!result.value.has_value()) {
             return JS_NULL;
         }
-        return JS_NewStringLen(context, result->c_str(), result->size());
+        return JS_NewStringLen(context, result.value->c_str(), result.value->size());
     }
 
     void RecordHostCall(
@@ -447,38 +573,55 @@ private:
         JS_FreeValue(context_, global);
     }
 
-    std::optional<std::string> CallHost(
+    HostCallResult CallHost(
         const std::string& method,
         const std::optional<std::string>& args_json
     ) {
+        HostCallResult result;
         JNIEnv* env = nullptr;
         bool attached = false;
         if (java_vm_->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
             if (java_vm_->AttachCurrentThread(&env, nullptr) != JNI_OK) {
-                return std::nullopt;
+                result.error = "Failed to attach current thread to JVM";
+                return result;
             }
             attached = true;
         }
 
         jstring j_method = env->NewStringUTF(method.c_str());
-        jstring j_args = args_json.has_value() ? env->NewStringUTF(args_json->c_str()) : nullptr;
-        jobject raw_result = env->CallObjectMethod(host_bridge_, on_call_method_, j_method, j_args);
+        jstring j_args = nullptr;
+        jobject raw_result = nullptr;
 
-        std::optional<std::string> result;
-        if (!env->ExceptionCheck() && raw_result != nullptr) {
-            auto* j_result = static_cast<jstring>(raw_result);
-            const char* chars = env->GetStringUTFChars(j_result, nullptr);
-            if (chars != nullptr) {
-                result = std::string(chars);
-                env->ReleaseStringUTFChars(j_result, chars);
-            } else {
-                result = std::string();
+        result.error = TakeJavaExceptionMessage(env);
+        if (!result.error.has_value() && j_method == nullptr) {
+            result.error = "Failed to create JNI string for host method";
+        }
+
+        if (!result.error.has_value() && args_json.has_value()) {
+            j_args = env->NewStringUTF(args_json->c_str());
+            result.error = TakeJavaExceptionMessage(env);
+            if (!result.error.has_value() && j_args == nullptr) {
+                result.error = "Failed to create JNI string for host args";
             }
         }
 
-        if (env->ExceptionCheck()) {
-            env->ExceptionClear();
-            result = std::nullopt;
+        if (!result.error.has_value()) {
+            raw_result = env->CallObjectMethod(host_bridge_, on_call_method_, j_method, j_args);
+            result.error = TakeJavaExceptionMessage(env);
+        }
+
+        if (!result.error.has_value() && raw_result != nullptr) {
+            auto* j_result = static_cast<jstring>(raw_result);
+            const char* chars = env->GetStringUTFChars(j_result, nullptr);
+            if (chars != nullptr) {
+                result.value = std::string(chars);
+                env->ReleaseStringUTFChars(j_result, chars);
+            } else {
+                result.error = TakeJavaExceptionMessage(env);
+                if (!result.error.has_value()) {
+                    result.value = std::string();
+                }
+            }
         }
 
         if (raw_result != nullptr) {
@@ -488,7 +631,9 @@ private:
         if (j_args != nullptr) {
             env->DeleteLocalRef(j_args);
         }
-        env->DeleteLocalRef(j_method);
+        if (j_method != nullptr) {
+            env->DeleteLocalRef(j_method);
+        }
 
         if (attached) {
             java_vm_->DetachCurrentThread();

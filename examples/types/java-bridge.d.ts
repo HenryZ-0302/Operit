@@ -92,6 +92,11 @@ export type JavaBridgeDynamicCallable = (...args: JavaBridgeArg[]) => JavaBridge
  */
 export interface JavaBridgeExternalCodeLoadOptions {
     nativeLibraryDir?: string;
+    /**
+     * Package/class-name prefixes that should prefer classes from the loaded dex/jar
+     * before delegating to the parent class loader.
+     */
+    childFirstPrefixes?: string[];
 }
 
 /**
@@ -102,6 +107,7 @@ export interface JavaBridgeLoadedCodePath {
     type: 'dex' | 'jar';
     path: string;
     nativeLibraryDir: string | null;
+    childFirstPrefixes: string[];
     alreadyLoaded: boolean;
 }
 

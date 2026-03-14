@@ -39,7 +39,7 @@ windows_control.toolpkg (ZIP 压缩包)
 │       └── index.ui.js                    # UI 模块脚本
 ├── resources/                             # 资源文件目录
 │   └── pc_agent/
-│       └── operit-pc-agent.zip           # 资源文件
+│       └── operit-pc-agent/              # 目录资源（readResource 时自动导出为 zip）
 └── i18n/                                  # 国际化文件（可选）
     ├── zh-CN.js
     └── en-US.js
@@ -318,6 +318,16 @@ exports.onInputMenuToggle = onInputMenuToggle;
 }
 ```
 
+也支持声明目录资源：
+
+```json
+{
+  "key": "pc_agent_zip",
+  "path": "resources/pc_agent/operit-pc-agent",
+  "mime": "inode/directory"
+}
+```
+
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
 | `key` | string | 是 | 资源的唯一键，用于在代码中引用 |
@@ -327,6 +337,10 @@ exports.onInputMenuToggle = onInputMenuToggle;
 **访问资源**：
 - 在子包脚本中：通过 PackageManager API 访问
 - 在 UI 模块中：通过 `ToolPkg.readResource(key)` 访问
+
+目录资源说明：
+- 当 `mime` 是目录类型（如 `inode/directory`、`vnd.android.document/directory`）时，`ToolPkg.readResource(key)` 会先将该目录压缩成 zip，再返回这个 zip 的临时文件路径。
+- 如果没有显式传 `outputFileName`，目录资源默认会自动补上 `.zip` 后缀。
 
 ## 4. 创建 ToolPkg
 
@@ -495,6 +509,46 @@ exports.windows_exec = WindowsControl.windows_exec;
     }
 ]
 ```
+
+### 5.4 Java / Kotlin Bridge 返回值与自动类型转换
+
+如果子包里用到了 `Java.type(...)` / `Java.xxx.yyy` 这一套桥接，最需要记住的是：
+
+- **桥接会把很多 Java 类型自动归一成 JS 常用结构。**
+
+尤其是下面这些返回值，不要再按 Java 容器 API 去写：
+
+| Java / Kotlin 返回值 | JS 侧实际使用方式 |
+|------|------|
+| `List` / `Set` / 其他 `Iterable` | 当普通数组用：`length`、索引、`map/filter` |
+| Java 数组 / `JSONArray` | 当普通数组用 |
+| `Map` / `JSONObject` | 当普通对象用 |
+| `String` / `CharSequence` / `char` | 当字符串用 |
+| `Enum` / `Class<?>` | 当字符串用 |
+| 普通 Java / Kotlin 对象 | 当 Java 实例代理用，可继续调方法 / 读写字段 |
+
+典型误区：
+
+```javascript
+const items = someJavaApi.listSomething();
+
+items.size(); // 不要这样写
+items.get(0); // 不要这样写
+
+items.length; // 对
+items[0];     // 对
+```
+
+反过来，JS 传给 Java / Kotlin 时也会自动做一轮适配：
+
+- JS 数组可自动转 Java 数组 / `Collection` / `JSONArray`
+- plain object 可自动转 `Map` / `JSONObject`
+- plain object 或 `Java.implement(...)` 结果在目标是接口时可自动转接口代理
+- Java 实例代理会自动还原成原始 Java 对象
+
+详细规则见：
+
+- [README.md](../app/src/main/java/com/ai/assistance/operit/core/tools/javascript/README.md)
 
 ## 6. UI 模块开发
 
@@ -678,6 +732,8 @@ const iconPath = await ToolPkg.readResource('icon');
 // iconPath 是资源文件在设备上的临时路径
 ```
 
+如果 `icon` 对应的是目录资源，返回值会是运行时临时生成的 zip 文件路径。
+
 **在子包脚本中**：
 ```javascript
 // 通过 PackageManager API 访问（需要原生桥接）
@@ -822,7 +878,7 @@ windows_control/
 │       └── index.ui.js
 ├── resources/
 │   └── pc_agent/
-│       └── operit-pc-agent.zip
+│       └── operit-pc-agent/
 └── i18n/
     ├── zh-CN.js
     └── en-US.js

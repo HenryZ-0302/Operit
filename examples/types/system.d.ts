@@ -5,7 +5,7 @@
 import {
     SleepResultData, SystemSettingData, AppOperationData, AppListData,
     DeviceInfoResultData, NotificationData, LocationData,
-    ADBResultData, IntentResultData, TerminalCommandResultData,
+    ADBResultData, IntentResultData, TerminalCommandResultData, HiddenTerminalCommandResultData,
     TerminalSessionCreationResultData, TerminalSessionCloseResultData, TerminalSessionScreenResultData,
     StringResultData
 } from './results';
@@ -161,6 +161,18 @@ export namespace System {
          * @returns Promise resolving to the command execution result.
          */
         function exec(sessionId: string, command: string, timeoutMs?: number | string): Promise<TerminalCommandResultData>;
+
+        /**
+         * Execute a command in a hidden non-PTY executor.
+         * Commands using the same executorKey reuse the same hidden login context and are not shown in the visible terminal UI.
+         * @param command The command to execute.
+         * @param options Optional hidden executor options.
+         * @returns Promise resolving to the hidden command execution result.
+         */
+        function hiddenExec(command: string, options?: {
+            executorKey?: string;
+            timeoutMs?: number | string;
+        }): Promise<HiddenTerminalCommandResultData>;
 
         /**
          * Close a terminal session.

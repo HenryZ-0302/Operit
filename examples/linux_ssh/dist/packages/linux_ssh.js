@@ -203,7 +203,6 @@ const linuxSshTools = (function () {
     const DEFAULT_CONNECT_OPEN_TIMEOUT_MS = 3000;
     const DEFAULT_LOCAL_SESSION_NAME = "linux_ssh_default_session";
     const DEFAULT_TMUX_SESSION_NAME = "operit_ai";
-    const REMOTE_WRITE_B64_CHUNK_SIZE = 3072;
     const ENV_KEYS = {
         host: "LINUX_SSH_HOST",
         port: "LINUX_SSH_PORT",
@@ -381,21 +380,52 @@ const linuxSshTools = (function () {
             output: asText(result.output)
         };
     }
-    async function ensureLocalCommand(sessionName, commandName, installScript) {
-        const check = await runLocalCommand(sessionName, `if command -v ${commandName} >/dev/null 2>&1; then echo '__FOUND__'; else echo '__MISSING__'; fi`, DEFAULT_TIMEOUT_MS);
+    function buildHiddenExecutorKey(localSessionName, scope) {
+        const baseName = firstNonBlank(localSessionName, DEFAULT_LOCAL_SESSION_NAME)
+            .replace(/[^a-zA-Z0-9._-]+/g, "_");
+        const normalizedScope = firstNonBlank(scope, "default")
+            .replace(/[^a-zA-Z0-9._-]+/g, "_");
+        return `linux_ssh:${baseName}:${normalizedScope}`;
+    }
+    async function runLocalHiddenCommand(localSessionName, command, timeoutMs, scope) {
+        const effectiveTimeout = parsePositiveInt(timeoutMs, DEFAULT_TIMEOUT_MS);
+        const executorKey = buildHiddenExecutorKey(localSessionName, scope);
+        const result = await Tools.System.terminal.hiddenExec(command, {
+            executorKey,
+            timeoutMs: effectiveTimeout
+        });
+        return {
+            sessionId: "",
+            executorKey,
+            exitCode: Number(result.exitCode || 0),
+            timedOut: !!result.timedOut,
+            output: asText(result.output)
+        };
+    }
+    function createVisibleRunner(sessionName) {
+        return async function execute(command, timeoutMs) {
+            return await runLocalCommand(sessionName, command, timeoutMs);
+        };
+    }
+    function createHiddenRunner(localSessionName, scope) {
+        return async function execute(command, timeoutMs) {
+            return await runLocalHiddenCommand(localSessionName, command, timeoutMs, scope);
+        };
+    }
+    async function ensureLocalCommand(runner, commandName, installScript) {
+        const check = await runner(`if command -v ${commandName} >/dev/null 2>&1; then echo '__FOUND__'; else echo '__MISSING__'; fi`, DEFAULT_TIMEOUT_MS);
         if (check.output.includes("__FOUND__")) {
             return { success: true, installed: false, output: check.output };
         }
-        const install = await runLocalCommand(sessionName, installScript, 180000);
-        const verify = await runLocalCommand(sessionName, `if command -v ${commandName} >/dev/null 2>&1; then echo '__FOUND__'; else echo '__MISSING__'; fi`, DEFAULT_TIMEOUT_MS);
+        const install = await runner(installScript, 180000);
+        const verify = await runner(`if command -v ${commandName} >/dev/null 2>&1; then echo '__FOUND__'; else echo '__MISSING__'; fi`, DEFAULT_TIMEOUT_MS);
         if (!verify.output.includes("__FOUND__")) {
             throw new Error(`Failed to install ${commandName}.\nInstall output:\n${install.output}\nVerify output:\n${verify.output}`);
         }
         return { success: true, installed: true, output: install.output };
     }
-    async function ensureLocalSshDependencies(config) {
-        const sessionName = config.localSessionName;
-        await ensureLocalCommand(sessionName, "ssh", [
+    async function ensureLocalSshDependencies(config, runner) {
+        await ensureLocalCommand(runner, "ssh", [
             "if command -v apt-get >/dev/null 2>&1; then",
             "  (sudo -n apt-get update && sudo -n apt-get install -y openssh-client) || (apt-get update && apt-get install -y openssh-client)",
             "elif command -v dnf >/dev/null 2>&1; then",
@@ -409,7 +439,7 @@ const linuxSshTools = (function () {
             "fi"
         ].join("\n"));
         if (config.password && !config.privateKeyPath) {
-            await ensureLocalCommand(sessionName, "sshpass", [
+            await ensureLocalCommand(runner, "sshpass", [
                 "if command -v apt-get >/dev/null 2>&1; then",
                 "  (sudo -n apt-get update && sudo -n apt-get install -y sshpass) || (apt-get update && apt-get install -y sshpass)",
                 "elif command -v dnf >/dev/null 2>&1; then",
@@ -453,10 +483,11 @@ const linuxSshTools = (function () {
         }
         return `${base} ${shellQuote(remoteCommand)}`;
     }
-    async function runRemoteCommand(config, remoteCommand, timeoutMs) {
-        await ensureLocalSshDependencies(config);
+    async function runRemoteCommandHidden(config, remoteCommand, timeoutMs, scope) {
+        const runner = createHiddenRunner(config.localSessionName, scope || "remote");
+        await ensureLocalSshDependencies(config, runner);
         const command = buildSshCommand(config, remoteCommand, false);
-        const result = await runLocalCommand(config.localSessionName, command, timeoutMs || config.timeoutMs);
+        const result = await runner(command, timeoutMs || config.timeoutMs);
         return result;
     }
     function extractBlock(output, beginToken, endToken) {
@@ -475,35 +506,6 @@ const linuxSshTools = (function () {
         return asText(output)
             .split(/\r?\n/)
             .some((line) => asText(line).trim() === marker);
-    }
-    function decodeBase64Utf8(value) {
-        const raw = asText(value).replace(/\s+/g, "");
-        if (!raw) {
-            return "";
-        }
-        try {
-            if (typeof atob === "function") {
-                const binary = atob(raw);
-                if (typeof TextDecoder !== "undefined") {
-                    const bytes = new Uint8Array(binary.length);
-                    for (let i = 0; i < binary.length; i += 1) {
-                        bytes[i] = binary.charCodeAt(i);
-                    }
-                    return new TextDecoder("utf-8").decode(bytes);
-                }
-                return binary;
-            }
-        }
-        catch (_error) {
-            // Ignore decode errors and fallback to raw text.
-        }
-        return raw;
-    }
-    function encodeBase64Utf8(value) {
-        if (typeof Buffer === "undefined") {
-            throw new Error("Failed to encode content: Buffer is not available");
-        }
-        return Buffer.from(asText(value), "utf-8").toString("base64");
     }
     async function ensureRemoteTmux(config) {
         const installScript = [
@@ -529,7 +531,7 @@ const linuxSshTools = (function () {
             "echo '__TMUX_INSTALL_FAILED__'",
             "exit 7"
         ].join("\n");
-        const result = await runRemoteCommand(config, installScript, 240000);
+        const result = await runRemoteCommandHidden(config, installScript, 240000, "tmux");
         const success = result.exitCode === 0 && result.output.includes("__TMUX_READY__");
         return {
             success,
@@ -555,7 +557,7 @@ const linuxSshTools = (function () {
             readCmd,
             "printf '\\n__OPERIT_END__\\n'"
         ].join("\n");
-        const result = await runRemoteCommand(config, script, config.timeoutMs);
+        const result = await runRemoteCommandHidden(config, script, config.timeoutMs, "fs");
         if (result.exitCode !== 0 || result.timedOut) {
             throw new Error(`Failed to read remote file: ${result.output}`);
         }
@@ -568,37 +570,13 @@ const linuxSshTools = (function () {
     async function writeRemoteFileContent(config, path, content, appendMode) {
         const escapedPath = shellQuote(path);
         const redirectOperator = appendMode ? ">>" : ">";
-        const encoded = encodeBase64Utf8(content);
-        const tempBase64Path = `/tmp/operit_linux_ssh_write_${Date.now()}_${Math.random().toString(16).slice(2)}.b64`;
-        const escapedTempBase64Path = shellQuote(tempBase64Path);
-        const initScript = [
+        const script = [
             `mkdir -p \"$(dirname -- ${escapedPath})\"`,
-            `: > ${escapedTempBase64Path}`
+            `printf '%s' ${shellQuote(content)} ${redirectOperator} ${escapedPath}`
         ].join("\n");
-        const initResult = await runRemoteCommand(config, initScript, config.timeoutMs);
-        if (initResult.exitCode !== 0 || initResult.timedOut) {
-            throw new Error(`Failed to initialize remote write: ${initResult.output}`);
-        }
-        for (let offset = 0; offset < encoded.length; offset += REMOTE_WRITE_B64_CHUNK_SIZE) {
-            const chunk = encoded.slice(offset, offset + REMOTE_WRITE_B64_CHUNK_SIZE);
-            const chunkScript = `printf '%s' '${chunk}' >> ${escapedTempBase64Path}`;
-            const chunkResult = await runRemoteCommand(config, chunkScript, config.timeoutMs);
-            if (chunkResult.exitCode !== 0 || chunkResult.timedOut) {
-                throw new Error(`Failed to upload remote write chunk: ${chunkResult.output}`);
-            }
-        }
-        const decodeScript = [
-            "set -e",
-            `trap 'rm -f ${escapedTempBase64Path}' EXIT`,
-            "if ! command -v base64 >/dev/null 2>&1; then",
-            "  echo '__OPERIT_BASE64_NOT_FOUND__'",
-            "  exit 19",
-            "fi",
-            `base64 -d ${escapedTempBase64Path} ${redirectOperator} ${escapedPath}`
-        ].join("\n");
-        const decodeResult = await runRemoteCommand(config, decodeScript, config.timeoutMs);
-        if (decodeResult.exitCode !== 0 || decodeResult.timedOut) {
-            throw new Error(`Failed to decode and write remote file: ${decodeResult.output}`);
+        const result = await runRemoteCommandHidden(config, script, config.timeoutMs, "fs");
+        if (result.exitCode !== 0 || result.timedOut) {
+            throw new Error(`Failed to write remote file: ${result.output}`);
         }
     }
     async function linux_ssh_configure(params) {
@@ -645,7 +623,7 @@ const linuxSshTools = (function () {
                 "if command -v tmux >/dev/null 2>&1; then echo 'tmux=present'; else echo 'tmux=missing'; fi",
                 "printf '__OPERIT_CONNECT_END__\\n'"
             ].join("\n");
-            const result = await runRemoteCommand(config, command, timeoutMs);
+            const result = await runRemoteCommandHidden(config, command, timeoutMs, "remote");
             const success = result.exitCode === 0 && !result.timedOut;
             const block = extractBlock(result.output, "__OPERIT_CONNECT_BEGIN__", "__OPERIT_CONNECT_END__");
             return {
@@ -679,7 +657,7 @@ const linuxSshTools = (function () {
                 allowParamAuth: false
             });
             const timeoutMs = parsePositiveInt(params && params.timeout_ms, config.timeoutMs);
-            const result = await runRemoteCommand(config, command, timeoutMs);
+            const result = await runRemoteCommandHidden(config, command, timeoutMs, "remote");
             const success = result.exitCode === 0 && !result.timedOut;
             return {
                 success,
@@ -755,7 +733,7 @@ const linuxSshTools = (function () {
                 `echo "session=${tmuxSessionName}"`,
                 `echo "window=${windowName}"`
             ].join("\n");
-            const result = await runRemoteCommand(config, script, config.timeoutMs);
+            const result = await runRemoteCommandHidden(config, script, config.timeoutMs, "tmux");
             const success = result.exitCode === 0 && !result.timedOut && result.output.includes("__OPERIT_TMUX_RUN_OK__");
             return {
                 success,
@@ -795,16 +773,13 @@ const linuxSshTools = (function () {
             const target = windowName ? `${tmuxSessionName}:${windowName}` : tmuxSessionName;
             const script = [
                 `tmux has-session -t ${shellQuote(tmuxSessionName)} 2>/dev/null || { echo '__OPERIT_TMUX_NOT_FOUND__'; exit 4; }`,
-                `printf '__OPERIT_TMUX_CAPTURE_B64_BEGIN__\\n'`,
-                `tmux capture-pane -t ${shellQuote(target)} -p -S -${maxLines} | base64 | tr -d '\\n'`,
-                `printf '\\n__OPERIT_TMUX_CAPTURE_B64_END__\\n'`
-            ].join("; ");
-            const result = await runRemoteCommand(config, script, config.timeoutMs);
+                "printf '__OPERIT_TMUX_CAPTURE_BEGIN__\\n'",
+                `tmux capture-pane -t ${shellQuote(target)} -p -S -${maxLines}`,
+                "printf '\\n__OPERIT_TMUX_CAPTURE_END__\\n'"
+            ].join("\n");
+            const result = await runRemoteCommandHidden(config, script, config.timeoutMs, "tmux");
             const success = result.exitCode === 0 && !result.timedOut;
-            const encoded = extractBlock(result.output, "__OPERIT_TMUX_CAPTURE_B64_BEGIN__", "__OPERIT_TMUX_CAPTURE_B64_END__");
-            const legacyContent = extractBlock(result.output, "__OPERIT_TMUX_CAPTURE_BEGIN__", "__OPERIT_TMUX_CAPTURE_END__");
-            const decodedContent = decodeBase64Utf8(encoded);
-            const content = decodedContent || legacyContent;
+            const content = extractBlock(result.output, "__OPERIT_TMUX_CAPTURE_BEGIN__", "__OPERIT_TMUX_CAPTURE_END__");
             return {
                 success,
                 packageVersion: PACKAGE_VERSION,
@@ -844,7 +819,7 @@ const linuxSshTools = (function () {
                 `tmux list-windows -t ${shellQuote(tmuxSessionName)} -F '#{window_index}:#{window_name}'`,
                 "printf '__OPERIT_TMUX_WINDOWS_END__\\n'"
             ].join("; ");
-            const result = await runRemoteCommand(config, script, config.timeoutMs);
+            const result = await runRemoteCommandHidden(config, script, config.timeoutMs, "tmux");
             const notFound = hasExactMarkerLine(result.output, "__OPERIT_TMUX_NOT_FOUND__");
             const success = result.exitCode === 0 && !result.timedOut && !notFound;
             const block = extractBlock(result.output, "__OPERIT_TMUX_WINDOWS_BEGIN__", "__OPERIT_TMUX_WINDOWS_END__");
@@ -894,7 +869,7 @@ const linuxSshTools = (function () {
                 allowParamConnection: false,
                 allowParamAuth: false
             });
-            await ensureLocalSshDependencies(config);
+            await ensureLocalSshDependencies(config, createVisibleRunner(config.localSessionName));
             const session = await createLocalTerminalSession(config.localSessionName);
             const command = buildSshCommand(config, undefined, true);
             const timeoutMs = parsePositiveInt(params && params.timeout_ms, DEFAULT_CONNECT_OPEN_TIMEOUT_MS);
@@ -1003,7 +978,7 @@ const linuxSshTools = (function () {
             });
             const path = firstNonBlank(params && asText(params.path), "~");
             const command = `ls -la ${shellQuote(path)}`;
-            const result = await runRemoteCommand(config, command, config.timeoutMs);
+            const result = await runRemoteCommandHidden(config, command, config.timeoutMs, "fs");
             const success = result.exitCode === 0 && !result.timedOut;
             return {
                 success,

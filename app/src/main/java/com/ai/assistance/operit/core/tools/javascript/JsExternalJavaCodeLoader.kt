@@ -13,6 +13,49 @@ import org.json.JSONObject
 import java.security.MessageDigest
 import java.util.Locale
 
+private class PrefixIsolatedDexClassLoader(
+    dexPath: String,
+    optimizedDirectory: String,
+    librarySearchPath: String?,
+    parent: ClassLoader,
+    childFirstPrefixes: List<String>
+) : DexClassLoader(dexPath, optimizedDirectory, librarySearchPath, parent) {
+    private val normalizedChildFirstPrefixes =
+        childFirstPrefixes
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+
+    override fun loadClass(name: String, resolve: Boolean): Class<*> {
+        if (!shouldLoadChildFirst(name)) {
+            return super.loadClass(name, resolve)
+        }
+
+        synchronized(this) {
+            findLoadedClass(name)?.let { loadedClass ->
+                if (resolve) {
+                    resolveClass(loadedClass)
+                }
+                return loadedClass
+            }
+
+            try {
+                val localClass = findClass(name)
+                if (resolve) {
+                    resolveClass(localClass)
+                }
+                return localClass
+            } catch (_: ClassNotFoundException) {
+                return super.loadClass(name, resolve)
+            }
+        }
+    }
+
+    private fun shouldLoadChildFirst(className: String): Boolean {
+        return normalizedChildFirstPrefixes.any { prefix -> className.startsWith(prefix) }
+    }
+}
+
 internal class JsExternalJavaCodeLoader(private val context: Context) {
     private enum class SourceType(val wireName: String) {
         DEX("dex"),
@@ -20,21 +63,28 @@ internal class JsExternalJavaCodeLoader(private val context: Context) {
     }
 
     private data class LoadOptions(
-        val nativeLibraryDir: String?
+        val nativeLibraryDir: String?,
+        val childFirstPrefixes: List<String>
     )
 
     private data class LoadedArtifact(
         val sourceType: SourceType,
         val sourcePath: String,
         val nativeLibraryDir: String?,
+        val childFirstPrefixes: List<String>,
         val classLoader: ClassLoader
     ) {
         fun toJson(index: Int, alreadyLoaded: Boolean): JSONObject {
+            val childFirstPrefixesJson = JSONArray()
+            childFirstPrefixes.forEach { prefix ->
+                childFirstPrefixesJson.put(prefix)
+            }
             return JSONObject()
                 .put("index", index)
                 .put("type", sourceType.wireName)
                 .put("path", sourcePath)
                 .put("nativeLibraryDir", nativeLibraryDir)
+                .put("childFirstPrefixes", childFirstPrefixesJson)
                 .put("alreadyLoaded", alreadyLoaded)
         }
     }
@@ -89,7 +139,13 @@ internal class JsExternalJavaCodeLoader(private val context: Context) {
             ensureJvmCompatibilitySystemProperties()
 
             val nativeLibraryDir = resolveNativeLibraryDir(options.nativeLibraryDir)
-            val artifactKey = buildArtifactKey(sourceType, canonicalPath, nativeLibraryDir)
+            val artifactKey =
+                buildArtifactKey(
+                    sourceType = sourceType,
+                    canonicalPath = canonicalPath,
+                    nativeLibraryDir = nativeLibraryDir,
+                    childFirstPrefixes = options.childFirstPrefixes
+                )
             loadedArtifacts[artifactKey]?.let { existing ->
                 return success(existing.toJson(indexOf(artifactKey), alreadyLoaded = true))
             }
@@ -102,19 +158,31 @@ internal class JsExternalJavaCodeLoader(private val context: Context) {
                 )
             val optimizedDir = ensureOptimizedDir()
             val parent = getEffectiveClassLoader(baseClassLoader)
+            val childFirstPrefixes = options.childFirstPrefixes
             val classLoader =
-                DexClassLoader(
-                    preparedSourceFile.absolutePath,
-                    optimizedDir.absolutePath,
-                    nativeLibraryDir,
-                    parent
-                )
+                if (childFirstPrefixes.isEmpty()) {
+                    DexClassLoader(
+                        preparedSourceFile.absolutePath,
+                        optimizedDir.absolutePath,
+                        nativeLibraryDir,
+                        parent
+                    )
+                } else {
+                    PrefixIsolatedDexClassLoader(
+                        preparedSourceFile.absolutePath,
+                        optimizedDir.absolutePath,
+                        nativeLibraryDir,
+                        parent,
+                        childFirstPrefixes
+                    )
+                }
 
             val artifact =
                 LoadedArtifact(
                     sourceType = sourceType,
                     sourcePath = preparedSourceFile.absolutePath,
                     nativeLibraryDir = nativeLibraryDir,
+                    childFirstPrefixes = childFirstPrefixes,
                     classLoader = classLoader
                 )
             loadedArtifacts[artifactKey] = artifact
@@ -157,12 +225,31 @@ internal class JsExternalJavaCodeLoader(private val context: Context) {
     private fun parseOptions(optionsJson: String): LoadOptions {
         val normalized = optionsJson.trim()
         if (normalized.isEmpty()) {
-            return LoadOptions(nativeLibraryDir = null)
+            return LoadOptions(
+                nativeLibraryDir = null,
+                childFirstPrefixes = emptyList()
+            )
         }
 
         val parsed = JSONObject(normalized)
         val nativeLibraryDir = parsed.optString("nativeLibraryDir").trim().ifEmpty { null }
-        return LoadOptions(nativeLibraryDir = nativeLibraryDir)
+        val childFirstPrefixes =
+            parsed.optJSONArray("childFirstPrefixes")
+                ?.let { rawPrefixes ->
+                    val normalizedPrefixes = ArrayList<String>(rawPrefixes.length())
+                    for (index in 0 until rawPrefixes.length()) {
+                        val rawPrefix = rawPrefixes.optString(index).trim()
+                        if (rawPrefix.isNotEmpty()) {
+                            normalizedPrefixes.add(rawPrefix)
+                        }
+                    }
+                    normalizedPrefixes.distinct()
+                }
+                ?: emptyList()
+        return LoadOptions(
+            nativeLibraryDir = nativeLibraryDir,
+            childFirstPrefixes = childFirstPrefixes
+        )
     }
 
     private fun resolveNativeLibraryDir(nativeLibraryDir: String?): String? {
@@ -272,9 +359,15 @@ internal class JsExternalJavaCodeLoader(private val context: Context) {
     private fun buildArtifactKey(
         sourceType: SourceType,
         canonicalPath: String,
-        nativeLibraryDir: String?
+        nativeLibraryDir: String?,
+        childFirstPrefixes: List<String>
     ): String {
-        return listOf(sourceType.wireName, canonicalPath, nativeLibraryDir.orEmpty()).joinToString("|")
+        return listOf(
+            sourceType.wireName,
+            canonicalPath,
+            nativeLibraryDir.orEmpty(),
+            childFirstPrefixes.joinToString(",")
+        ).joinToString("|")
     }
 
     private fun indexOf(artifactKey: String): Int {

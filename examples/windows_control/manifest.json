@@ -21,8 +21,8 @@
   "resources": [
     {
       "key": "pc_agent_zip",
-      "path": "resources/pc_agent/operit-pc-agent.zip",
-      "mime": "application/zip"
+      "path": "resources/pc_agent/operit-pc-agent",
+      "mime": "inode/directory"
     }
   ]
 }
